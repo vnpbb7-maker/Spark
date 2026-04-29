@@ -92,9 +92,9 @@ INNGEST_SIGNING_KEY=
 - [x] ランディングページ
 - [x] Supabase認証
 - [x] キャンペーン作成ウィザード
-- [ ] ダッシュボード（Supabase接続後に完全稼働）
-- [ ] Playwright自動コメント投稿
-- [ ] 返信監視
+- [x] ダッシュボード
+- [x] Playwright自動コメント投稿
+- [x] 返信監視
 - [ ] Stripe課金
 
 ## License
