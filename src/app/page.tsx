@@ -74,7 +74,7 @@ export default function LandingPage() {
 
       {/* ═══════════════════ NAV ═══════════════════ */}
       <nav className="fixed top-0 inset-x-0 z-50 border-b border-border backdrop-blur-xl bg-bg/85">
-        <div className="mx-auto max-w-[1200px] h-16 px-6 flex items-center justify-between">
+        <div className="mx-auto max-w-[900px] h-16 px-6 flex items-center justify-between">
           {/* Logo */}
           <div className="flex items-center gap-2 font-heading font-bold text-[22px]">
             <span className="text-orange text-2xl">⚡</span>
@@ -104,7 +104,7 @@ export default function LandingPage() {
         <div className="absolute top-1/4 left-[10%] w-72 h-72 rounded-full bg-orange/5 blur-[100px] animate-float pointer-events-none" />
         <div className="absolute bottom-1/4 right-[10%] w-96 h-96 rounded-full bg-purple/5 blur-[120px] animate-float pointer-events-none [animation-delay:3s]" />
 
-        <div className="relative z-10 max-w-[800px]">
+        <div className="relative z-10 w-full max-w-[900px] mx-auto">
           {/* Badge */}
           <div
             className="inline-flex items-center gap-2 bg-orange/10 border border-orange/30 rounded-full
@@ -137,7 +137,7 @@ export default function LandingPage() {
 
           {/* URL Input */}
           <div
-            className="flex gap-0 max-w-[560px] mx-auto mb-4 bg-surface border border-orange/30
+            className="flex items-center gap-0 max-w-[560px] mx-auto mb-4 bg-surface border border-orange/30
                         rounded-2xl p-1.5
                         shadow-[0_0_40px_rgba(255,107,53,0.15)]
                         focus-within:shadow-[0_0_60px_rgba(255,107,53,0.25)]
@@ -150,12 +150,12 @@ export default function LandingPage() {
               value={url}
               onChange={(e) => setUrl(e.target.value)}
               placeholder="https://yourproduct.com"
-              className="flex-1 bg-transparent border-none outline-none text-text text-[15px]
+              className="flex-1 min-w-0 bg-transparent border-none outline-none text-text text-[15px]
                          px-4 py-3 font-body placeholder:text-hint"
             />
             <button
               className="bg-orange text-white border-none rounded-xl px-6 py-3 text-[15px]
-                         font-bold font-heading cursor-pointer whitespace-nowrap
+                         font-bold font-heading cursor-pointer whitespace-nowrap shrink-0
                          hover:scale-[1.03] hover:shadow-[0_0_24px_rgba(255,107,53,0.5)]
                          active:scale-[0.98]
                          transition-all duration-200"
@@ -171,7 +171,7 @@ export default function LandingPage() {
 
       {/* ═══════════════════ PLATFORMS ═══════════════════ */}
       <section className="relative border-t border-b border-border bg-surface py-7 px-6" style={{ zIndex: 1 }}>
-        <div className="max-w-[1000px] mx-auto flex items-center justify-center gap-3 flex-wrap">
+        <div className="max-w-[900px] mx-auto flex items-center justify-center gap-3 flex-wrap">
           <span className="text-hint text-[13px] mr-2">対応プラットフォーム</span>
           {PLATFORMS.map((p) => (
             <div
@@ -196,7 +196,7 @@ export default function LandingPage() {
 
       {/* ═══════════════════ PRICING ═══════════════════ */}
       <section id="pricing" className="relative py-24 px-6" style={{ zIndex: 1 }}>
-        <div className="max-w-[1100px] mx-auto">
+        <div className="max-w-[900px] mx-auto">
           {/* Header */}
           <div className="text-center mb-16">
             <h2 className="font-heading font-bold text-[clamp(1.8rem,4vw,2.8rem)] mb-4">
@@ -208,15 +208,15 @@ export default function LandingPage() {
           </div>
 
           {/* Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4" style={{ alignItems: "stretch" }}>
             {PLANS.map((plan) => (
               <div
                 key={plan.name}
                 className={`
-                  relative rounded-2xl p-8 overflow-hidden
+                  relative rounded-2xl p-8 overflow-hidden flex flex-col
                   transition-all duration-300 cursor-default
                   ${plan.featured
-                    ? "bg-orange/[0.08] border border-orange/40 scale-[1.04] shadow-[0_0_60px_rgba(255,107,53,0.2),0_20px_60px_rgba(0,0,0,0.4)]"
+                    ? "bg-orange/[0.08] border border-orange/40 shadow-[0_0_60px_rgba(255,107,53,0.2),0_20px_60px_rgba(0,0,0,0.4)]"
                     : plan.name === "Agency"
                       ? "bg-purple/[0.06] border border-purple/30 hover:scale-[1.02] hover:border-purple/50"
                       : "bg-white/[0.04] border border-white/10 hover:scale-[1.02] hover:border-white/20"
@@ -247,7 +247,7 @@ export default function LandingPage() {
                 </div>
 
                 {/* Features */}
-                <ul className="list-none mb-8 flex flex-col gap-3">
+                <ul className="list-none mb-8 flex flex-col gap-3 flex-1">
                   {plan.features.map((f) => (
                     <li key={f} className="flex items-start gap-2.5 text-sm text-muted">
                       <span className="text-green font-bold shrink-0 mt-0.5">✓</span>
@@ -261,7 +261,7 @@ export default function LandingPage() {
                   className={`
                     w-full rounded-xl py-3.5 text-[15px] font-bold font-heading cursor-pointer
                     transition-all duration-200
-                    hover:-translate-y-0.5
+                    hover:-translate-y-0.5 mt-auto
                     ${plan.featured
                       ? "bg-orange text-white border-none shadow-[0_0_20px_rgba(255,107,53,0.4)] hover:shadow-[0_0_30px_rgba(255,107,53,0.6)]"
                       : "bg-white/[0.08] text-text border border-white/15 hover:bg-white/[0.12]"
@@ -278,7 +278,7 @@ export default function LandingPage() {
 
       {/* ═══════════════════ FOOTER ═══════════════════ */}
       <footer className="relative border-t border-border py-8 px-6 text-hint text-[13px]" style={{ zIndex: 1 }}>
-        <div className="max-w-[1200px] mx-auto flex items-center justify-between flex-wrap gap-4">
+        <div className="max-w-[900px] mx-auto flex items-center justify-between flex-wrap gap-4">
           <div className="flex items-center gap-1.5 font-heading font-bold text-base text-text">
             <span className="text-orange">⚡</span> SPARK
           </div>

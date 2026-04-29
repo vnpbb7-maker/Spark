@@ -90,7 +90,7 @@ INNGEST_SIGNING_KEY=
 ## Roadmap
 
 - [x] ランディングページ
-- [ ] Supabase認証
+- [x] Supabase認証
 - [ ] キャンペーン作成ウィザード
 - [ ] ダッシュボード
 - [ ] Playwright自動コメント投稿
