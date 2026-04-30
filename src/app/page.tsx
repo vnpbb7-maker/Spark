@@ -115,7 +115,7 @@ export default function LandingPage() {
         <div className="absolute top-1/4 left-[10%] w-72 h-72 rounded-full bg-orange/5 blur-[100px] animate-float pointer-events-none" />
         <div className="absolute bottom-1/4 right-[10%] w-96 h-96 rounded-full bg-purple/5 blur-[120px] animate-float pointer-events-none [animation-delay:3s]" />
 
-        <div className="relative z-10 w-full max-w-6xl mx-auto px-6 md:px-12">
+        <div className="relative z-10 w-full flex flex-col items-center" style={{ maxWidth: 700, margin: '0 auto', padding: '0 24px' }}>
           {/* Badge */}
           <div
             className="inline-flex items-center gap-2 bg-orange/10 border border-orange/30 rounded-full
@@ -128,7 +128,7 @@ export default function LandingPage() {
 
           {/* Heading */}
           <h1
-            className="font-heading font-bold leading-[1.08] tracking-tight mb-7
+            className="w-full text-center font-heading font-bold leading-[1.08] tracking-tight mb-7
                         text-4xl md:text-6xl lg:text-7xl
                         animate-fade-in-up [animation-delay:0.15s]"
           >
@@ -139,22 +139,23 @@ export default function LandingPage() {
 
           {/* Sub */}
           <p
-            className="text-muted text-[clamp(1rem,2.5vw,1.2rem)] leading-relaxed max-w-[560px]
-                        mx-auto mb-12
+            className="w-full text-center text-muted text-[clamp(1rem,2.5vw,1.2rem)] leading-relaxed mb-12
                         animate-fade-in-up [animation-delay:0.3s]"
+            style={{ maxWidth: 560, margin: '0 auto 48px auto' }}
           >
             URLを入れるだけ。AIが最初の100人を連れてくる。
           </p>
 
           {/* URL Input */}
           <div
-            className="flex flex-col md:flex-row items-stretch md:items-center gap-0 max-w-[560px] w-full mx-auto mb-4 bg-surface border border-orange/30
+            className="flex flex-col md:flex-row items-stretch md:items-center gap-0 w-full bg-surface border border-orange/30
                         rounded-2xl p-1.5
                         shadow-[0_0_40px_rgba(255,107,53,0.15)]
                         focus-within:shadow-[0_0_60px_rgba(255,107,53,0.25)]
                         focus-within:border-orange/50
                         transition-all duration-300
                         animate-fade-in-up [animation-delay:0.45s]"
+            style={{ maxWidth: 560, margin: '0 auto 16px auto' }}
           >
             <input
               type="url"
@@ -174,7 +175,7 @@ export default function LandingPage() {
               火をつける →
             </button>
           </div>
-          <p className="text-[13px] text-hint animate-fade-in-up [animation-delay:0.6s]">
+          <p className="w-full text-center text-[13px] text-hint animate-fade-in-up [animation-delay:0.6s]">
             無料で試せます · クレジットカード不要
           </p>
         </div>
@@ -182,7 +183,7 @@ export default function LandingPage() {
 
       {/* ═══════════════════ PLATFORMS ═══════════════════ */}
       <section className="relative bg-surface" style={{ zIndex: 1 }}>
-        <div className="w-full max-w-6xl mx-auto flex flex-wrap items-center justify-center gap-2 md:gap-8 py-8 border-y border-white/10 px-6 md:px-12">
+        <div style={{ width: '100%', display: 'flex', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center', gap: 12, padding: '32px 24px', borderTop: '1px solid rgba(255,255,255,0.1)', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
           <span className="text-hint text-[13px] mr-2">対応プラットフォーム</span>
           {PLATFORMS.map((p) => (
             <div
@@ -207,10 +208,10 @@ export default function LandingPage() {
 
       {/* ═══════════════════ PRICING ═══════════════════ */}
       <section id="pricing" className="relative py-16 md:py-24" style={{ zIndex: 1 }}>
-        <div className="w-full max-w-6xl mx-auto px-6 md:px-12">
+        <div style={{ width: '100%', maxWidth: 1100, margin: '0 auto', padding: '0 24px' }}>
           {/* Header */}
-          <div className="text-center mb-16">
-            <h2 className="font-heading font-bold text-[clamp(1.8rem,4vw,2.8rem)] mb-4">
+          <div className="w-full text-center mb-16">
+            <h2 className="w-full text-center font-heading font-bold text-[clamp(1.8rem,4vw,2.8rem)] mb-4">
               シンプルな料金プラン
             </h2>
             <p className="text-muted text-base">
@@ -219,7 +220,7 @@ export default function LandingPage() {
           </div>
 
           {/* Cards */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 w-full" style={{ alignItems: "stretch" }}>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6" style={{ width: '100%', margin: '0 auto', alignItems: 'stretch' }}>
             {PLANS.map((plan) => (
               <div
                 key={plan.name}
@@ -289,7 +290,7 @@ export default function LandingPage() {
 
       {/* ═══════════════════ FOOTER ═══════════════════ */}
       <footer className="relative border-t border-border py-8 text-hint text-[13px]" style={{ zIndex: 1 }}>
-        <div className="w-full max-w-6xl mx-auto px-6 md:px-12 flex items-center justify-between flex-wrap gap-4">
+        <div style={{ width: '100%', maxWidth: 1100, margin: '0 auto', padding: '0 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
           <div className="flex items-center gap-1.5 font-heading font-bold text-base text-text">
             <span className="text-orange">⚡</span> SPARK
           </div>

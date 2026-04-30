@@ -36,20 +36,20 @@ const STEPS = [
 export default function SixSteps() {
   return (
     <section className="relative py-16 md:py-24" style={{ zIndex: 1 }}>
-      <div className="w-full max-w-6xl mx-auto px-6 md:px-12">
+      <div style={{ width: '100%', maxWidth: 1100, margin: '0 auto', padding: '0 24px' }}>
         {/* Header */}
-        <div className="text-center mb-16">
-          <h2 className="font-heading font-bold text-[clamp(1.8rem,4vw,2.8rem)] mb-4">
+        <div className="w-full text-center mb-16">
+          <h2 className="w-full text-center font-heading font-bold text-[clamp(1.8rem,4vw,2.8rem)] mb-4">
             <span className="text-orange">6</span>ステップで最初の
             <span className="text-orange">100人</span>へ
           </h2>
-          <p className="text-muted text-base max-w-[480px] mx-auto">
+          <p className="w-full text-center text-muted text-base" style={{ maxWidth: 480, margin: '0 auto' }}>
             URLを入力してから100人獲得まで、すべてAIが自動化
           </p>
         </div>
 
         {/* 3×2 Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 px-4 md:px-0">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" style={{ width: '100%', margin: '0 auto' }}>
 
           {STEPS.map((step) => (
             <div
