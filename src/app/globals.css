@@ -135,3 +135,38 @@ h1, h2, h3, h4, h5, h6 {
     linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
   background-size: 60px 60px;
 }
+
+/* ── Layout Fixes ── */
+.center-section {
+  width: 100%;
+  max-width: 1200px;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 24px;
+  padding-right: 24px;
+}
+
+.hero-section {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.hero-form {
+  width: 100%;
+  max-width: 560px;
+  margin-left: auto;
+  margin-right: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+@media (max-width: 768px) {
+  .hero-form {
+    flex-direction: column;
+  }
+}

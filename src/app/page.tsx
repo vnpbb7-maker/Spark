@@ -109,7 +109,7 @@ export default function LandingPage() {
       </nav>
 
       {/* ═══════════════════ HERO ═══════════════════ */}
-      <section className="relative w-full min-h-screen flex flex-col items-center justify-center text-center px-6 pt-32 pb-20 overflow-hidden grid-lines">
+      <section className="hero-section relative min-h-screen px-6 pt-32 pb-20 overflow-hidden grid-lines">
         {/* Radial glow */}
         <div className="absolute inset-0 z-0 hero-radial pointer-events-none" />
 
@@ -117,7 +117,7 @@ export default function LandingPage() {
         <div className="absolute top-1/4 left-[10%] w-72 h-72 rounded-full bg-orange/5 blur-[100px] animate-float pointer-events-none" />
         <div className="absolute bottom-1/4 right-[10%] w-96 h-96 rounded-full bg-purple/5 blur-[120px] animate-float pointer-events-none [animation-delay:3s]" />
 
-        <div className="relative z-10 w-full max-w-3xl mx-auto px-6 flex flex-col items-center">
+        <div className="relative z-10" style={{ width: '100%', maxWidth: 700, margin: '0 auto', padding: '0 24px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
           {/* Badge */}
           <div className="flex items-center justify-center gap-2 mb-8 bg-orange/10 border border-orange/30 rounded-full px-4 py-1.5 text-[13px] text-orange font-semibold tracking-wide animate-fade-in-up">
             <span className="w-1.5 h-1.5 rounded-full bg-orange inline-block animate-glow-pulse" />
@@ -125,19 +125,24 @@ export default function LandingPage() {
           </div>
 
           {/* Heading */}
-          <h1 className="w-full text-center text-4xl md:text-6xl lg:text-7xl font-heading font-bold leading-tight mb-6 animate-fade-in-up [animation-delay:0.15s]">
+          <h1
+            className="font-heading font-bold text-4xl md:text-6xl lg:text-7xl leading-tight mb-6 animate-fade-in-up [animation-delay:0.15s]"
+            style={{ width: '100%', textAlign: 'center' }}
+          >
             あなたのプロダクトに
             <br />
             <span className="text-orange text-glow-orange">最初の火をつける。</span>
           </h1>
 
-          {/* Sub */}
-          <p className="w-full text-center text-lg text-muted max-w-xl mx-auto mb-10 animate-fade-in-up [animation-delay:0.3s]">
+          <p
+            className="text-lg text-muted animate-fade-in-up [animation-delay:0.3s]"
+            style={{ width: '100%', textAlign: 'center', maxWidth: 560, margin: '0 auto 40px auto' }}
+          >
             URLを入れるだけ。AIが最初の100人を連れてくる。
           </p>
 
           {/* URL Input */}
-          <div className="w-full max-w-xl mx-auto flex flex-col md:flex-row items-center gap-2 mb-4 px-4 animate-fade-in-up [animation-delay:0.45s]">
+          <div className="hero-form animate-fade-in-up [animation-delay:0.45s]">
             <input
               type="url"
               value={url}
@@ -158,7 +163,7 @@ export default function LandingPage() {
               火をつける →
             </button>
           </div>
-          <p className="w-full text-center text-sm text-hint animate-fade-in-up [animation-delay:0.6s]">
+          <p style={{ width: '100%', textAlign: 'center' }} className="text-sm text-hint animate-fade-in-up [animation-delay:0.6s]">
             無料で試せます · クレジットカード不要
           </p>
         </div>
@@ -166,7 +171,7 @@ export default function LandingPage() {
 
       {/* ═══════════════════ PLATFORMS ═══════════════════ */}
       <section className="relative bg-surface" style={{ zIndex: 1 }}>
-        <div className="w-full flex flex-wrap items-center justify-center gap-3 py-8 border-t border-b border-white/10 px-6">
+        <div style={{ width: '100%', display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: 12, padding: '32px 24px', borderTop: '1px solid rgba(255,255,255,0.1)', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
           <span className="text-hint text-[13px] mr-2">対応プラットフォーム</span>
           {PLATFORMS.map((p) => (
             <div
@@ -191,10 +196,10 @@ export default function LandingPage() {
 
       {/* ═══════════════════ PRICING ═══════════════════ */}
       <section id="pricing" className="relative py-16 md:py-24" style={{ zIndex: 1 }}>
-        <div className="w-full max-w-5xl mx-auto px-6">
+        <div style={{ width: '100%', maxWidth: 1100, margin: '0 auto', padding: '0 24px' }}>
           {/* Header */}
-          <div className="w-full text-center mb-16">
-            <h2 className="w-full text-center font-heading font-bold text-[clamp(1.8rem,4vw,2.8rem)] mb-4">
+          <div style={{ width: '100%', textAlign: 'center', marginBottom: 64 }}>
+            <h2 className="font-heading font-bold text-[clamp(1.8rem,4vw,2.8rem)] mb-4" style={{ width: '100%', textAlign: 'center' }}>
               シンプルな料金プラン
             </h2>
             <p className="text-muted text-base">
@@ -273,7 +278,7 @@ export default function LandingPage() {
 
       {/* ═══════════════════ FOOTER ═══════════════════ */}
       <footer className="relative border-t border-border py-8 text-hint text-[13px]" style={{ zIndex: 1 }}>
-        <div className="w-full max-w-5xl mx-auto px-6 flex items-center justify-between flex-wrap gap-4">
+        <div style={{ width: '100%', maxWidth: 1100, margin: '0 auto', padding: '0 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
           <div className="flex items-center gap-1.5 font-heading font-bold text-base text-text">
             <span className="text-orange">⚡</span> SPARK
           </div>
