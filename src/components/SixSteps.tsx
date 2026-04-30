@@ -35,8 +35,8 @@ const STEPS = [
 
 export default function SixSteps() {
   return (
-    <section className="relative py-24" style={{ zIndex: 1 }}>
-      <div className="w-full max-w-5xl mx-auto px-6">
+    <section className="relative py-16 md:py-24" style={{ zIndex: 1 }}>
+      <div className="w-full max-w-5xl mx-auto px-4 md:px-6">
         {/* Header */}
         <div className="text-center mb-16">
           <h2 className="font-heading font-bold text-[clamp(1.8rem,4vw,2.8rem)] mb-4">
@@ -49,12 +49,8 @@ export default function SixSteps() {
         </div>
 
         {/* 3×2 Grid */}
-        <div
-          className="grid gap-4"
-          style={{
-            gridTemplateColumns: "repeat(3, 1fr)",
-          }}
-        >
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 px-4 md:px-0">
+
           {STEPS.map((step) => (
             <div
               key={step.num}
@@ -101,14 +97,8 @@ export default function SixSteps() {
           ))}
         </div>
 
-        {/* Mobile: single column override */}
-        <style>{`
-          @media (max-width: 768px) {
-            .grid[style*="repeat(3"] {
-              grid-template-columns: repeat(1, 1fr) !important;
-            }
-          }
-        `}</style>
+
+
       </div>
     </section>
   );

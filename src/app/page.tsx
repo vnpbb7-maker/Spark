@@ -74,7 +74,7 @@ export default function LandingPage() {
 
       {/* ═══════════════════ NAV ═══════════════════ */}
       <nav className="fixed top-0 left-0 right-0 z-50 border-b border-border backdrop-blur-xl bg-bg/85">
-        <div className="w-full max-w-6xl mx-auto h-16 px-8 flex items-center justify-between">
+        <div className="w-full max-w-6xl mx-auto h-16 px-4 md:px-8 flex items-center justify-between">
           {/* Logo */}
           <div className="flex items-center gap-2 font-heading font-bold text-[22px]">
             <span className="text-orange text-2xl">⚡</span>
@@ -96,7 +96,7 @@ export default function LandingPage() {
       </nav>
 
       {/* ═══════════════════ HERO ═══════════════════ */}
-      <section className="relative w-full min-h-screen flex flex-col items-center justify-center text-center px-6 pt-32 pb-20 overflow-hidden grid-lines">
+      <section className="relative w-full min-h-screen flex flex-col items-center justify-center text-center px-4 md:px-6 pt-20 md:pt-32 pb-12 md:pb-20 overflow-hidden grid-lines">
         {/* Radial glow */}
         <div className="absolute inset-0 z-0 hero-radial pointer-events-none" />
 
@@ -104,7 +104,7 @@ export default function LandingPage() {
         <div className="absolute top-1/4 left-[10%] w-72 h-72 rounded-full bg-orange/5 blur-[100px] animate-float pointer-events-none" />
         <div className="absolute bottom-1/4 right-[10%] w-96 h-96 rounded-full bg-purple/5 blur-[120px] animate-float pointer-events-none [animation-delay:3s]" />
 
-        <div className="relative z-10 w-full max-w-4xl mx-auto">
+        <div className="relative z-10 w-full max-w-4xl mx-auto px-4 md:px-0">
           {/* Badge */}
           <div
             className="inline-flex items-center gap-2 bg-orange/10 border border-orange/30 rounded-full
@@ -118,7 +118,7 @@ export default function LandingPage() {
           {/* Heading */}
           <h1
             className="font-heading font-bold leading-[1.08] tracking-tight mb-7
-                        text-[clamp(2.5rem,7vw,5rem)]
+                        text-4xl md:text-6xl lg:text-7xl
                         animate-fade-in-up [animation-delay:0.15s]"
           >
             あなたのプロダクトに
@@ -137,7 +137,7 @@ export default function LandingPage() {
 
           {/* URL Input */}
           <div
-            className="flex items-center gap-0 max-w-[560px] mx-auto mb-4 bg-surface border border-orange/30
+            className="flex flex-col md:flex-row items-stretch md:items-center gap-0 max-w-[560px] w-full mx-auto mb-4 bg-surface border border-orange/30
                         rounded-2xl p-1.5
                         shadow-[0_0_40px_rgba(255,107,53,0.15)]
                         focus-within:shadow-[0_0_60px_rgba(255,107,53,0.25)]
@@ -171,7 +171,7 @@ export default function LandingPage() {
 
       {/* ═══════════════════ PLATFORMS ═══════════════════ */}
       <section className="relative bg-surface" style={{ zIndex: 1 }}>
-        <div className="w-full flex items-center justify-center gap-8 py-8 border-y border-white/10 px-6">
+        <div className="w-full flex flex-wrap items-center justify-center gap-2 md:gap-8 py-8 border-y border-white/10 px-4 md:px-6">
           <span className="text-hint text-[13px] mr-2">対応プラットフォーム</span>
           {PLATFORMS.map((p) => (
             <div
@@ -195,8 +195,8 @@ export default function LandingPage() {
       <LiveLog />
 
       {/* ═══════════════════ PRICING ═══════════════════ */}
-      <section id="pricing" className="relative py-24 px-6" style={{ zIndex: 1 }}>
-        <div className="w-full max-w-5xl mx-auto px-6">
+      <section id="pricing" className="relative py-16 md:py-24" style={{ zIndex: 1 }}>
+        <div className="w-full max-w-5xl mx-auto px-4 md:px-6">
           {/* Header */}
           <div className="text-center mb-16">
             <h2 className="font-heading font-bold text-[clamp(1.8rem,4vw,2.8rem)] mb-4">
@@ -208,7 +208,7 @@ export default function LandingPage() {
           </div>
 
           {/* Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full max-w-5xl mx-auto" style={{ alignItems: "stretch" }}>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 w-full max-w-5xl mx-auto px-4 md:px-0" style={{ alignItems: "stretch" }}>
             {PLANS.map((plan) => (
               <div
                 key={plan.name}
@@ -277,8 +277,8 @@ export default function LandingPage() {
       </section>
 
       {/* ═══════════════════ FOOTER ═══════════════════ */}
-      <footer className="relative border-t border-border py-8 px-6 text-hint text-[13px]" style={{ zIndex: 1 }}>
-        <div className="w-full max-w-6xl mx-auto px-6 flex items-center justify-between flex-wrap gap-4">
+      <footer className="relative border-t border-border py-8 text-hint text-[13px]" style={{ zIndex: 1 }}>
+        <div className="w-full max-w-6xl mx-auto px-4 md:px-6 flex items-center justify-between flex-wrap gap-4">
           <div className="flex items-center gap-1.5 font-heading font-bold text-base text-text">
             <span className="text-orange">⚡</span> SPARK
           </div>

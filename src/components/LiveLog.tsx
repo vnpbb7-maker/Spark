@@ -95,8 +95,8 @@ export default function LiveLog() {
   }, [logs]);
 
   return (
-    <section className="relative py-24" style={{ zIndex: 1 }}>
-      <div className="w-full max-w-4xl mx-auto px-6">
+    <section className="relative py-16 md:py-24" style={{ zIndex: 1 }}>
+      <div className="w-full max-w-4xl mx-auto px-4 md:px-6">
         {/* Header */}
         <div className="text-center mb-12">
           <h2 className="font-heading font-bold text-[clamp(1.8rem,4vw,2.8rem)] mb-4">
