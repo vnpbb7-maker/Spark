@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AnalysisResult, CampaignSettings } from "@/types/campaign";
 import Step1Input from "@/components/wizard/Step1Input";
@@ -10,7 +10,7 @@ import SparkLoader from "@/components/ui/SparkLoader";
 
 const STEPS = ["プロダクト入力", "分析結果", "キャンペーン設定"];
 
-export default function NewCampaignPage() {
+function CampaignNewContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const initialUrl = searchParams.get("url") || "";
@@ -136,5 +136,19 @@ export default function NewCampaignPage() {
         ) : null}
       </div>
     </div>
+  );
+}
+
+export default function NewCampaignPage() {
+  return (
+    <Suspense
+      fallback={
+        <div style={{ minHeight: "100vh", background: "#0d0d1a", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ color: "#ff6b35", fontFamily: "'Space Grotesk', sans-serif", fontSize: "16px" }}>読み込み中...</div>
+        </div>
+      }
+    >
+      <CampaignNewContent />
+    </Suspense>
   );
 }
