@@ -27,7 +27,12 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
 
   const fetchData = useCallback(async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    console.log("session:", session);
+
     const { data: { user: u } } = await supabase.auth.getUser();
+    console.log("user:", u);
+
     if (!u) { router.push("/auth/login"); return; }
     setUser(u);
 
