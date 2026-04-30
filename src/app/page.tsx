@@ -2,288 +2,650 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import SparkCanvas from "@/components/SparkCanvas";
-import SixSteps from "@/components/SixSteps";
-import LiveLog from "@/components/LiveLog";
 
-/* ── Data ── */
-
-const PLATFORMS = [
-  { name: "X",         icon: "𝕏",  color: "#1d9bf0" },
-  { name: "Reddit",    icon: "🤖", color: "#ff4500" },
-  { name: "LinkedIn",  icon: "in", color: "#0a66c2" },
-  { name: "TikTok",    icon: "♪",  color: "#ff0050" },
-  { name: "Instagram", icon: "◈",  color: "#e1306c" },
-  { name: "Facebook",  icon: "f",  color: "#1877f2" },
-];
-
-const PLANS = [
-  {
-    name: "Starter",
-    price: "$99",
-    period: "/月",
-    tagline: "まず試したい方へ",
-    featured: false,
-    features: [
-      "ターゲット発見のみ",
-      "コメント生成（手動投稿）",
-      "月50ターゲット",
-      "X / Reddit のみ",
-    ],
-    cta: "無料で試す",
-  },
-  {
-    name: "Growth",
-    price: "$299",
-    period: "/月",
-    tagline: "🔥 一番人気",
-    featured: true,
-    features: [
-      "自動コメント投稿（全6プラットフォーム）",
-      "半自動→全自動切り替え",
-      "Realtimeダッシュボード",
-      "AIインサイトレポート",
-      "月200ターゲット",
-      "Bot検知回避（人間風タイピング）",
-    ],
-    cta: "Growth を始める",
-  },
-  {
-    name: "Agency",
-    price: "$999",
-    period: "/月",
-    tagline: "代理店・大規模向け",
-    featured: false,
-    features: [
-      "Growth全機能",
-      "複数クライアント管理",
-      "ホワイトラベルUI",
-      "API直接アクセス",
-      "無制限ターゲット",
-    ],
-    cta: "お問い合わせ",
-  },
-];
-
-export default function LandingPage() {
+export default function Home() {
   const [url, setUrl] = useState("");
   const router = useRouter();
 
   return (
-    <div className="relative w-full min-h-screen overflow-x-hidden bg-bg text-text">
-      {/* ── Background Spark Particles (fixed, full-page) ── */}
-      <SparkCanvas />
-
-      {/* ═══════════════════ NAV ═══════════════════ */}
+    <div
+      style={{
+        width: "100vw",
+        minHeight: "100vh",
+        background: "#0d0d1a",
+        color: "#f0efe8",
+        fontFamily: "DM Sans, sans-serif",
+        overflowX: "hidden",
+        position: "relative",
+      }}
+    >
+      {/* NAV */}
       <nav
         style={{
-          position: 'fixed',
+          position: "fixed",
           top: 0,
-          left: '50%',
-          transform: 'translateX(-50%)',
-          width: '100%',
-          maxWidth: '100%',
+          left: 0,
+          right: 0,
           zIndex: 50,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "20px 48px",
+          background: "rgba(13,13,26,0.8)",
+          backdropFilter: "blur(20px)",
         }}
-        className="border-b border-border backdrop-blur-xl bg-bg/85"
       >
-        <div className="w-full max-w-6xl mx-auto h-16 px-6 md:px-12 flex items-center justify-between">
-          {/* Logo */}
-          <div className="flex items-center gap-2 font-heading font-bold text-[22px]">
-            <span className="text-orange text-2xl">⚡</span>
-            <span>SPARK</span>
-          </div>
-
-          {/* CTA */}
-          <a
-            href="#pricing"
-            className="group relative bg-orange text-white px-6 py-2.5 rounded-xl text-sm font-semibold no-underline
-                       shadow-[0_0_20px_rgba(255,107,53,0.35)]
-                       hover:shadow-[0_0_30px_rgba(255,107,53,0.55)]
-                       hover:-translate-y-0.5
-                       transition-all duration-200"
-          >
-            無料で始める
-          </a>
+        <div style={{ fontFamily: "Space Grotesk", fontWeight: 700, fontSize: 22 }}>
+          ⚡ SPARK
         </div>
+        <button
+          onClick={() => router.push("/auth/login")}
+          style={{
+            background: "#ff6b35",
+            color: "#fff",
+            border: "none",
+            borderRadius: 20,
+            padding: "8px 20px",
+            fontSize: 14,
+            fontWeight: 600,
+            cursor: "pointer",
+          }}
+        >
+          無料で始める
+        </button>
       </nav>
 
-      {/* ═══════════════════ HERO ═══════════════════ */}
-      <section className="hero-section relative min-h-screen px-6 pt-32 pb-20 overflow-hidden grid-lines">
-        {/* Radial glow */}
-        <div className="absolute inset-0 z-0 hero-radial pointer-events-none" />
+      {/* HERO */}
+      <section
+        style={{
+          width: "100%",
+          minHeight: "100vh",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          textAlign: "center",
+          padding: "120px 24px 60px",
+        }}
+      >
+        {/* バッジ */}
+        <div
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
+            background: "rgba(255,107,53,0.1)",
+            border: "0.5px solid rgba(255,107,53,0.3)",
+            borderRadius: 20,
+            padding: "6px 16px",
+            fontSize: 12,
+            color: "#ff6b35",
+            marginBottom: 28,
+          }}
+        >
+          <span
+            style={{
+              width: 6,
+              height: 6,
+              borderRadius: "50%",
+              background: "#ff6b35",
+              display: "inline-block",
+            }}
+          />
+          AI Growth Engine — Beta
+        </div>
 
-        {/* Floating accent orbs */}
-        <div className="absolute top-1/4 left-[10%] w-72 h-72 rounded-full bg-orange/5 blur-[100px] animate-float pointer-events-none" />
-        <div className="absolute bottom-1/4 right-[10%] w-96 h-96 rounded-full bg-purple/5 blur-[120px] animate-float pointer-events-none [animation-delay:3s]" />
+        {/* タイトル */}
+        <h1
+          style={{
+            fontFamily: "Space Grotesk",
+            fontSize: "clamp(36px, 6vw, 72px)",
+            fontWeight: 700,
+            lineHeight: 1.1,
+            letterSpacing: "-2px",
+            marginBottom: 24,
+            width: "100%",
+            textAlign: "center",
+          }}
+        >
+          あなたのプロダクトに
+          <br />
+          <span style={{ color: "#ff6b35" }}>最初の火をつける。</span>
+        </h1>
 
-        <div className="relative z-10" style={{ width: '100%', maxWidth: 700, margin: '0 auto', padding: '0 24px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-          {/* Badge */}
-          <div className="flex items-center justify-center gap-2 mb-8 bg-orange/10 border border-orange/30 rounded-full px-4 py-1.5 text-[13px] text-orange font-semibold tracking-wide animate-fade-in-up">
-            <span className="w-1.5 h-1.5 rounded-full bg-orange inline-block animate-glow-pulse" />
-            AI Growth Engine — Beta
-          </div>
+        {/* サブテキスト */}
+        <p
+          style={{
+            fontSize: 18,
+            color: "rgba(240,239,232,0.6)",
+            lineHeight: 1.7,
+            maxWidth: 520,
+            margin: "0 auto 40px",
+            textAlign: "center",
+          }}
+        >
+          URL・SNSアカウントを入れるだけ。
+          <br />
+          AIが最初の100人を連れてくる。
+        </p>
 
-          {/* Heading */}
-          <h1
-            className="font-heading font-bold text-4xl md:text-6xl lg:text-7xl leading-tight mb-6 animate-fade-in-up [animation-delay:0.15s]"
-            style={{ width: '100%', textAlign: 'center' }}
+        {/* 入力フォーム */}
+        <div
+          style={{
+            width: "100%",
+            maxWidth: 560,
+            margin: "0 auto 16px",
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            background: "rgba(255,255,255,0.05)",
+            border: "0.5px solid rgba(255,255,255,0.15)",
+            borderRadius: 14,
+            padding: "6px 6px 6px 20px",
+          }}
+        >
+          <input
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="https://yourproduct.com または instagram.com/xxxx"
+            style={{
+              flex: 1,
+              background: "transparent",
+              border: "none",
+              outline: "none",
+              fontSize: 15,
+              color: "#f0efe8",
+              fontFamily: "DM Sans",
+            }}
+          />
+          <button
+            onClick={() => {
+              if (url) {
+                router.push(`/campaigns/new?url=${encodeURIComponent(url)}`);
+              } else {
+                router.push("/campaigns/new");
+              }
+            }}
+            style={{
+              background: "#ff6b35",
+              color: "#fff",
+              border: "none",
+              borderRadius: 10,
+              padding: "12px 24px",
+              fontSize: 14,
+              fontWeight: 600,
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+              fontFamily: "DM Sans",
+            }}
           >
-            あなたのプロダクトに
-            <br />
-            <span className="text-orange text-glow-orange">最初の火をつける。</span>
-          </h1>
+            火をつける →
+          </button>
+        </div>
 
-          <p
-            className="text-lg text-muted animate-fade-in-up [animation-delay:0.3s]"
-            style={{ width: '100%', textAlign: 'center', maxWidth: 560, margin: '0 auto 40px auto' }}
+        {/* 無料テキスト */}
+        <p
+          style={{
+            fontSize: 12,
+            color: "rgba(240,239,232,0.3)",
+            textAlign: "center",
+            width: "100%",
+          }}
+        >
+          無料で試せます · クレジットカード不要
+        </p>
+
+        {/* プラットフォームバッジ */}
+        <div
+          style={{
+            width: "100%",
+            display: "flex",
+            flexWrap: "wrap",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 12,
+            padding: "32px 24px",
+            borderTop: "0.5px solid rgba(255,255,255,0.07)",
+            borderBottom: "0.5px solid rgba(255,255,255,0.07)",
+            marginTop: 40,
+          }}
+        >
+          <span
+            style={{
+              fontSize: 11,
+              color: "rgba(240,239,232,0.3)",
+              letterSpacing: 1,
+              textTransform: "uppercase",
+            }}
           >
-            URLを入れるだけ。AIが最初の100人を連れてくる。
-          </p>
-
-          {/* URL Input */}
-          <div className="hero-form animate-fade-in-up [animation-delay:0.45s]">
-            <input
-              type="url"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              placeholder="https://yourproduct.com または instagram.com/xxxx"
-              className="flex-1 w-full bg-white/10 border border-white/20 rounded-xl px-5 py-3 text-text placeholder:text-hint outline-none font-body text-[15px]"
-            />
-            <button
-              onClick={() => {
-                if (url) {
-                  router.push(`/campaigns/new?url=${encodeURIComponent(url)}`);
-                } else {
-                  router.push('/campaigns/new');
-                }
-              }}
-              className="w-full md:w-auto bg-orange text-white rounded-xl px-6 py-3 text-[15px] font-bold font-heading cursor-pointer whitespace-nowrap hover:scale-[1.03] hover:shadow-[0_0_24px_rgba(255,107,53,0.5)] active:scale-[0.98] transition-all duration-200"
-            >
-              火をつける →
-            </button>
-          </div>
-          <p style={{ width: '100%', textAlign: 'center' }} className="text-sm text-hint animate-fade-in-up [animation-delay:0.6s]">
-            無料で試せます · クレジットカード不要
-          </p>
+            対応プラットフォーム
+          </span>
+          {["𝕏 X", "🤖 Reddit", "in LinkedIn", "♪ TikTok", "◈ Instagram", "f Facebook"].map(
+            (p) => (
+              <span
+                key={p}
+                style={{
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: "rgba(240,239,232,0.6)",
+                  background: "rgba(255,255,255,0.05)",
+                  border: "0.5px solid rgba(255,255,255,0.1)",
+                  borderRadius: 20,
+                  padding: "4px 12px",
+                }}
+              >
+                {p}
+              </span>
+            )
+          )}
         </div>
       </section>
 
-      {/* ═══════════════════ PLATFORMS ═══════════════════ */}
-      <section className="relative bg-surface" style={{ zIndex: 1 }}>
-        <div style={{ width: '100%', display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: 12, padding: '32px 24px', borderTop: '1px solid rgba(255,255,255,0.1)', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-          <span className="text-hint text-[13px] mr-2">対応プラットフォーム</span>
-          {PLATFORMS.map((p) => (
+      {/* 6ステップ */}
+      <section
+        style={{
+          width: "100%",
+          padding: "80px 24px",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+        }}
+      >
+        <div
+          style={{
+            fontSize: 11,
+            color: "#ff6b35",
+            letterSpacing: 2,
+            textTransform: "uppercase",
+            marginBottom: 12,
+            textAlign: "center",
+          }}
+        >
+          仕組み
+        </div>
+        <h2
+          style={{
+            fontFamily: "Space Grotesk",
+            fontSize: "clamp(24px, 4vw, 42px)",
+            fontWeight: 700,
+            letterSpacing: -1,
+            textAlign: "center",
+            marginBottom: 48,
+          }}
+        >
+          6ステップで<span style={{ color: "#ff6b35" }}>最初の100人</span>へ
+        </h2>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+            gap: 16,
+            width: "100%",
+            maxWidth: 1100,
+            margin: "0 auto",
+          }}
+        >
+          {[
+            {
+              num: "01",
+              title: "プロダクト分析",
+              desc: "URLか説明文を入れるだけ。AIが本質的価値・ペルソナ・競合差分を自動抽出。",
+            },
+            {
+              num: "02",
+              title: "ターゲット発見",
+              desc: "X・Reddit・LinkedIn・TikTok・Instagram・Facebookをリアルタイムスキャン。",
+            },
+            {
+              num: "03",
+              title: "コメント生成",
+              desc: "相手の言語・文脈・最近の投稿に合わせた、スパムに見えない自然なコメントを自動生成。",
+            },
+            {
+              num: "04",
+              title: "承認 & 自動投稿",
+              desc: "半自動モード：あなたが承認して投稿。慣れたら全自動に切り替え可能。",
+            },
+            {
+              num: "05",
+              title: "返信検知 & 学習",
+              desc: "何が刺さったかをリアルタイム分析。コメント・チャネルを自動改善し続ける。",
+            },
+            {
+              num: "06",
+              title: "100人獲得",
+              desc: "βユーザー確保・オンボーディング・フィードバック収集まで全自動。",
+            },
+          ].map((step) => (
             <div
-              key={p.name}
-              className="flex items-center gap-2 bg-white/[0.04] border border-border2 rounded-lg
-                         px-4 py-2 text-[13px] font-medium
-                         hover:bg-white/[0.07] hover:border-white/20
-                         transition-all duration-200 cursor-default"
+              key={step.num}
+              style={{
+                background: "#13132a",
+                border: "0.5px solid rgba(255,255,255,0.07)",
+                borderRadius: 16,
+                padding: 24,
+              }}
             >
-              <span className="font-bold text-[15px]" style={{ color: p.color }}>{p.icon}</span>
-              <span className="text-muted">{p.name}</span>
+              <div
+                style={{
+                  fontSize: 11,
+                  color: "#ff6b35",
+                  fontWeight: 600,
+                  letterSpacing: 1,
+                  marginBottom: 14,
+                }}
+              >
+                STEP {step.num}
+              </div>
+              <div
+                style={{
+                  fontFamily: "Space Grotesk",
+                  fontSize: 18,
+                  fontWeight: 600,
+                  marginBottom: 8,
+                }}
+              >
+                {step.title}
+              </div>
+              <div
+                style={{
+                  fontSize: 13,
+                  color: "rgba(240,239,232,0.5)",
+                  lineHeight: 1.6,
+                }}
+              >
+                {step.desc}
+              </div>
             </div>
           ))}
         </div>
       </section>
 
-      {/* ═══════════════════ 6 STEPS ═══════════════════ */}
-      <SixSteps />
-
-      {/* ═══════════════════ LIVE LOG ═══════════════════ */}
-      <LiveLog />
-
-      {/* ═══════════════════ PRICING ═══════════════════ */}
-      <section id="pricing" className="relative py-16 md:py-24" style={{ zIndex: 1 }}>
-        <div style={{ width: '100%', maxWidth: 1100, margin: '0 auto', padding: '0 24px' }}>
-          {/* Header */}
-          <div style={{ width: '100%', textAlign: 'center', marginBottom: 64 }}>
-            <h2 className="font-heading font-bold text-[clamp(1.8rem,4vw,2.8rem)] mb-4" style={{ width: '100%', textAlign: 'center' }}>
-              シンプルな料金プラン
-            </h2>
-            <p className="text-muted text-base">
-              スタートアップから代理店まで、規模に合わせて選べます
-            </p>
-          </div>
-
-          {/* Cards */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 w-full items-stretch">
-            {PLANS.map((plan) => (
-              <div
-                key={plan.name}
-                className={`
-                  relative rounded-2xl p-8 overflow-hidden flex flex-col
-                  transition-all duration-300 cursor-default
-                  ${plan.featured
-                    ? "bg-orange/[0.08] border border-orange/40 shadow-[0_0_60px_rgba(255,107,53,0.2),0_20px_60px_rgba(0,0,0,0.4)]"
-                    : plan.name === "Agency"
-                      ? "bg-purple/[0.06] border border-purple/30 hover:scale-[1.02] hover:border-purple/50"
-                      : "bg-white/[0.04] border border-white/10 hover:scale-[1.02] hover:border-white/20"
-                  }
-                `}
-              >
-                {/* Featured top bar */}
-                {plan.featured && (
-                  <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-orange to-yellow" />
-                )}
-
-                {/* Tag */}
-                <div className="mb-6">
-                  <span
-                    className={`text-xs font-bold tracking-wider uppercase ${
-                      plan.featured ? "text-orange" : "text-muted"
-                    }`}
-                  >
-                    {plan.tagline}
-                  </span>
-                  <div className="font-heading font-bold text-[22px] mt-2">{plan.name}</div>
-                </div>
-
-                {/* Price */}
-                <div className="flex items-baseline gap-1 mb-7">
-                  <span className="font-heading font-bold text-5xl">{plan.price}</span>
-                  <span className="text-muted text-[15px]">{plan.period}</span>
-                </div>
-
-                {/* Features */}
-                <ul className="list-none mb-8 flex flex-col gap-3 flex-1">
-                  {plan.features.map((f) => (
-                    <li key={f} className="flex items-start gap-2.5 text-sm text-muted">
-                      <span className="text-green font-bold shrink-0 mt-0.5">✓</span>
-                      {f}
-                    </li>
-                  ))}
-                </ul>
-
-                {/* CTA Button */}
-                <button
-                  className={`
-                    w-full rounded-xl py-3.5 text-[15px] font-bold font-heading cursor-pointer
-                    transition-all duration-200
-                    hover:-translate-y-0.5 mt-auto
-                    ${plan.featured
-                      ? "bg-orange text-white border-none shadow-[0_0_20px_rgba(255,107,53,0.4)] hover:shadow-[0_0_30px_rgba(255,107,53,0.6)]"
-                      : "bg-white/[0.08] text-text border border-white/15 hover:bg-white/[0.12]"
-                    }
-                  `}
+      {/* 料金 */}
+      <section
+        style={{
+          width: "100%",
+          padding: "80px 24px",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+        }}
+      >
+        <div
+          style={{
+            fontSize: 11,
+            color: "#ff6b35",
+            letterSpacing: 2,
+            textTransform: "uppercase",
+            marginBottom: 12,
+            textAlign: "center",
+          }}
+        >
+          料金
+        </div>
+        <h2
+          style={{
+            fontFamily: "Space Grotesk",
+            fontSize: "clamp(24px, 4vw, 42px)",
+            fontWeight: 700,
+            textAlign: "center",
+            marginBottom: 48,
+          }}
+        >
+          シンプルな料金プラン
+        </h2>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+            gap: 16,
+            width: "100%",
+            maxWidth: 1100,
+            margin: "0 auto",
+          }}
+        >
+          {[
+            {
+              name: "Starter",
+              price: "$99",
+              per: "/月",
+              desc: "まず試したい方へ",
+              features: [
+                "ターゲット発見のみ",
+                "コメント生成（手動投稿）",
+                "月50ターゲット",
+                "X / Reddit のみ",
+              ],
+              cta: "無料で試す",
+              featured: false,
+            },
+            {
+              name: "Growth",
+              price: "$299",
+              per: "/月",
+              desc: "一番人気",
+              features: [
+                "自動コメント投稿（全6プラットフォーム）",
+                "半自動→全自動切り替え",
+                "Realtimeダッシュボード",
+                "AIインサイトレポート",
+                "月200ターゲット",
+                "Bot検知回避",
+              ],
+              cta: "Growth を始める",
+              featured: true,
+            },
+            {
+              name: "Agency",
+              price: "$999",
+              per: "/月",
+              desc: "代理店・大規模向け",
+              features: [
+                "Growth全機能",
+                "複数クライアント管理",
+                "ホワイトラベルUI",
+                "API直接アクセス",
+                "無制限ターゲット",
+              ],
+              cta: "お問い合わせ",
+              featured: false,
+            },
+          ].map((plan) => (
+            <div
+              key={plan.name}
+              style={{
+                background: plan.featured ? "rgba(255,107,53,0.05)" : "#13132a",
+                border: plan.featured
+                  ? "1px solid #ff6b35"
+                  : "0.5px solid rgba(255,255,255,0.07)",
+                borderRadius: 16,
+                padding: 24,
+                position: "relative",
+              }}
+            >
+              {plan.featured && (
+                <div
+                  style={{
+                    position: "absolute",
+                    top: -12,
+                    left: "50%",
+                    transform: "translateX(-50%)",
+                    background: "#ff6b35",
+                    color: "#fff",
+                    fontSize: 10,
+                    fontWeight: 600,
+                    padding: "4px 14px",
+                    borderRadius: 20,
+                    whiteSpace: "nowrap",
+                  }}
                 >
-                  {plan.cta}
-                </button>
+                  🔥 一番人気
+                </div>
+              )}
+              <div
+                style={{
+                  fontSize: 12,
+                  color: "rgba(240,239,232,0.5)",
+                  marginBottom: 8,
+                }}
+              >
+                {plan.desc}
               </div>
-            ))}
-          </div>
+              <div
+                style={{
+                  fontFamily: "Space Grotesk",
+                  fontSize: 16,
+                  fontWeight: 600,
+                  marginBottom: 4,
+                }}
+              >
+                {plan.name}
+              </div>
+              <div
+                style={{
+                  fontFamily: "Space Grotesk",
+                  fontSize: 42,
+                  fontWeight: 700,
+                  marginBottom: 4,
+                }}
+              >
+                {plan.price}
+                <span
+                  style={{
+                    fontSize: 14,
+                    fontWeight: 400,
+                    color: "rgba(240,239,232,0.5)",
+                  }}
+                >
+                  {plan.per}
+                </span>
+              </div>
+              <ul
+                style={{
+                  listStyle: "none",
+                  padding: 0,
+                  margin: "16px 0 24px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 8,
+                }}
+              >
+                {plan.features.map((f) => (
+                  <li
+                    key={f}
+                    style={{
+                      fontSize: 13,
+                      color: "rgba(240,239,232,0.6)",
+                      display: "flex",
+                      alignItems: "flex-start",
+                      gap: 8,
+                    }}
+                  >
+                    <span style={{ color: "#2dd17a" }}>✓</span> {f}
+                  </li>
+                ))}
+              </ul>
+              <button
+                onClick={() => router.push("/auth/login")}
+                style={{
+                  width: "100%",
+                  padding: "10px",
+                  borderRadius: 10,
+                  border: plan.featured
+                    ? "none"
+                    : "0.5px solid rgba(255,255,255,0.2)",
+                  background: plan.featured ? "#ff6b35" : "transparent",
+                  color: plan.featured ? "#fff" : "rgba(240,239,232,0.6)",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  fontFamily: "DM Sans",
+                }}
+              >
+                {plan.cta}
+              </button>
+            </div>
+          ))}
         </div>
       </section>
 
-      {/* ═══════════════════ FOOTER ═══════════════════ */}
-      <footer className="relative border-t border-border py-8 text-hint text-[13px]" style={{ zIndex: 1 }}>
-        <div style={{ width: '100%', maxWidth: 1100, margin: '0 auto', padding: '0 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
-          <div className="flex items-center gap-1.5 font-heading font-bold text-base text-text">
-            <span className="text-orange">⚡</span> SPARK
-          </div>
-          <p>© 2025 SPARK. AI Growth Engine.</p>
+      {/* CTA */}
+      <section
+        style={{
+          width: "100%",
+          padding: "80px 24px",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          textAlign: "center",
+        }}
+      >
+        <div
+          style={{
+            width: "100%",
+            maxWidth: 700,
+            margin: "0 auto",
+            background: "#13132a",
+            border: "0.5px solid rgba(255,255,255,0.13)",
+            borderRadius: 20,
+            padding: "48px 32px",
+          }}
+        >
+          <h2
+            style={{
+              fontFamily: "Space Grotesk",
+              fontSize: 36,
+              fontWeight: 700,
+              marginBottom: 12,
+            }}
+          >
+            最初の火花を、今。
+          </h2>
+          <p
+            style={{
+              fontSize: 16,
+              color: "rgba(240,239,232,0.5)",
+              marginBottom: 28,
+            }}
+          >
+            良いプロダクトが、誰にも届かずに死んでいる。
+            <br />
+            SPARKはその問題を終わらせる。
+          </p>
+          <button
+            onClick={() => router.push("/campaigns/new")}
+            style={{
+              background: "#ff6b35",
+              color: "#fff",
+              border: "none",
+              borderRadius: 12,
+              padding: "14px 36px",
+              fontSize: 15,
+              fontWeight: 600,
+              cursor: "pointer",
+              fontFamily: "DM Sans",
+            }}
+          >
+            無料でプロダクトを分析する →
+          </button>
         </div>
+      </section>
+
+      {/* フッター */}
+      <footer
+        style={{
+          width: "100%",
+          padding: "24px 48px",
+          borderTop: "0.5px solid rgba(255,255,255,0.07)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          fontSize: 12,
+          color: "rgba(240,239,232,0.3)",
+        }}
+      >
+        <div>⚡ SPARK</div>
+        <div>© 2025 SPARK. AI Growth Engine.</div>
       </footer>
     </div>
   );
