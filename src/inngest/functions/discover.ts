@@ -94,7 +94,7 @@ async function scoreTarget(
 export const discoverTargets = inngest.createFunction(
   { id: "discover-targets", name: "Discover Targets" },
   { event: "campaign/discover" },
-  async ({ event, step }) => {
+  async ({ event, step }: { event: { data: { campaign_id: string } }; step: any }) => {
     const campaignId = event.data.campaign_id as string;
 
     // 1. Get campaign

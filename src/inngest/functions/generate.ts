@@ -8,7 +8,7 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 export const generateComments = inngest.createFunction(
   { id: "generate-comments", name: "Generate Comments" },
   { event: "campaign/generate" },
-  async ({ event, step }) => {
+  async ({ event, step }: { event: { data: { campaign_id: string } }; step: any }) => {
     const campaignId = event.data.campaign_id as string;
 
     const campaign = await step.run("get-campaign", async () => {

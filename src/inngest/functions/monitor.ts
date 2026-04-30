@@ -9,7 +9,7 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 export const monitorResponses = inngest.createFunction(
   { id: "monitor-responses", name: "Monitor Responses" },
   { cron: "*/15 * * * *" }, // Every 15 minutes
-  async ({ step }) => {
+  async ({ step }: { step: any }) => {
     // Get posted comments without responses
     const comments = await step.run("get-unresponded", async () => {
       const { data } = await supabaseAdmin.from("comments").select("*, targets(*)")

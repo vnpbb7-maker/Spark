@@ -6,7 +6,7 @@ const supabaseAdmin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, proces
 export const postComments = inngest.createFunction(
   { id: "post-comments", name: "Post Comments" },
   { event: "campaign/post" },
-  async ({ event, step }) => {
+  async ({ event, step }: { event: { data: { campaign_id: string } }; step: any }) => {
     const campaignId = event.data.campaign_id as string;
 
     const campaign = await step.run("get-campaign", async () => {
