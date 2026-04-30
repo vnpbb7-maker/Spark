@@ -5,7 +5,10 @@ import { NextRequest, NextResponse } from "next/server";
 export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get("code");
-  const origin = requestUrl.origin;
+  const origin = process.env.NEXT_PUBLIC_SITE_URL || requestUrl.origin;
+
+  console.log("callback called, code:", code ? "exists" : "missing");
+  console.log("origin:", origin);
 
   if (code) {
     const cookieStore = await cookies();
@@ -26,12 +29,19 @@ export async function GET(request: NextRequest) {
       }
     );
 
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+    console.log("exchange result - data:", data?.user?.email, "error:", error);
 
     if (!error) {
       return NextResponse.redirect(`${origin}/dashboard`);
     }
+
+    console.log("auth error details:", JSON.stringify(error));
+    return NextResponse.redirect(
+      `${origin}/auth/login?error=auth_failed&details=${error.message}`
+    );
   }
 
-  return NextResponse.redirect(`${origin}/auth/login?error=auth_error`);
+  console.log("no code found in callback");
+  return NextResponse.redirect(`${origin}/auth/login?error=no_code`);
 }
