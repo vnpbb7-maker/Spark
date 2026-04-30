@@ -107,7 +107,7 @@ export default function LandingPage() {
       </nav>
 
       {/* ═══════════════════ HERO ═══════════════════ */}
-      <section className="relative w-full min-h-screen flex flex-col items-center justify-center text-center px-6 md:px-12 pt-20 md:pt-32 pb-12 md:pb-20 overflow-hidden grid-lines">
+      <section className="relative w-full min-h-screen flex flex-col items-center justify-center text-center px-6 pt-32 pb-20 overflow-hidden grid-lines">
         {/* Radial glow */}
         <div className="absolute inset-0 z-0 hero-radial pointer-events-none" />
 
@@ -115,67 +115,39 @@ export default function LandingPage() {
         <div className="absolute top-1/4 left-[10%] w-72 h-72 rounded-full bg-orange/5 blur-[100px] animate-float pointer-events-none" />
         <div className="absolute bottom-1/4 right-[10%] w-96 h-96 rounded-full bg-purple/5 blur-[120px] animate-float pointer-events-none [animation-delay:3s]" />
 
-        <div className="relative z-10 w-full flex flex-col items-center" style={{ maxWidth: 700, margin: '0 auto', padding: '0 24px' }}>
+        <div className="relative z-10 w-full max-w-3xl mx-auto px-6 flex flex-col items-center">
           {/* Badge */}
-          <div
-            className="inline-flex items-center gap-2 bg-orange/10 border border-orange/30 rounded-full
-                        px-4 py-1.5 text-[13px] text-orange font-semibold tracking-wide mb-10
-                        animate-fade-in-up"
-          >
-            <span className="w-1.5 h-1.5 rounded-full bg-orange inline-block" style={{ animation: "pulse-dot 2s infinite" }} />
+          <div className="flex items-center justify-center gap-2 mb-8 bg-orange/10 border border-orange/30 rounded-full px-4 py-1.5 text-[13px] text-orange font-semibold tracking-wide animate-fade-in-up">
+            <span className="w-1.5 h-1.5 rounded-full bg-orange inline-block animate-glow-pulse" />
             AI Growth Engine — Beta
           </div>
 
           {/* Heading */}
-          <h1
-            className="w-full text-center font-heading font-bold leading-[1.08] tracking-tight mb-7
-                        text-4xl md:text-6xl lg:text-7xl
-                        animate-fade-in-up [animation-delay:0.15s]"
-          >
+          <h1 className="w-full text-center text-4xl md:text-6xl lg:text-7xl font-heading font-bold leading-tight mb-6 animate-fade-in-up [animation-delay:0.15s]">
             あなたのプロダクトに
             <br />
             <span className="text-orange text-glow-orange">最初の火をつける。</span>
           </h1>
 
           {/* Sub */}
-          <p
-            className="w-full text-center text-muted text-[clamp(1rem,2.5vw,1.2rem)] leading-relaxed mb-12
-                        animate-fade-in-up [animation-delay:0.3s]"
-            style={{ maxWidth: 560, margin: '0 auto 48px auto' }}
-          >
+          <p className="w-full text-center text-lg text-muted max-w-xl mx-auto mb-10 animate-fade-in-up [animation-delay:0.3s]">
             URLを入れるだけ。AIが最初の100人を連れてくる。
           </p>
 
           {/* URL Input */}
-          <div
-            className="flex flex-col md:flex-row items-stretch md:items-center gap-0 w-full bg-surface border border-orange/30
-                        rounded-2xl p-1.5
-                        shadow-[0_0_40px_rgba(255,107,53,0.15)]
-                        focus-within:shadow-[0_0_60px_rgba(255,107,53,0.25)]
-                        focus-within:border-orange/50
-                        transition-all duration-300
-                        animate-fade-in-up [animation-delay:0.45s]"
-            style={{ maxWidth: 560, margin: '0 auto 16px auto' }}
-          >
+          <div className="w-full max-w-xl mx-auto flex flex-col md:flex-row items-center gap-2 mb-4 px-4 animate-fade-in-up [animation-delay:0.45s]">
             <input
               type="url"
               value={url}
               onChange={(e) => setUrl(e.target.value)}
               placeholder="https://yourproduct.com"
-              className="flex-1 min-w-0 bg-transparent border-none outline-none text-text text-[15px]
-                         px-4 py-3 font-body placeholder:text-hint"
+              className="flex-1 w-full bg-white/10 border border-white/20 rounded-xl px-5 py-3 text-text placeholder:text-hint outline-none font-body text-[15px]"
             />
-            <button
-              className="bg-orange text-white border-none rounded-xl px-6 py-3 text-[15px]
-                         font-bold font-heading cursor-pointer whitespace-nowrap shrink-0
-                         hover:scale-[1.03] hover:shadow-[0_0_24px_rgba(255,107,53,0.5)]
-                         active:scale-[0.98]
-                         transition-all duration-200"
-            >
+            <button className="w-full md:w-auto bg-orange text-white rounded-xl px-6 py-3 text-[15px] font-bold font-heading cursor-pointer whitespace-nowrap hover:scale-[1.03] hover:shadow-[0_0_24px_rgba(255,107,53,0.5)] active:scale-[0.98] transition-all duration-200">
               火をつける →
             </button>
           </div>
-          <p className="w-full text-center text-[13px] text-hint animate-fade-in-up [animation-delay:0.6s]">
+          <p className="w-full text-center text-sm text-hint animate-fade-in-up [animation-delay:0.6s]">
             無料で試せます · クレジットカード不要
           </p>
         </div>
@@ -183,7 +155,7 @@ export default function LandingPage() {
 
       {/* ═══════════════════ PLATFORMS ═══════════════════ */}
       <section className="relative bg-surface" style={{ zIndex: 1 }}>
-        <div style={{ width: '100%', display: 'flex', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center', gap: 12, padding: '32px 24px', borderTop: '1px solid rgba(255,255,255,0.1)', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+        <div className="w-full flex flex-wrap items-center justify-center gap-3 py-8 border-t border-b border-white/10 px-6">
           <span className="text-hint text-[13px] mr-2">対応プラットフォーム</span>
           {PLATFORMS.map((p) => (
             <div
@@ -208,7 +180,7 @@ export default function LandingPage() {
 
       {/* ═══════════════════ PRICING ═══════════════════ */}
       <section id="pricing" className="relative py-16 md:py-24" style={{ zIndex: 1 }}>
-        <div style={{ width: '100%', maxWidth: 1100, margin: '0 auto', padding: '0 24px' }}>
+        <div className="w-full max-w-5xl mx-auto px-6">
           {/* Header */}
           <div className="w-full text-center mb-16">
             <h2 className="w-full text-center font-heading font-bold text-[clamp(1.8rem,4vw,2.8rem)] mb-4">
@@ -220,7 +192,7 @@ export default function LandingPage() {
           </div>
 
           {/* Cards */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6" style={{ width: '100%', margin: '0 auto', alignItems: 'stretch' }}>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 w-full items-stretch">
             {PLANS.map((plan) => (
               <div
                 key={plan.name}
@@ -290,7 +262,7 @@ export default function LandingPage() {
 
       {/* ═══════════════════ FOOTER ═══════════════════ */}
       <footer className="relative border-t border-border py-8 text-hint text-[13px]" style={{ zIndex: 1 }}>
-        <div style={{ width: '100%', maxWidth: 1100, margin: '0 auto', padding: '0 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
+        <div className="w-full max-w-5xl mx-auto px-6 flex items-center justify-between flex-wrap gap-4">
           <div className="flex items-center gap-1.5 font-heading font-bold text-base text-text">
             <span className="text-orange">⚡</span> SPARK
           </div>
