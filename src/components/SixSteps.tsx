@@ -36,7 +36,7 @@ const STEPS = [
 export default function SixSteps() {
   return (
     <section className="relative py-16 md:py-24" style={{ zIndex: 1 }}>
-      <div className="w-full max-w-5xl mx-auto px-4 md:px-6">
+      <div className="w-full max-w-6xl mx-auto px-6 md:px-12">
         {/* Header */}
         <div className="text-center mb-16">
           <h2 className="font-heading font-bold text-[clamp(1.8rem,4vw,2.8rem)] mb-4">

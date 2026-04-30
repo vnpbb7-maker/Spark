@@ -61,17 +61,23 @@
 
 html {
   scroll-behavior: smooth;
-  width: 100%;
+  width: 100% !important;
 }
 
 body {
-  width: 100%;
-  margin: 0;
+  width: 100% !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  display: block !important;
   background: var(--color-bg);
   color: var(--color-text);
   font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
   overflow-x: hidden;
+}
+
+main {
+  width: 100%;
 }
 
 h1, h2, h3, h4, h5, h6 {
