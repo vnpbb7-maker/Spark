@@ -4,11 +4,12 @@ import { useState } from "react";
 
 type Props = {
   onAnalyze: (data: { url?: string; description?: string }) => void;
+  initialUrl?: string;
 };
 
-export default function Step1Input({ onAnalyze }: Props) {
+export default function Step1Input({ onAnalyze, initialUrl = "" }: Props) {
   const [tab, setTab] = useState<"url" | "text">("url");
-  const [url, setUrl] = useState("");
+  const [url, setUrl] = useState(initialUrl);
   const [description, setDescription] = useState("");
 
   const handleSubmit = () => {

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import SparkCanvas from "@/components/SparkCanvas";
 import SixSteps from "@/components/SixSteps";
 import LiveLog from "@/components/LiveLog";
@@ -66,6 +67,7 @@ const PLANS = [
 
 export default function LandingPage() {
   const [url, setUrl] = useState("");
+  const router = useRouter();
 
   return (
     <div className="relative w-full min-h-screen overflow-x-hidden bg-bg text-text">
@@ -140,10 +142,19 @@ export default function LandingPage() {
               type="url"
               value={url}
               onChange={(e) => setUrl(e.target.value)}
-              placeholder="https://yourproduct.com"
+              placeholder="https://yourproduct.com または instagram.com/xxxx"
               className="flex-1 w-full bg-white/10 border border-white/20 rounded-xl px-5 py-3 text-text placeholder:text-hint outline-none font-body text-[15px]"
             />
-            <button className="w-full md:w-auto bg-orange text-white rounded-xl px-6 py-3 text-[15px] font-bold font-heading cursor-pointer whitespace-nowrap hover:scale-[1.03] hover:shadow-[0_0_24px_rgba(255,107,53,0.5)] active:scale-[0.98] transition-all duration-200">
+            <button
+              onClick={() => {
+                if (url) {
+                  router.push(`/campaigns/new?url=${encodeURIComponent(url)}`);
+                } else {
+                  router.push('/campaigns/new');
+                }
+              }}
+              className="w-full md:w-auto bg-orange text-white rounded-xl px-6 py-3 text-[15px] font-bold font-heading cursor-pointer whitespace-nowrap hover:scale-[1.03] hover:shadow-[0_0_24px_rgba(255,107,53,0.5)] active:scale-[0.98] transition-all duration-200"
+            >
               火をつける →
             </button>
           </div>

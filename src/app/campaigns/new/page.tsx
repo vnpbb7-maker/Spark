@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { AnalysisResult, CampaignSettings } from "@/types/campaign";
 import Step1Input from "@/components/wizard/Step1Input";
 import Step2Analysis from "@/components/wizard/Step2Analysis";
@@ -12,11 +12,13 @@ const STEPS = ["プロダクト入力", "分析結果", "キャンペーン設�
 
 export default function NewCampaignPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const initialUrl = searchParams.get("url") || "";
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
-  const [inputData, setInputData] = useState<{ url?: string; description?: string }>({});
+  const [inputData, setInputData] = useState<{ url?: string; description?: string }>({ url: initialUrl });
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
 
   const handleAnalyze = async (data: { url?: string; description?: string }) => {
@@ -126,7 +128,7 @@ export default function NewCampaignPage() {
         {loading ? (
           <SparkLoader />
         ) : step === 1 ? (
-          <Step1Input onAnalyze={handleAnalyze} />
+          <Step1Input onAnalyze={handleAnalyze} initialUrl={initialUrl} />
         ) : step === 2 && analysis ? (
           <Step2Analysis analysis={analysis} onContinue={() => setStep(3)} onBack={() => setStep(1)} />
         ) : step === 3 && analysis ? (
