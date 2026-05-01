@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import SparkCanvas from "@/components/SparkCanvas";
+
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -80,8 +80,7 @@ export default function LoginPage() {
         position: "relative",
       }}
     >
-      {/* Background particles */}
-      <SparkCanvas />
+
 
       {/* Login card */}
       <div
@@ -150,6 +149,7 @@ export default function LoginPage() {
 
         {/* Google Login */}
         <button
+          type="button"
           onClick={handleGoogleLogin}
           disabled={loading}
           style={{
