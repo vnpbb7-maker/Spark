@@ -31,7 +31,6 @@ export default function CampaignDetailPage() {
   const params = useParams();
   const router = useRouter();
   const campaignId = params.id as string;
-  const supabase = createClient();
   const logs = useRealtimeLog(campaignId);
 
   const [campaign, setCampaign] = useState<Record<string, unknown> | null>(null);
@@ -41,6 +40,7 @@ export default function CampaignDetailPage() {
   const [loading, setLoading] = useState(true);
 
   const fetchData = useCallback(async () => {
+    const supabase = createClient();
     const { data: camp } = await supabase.from("campaigns").select("*").eq("id", campaignId).single();
     if (!camp) { router.push("/dashboard"); return; }
     setCampaign(camp);
@@ -63,7 +63,7 @@ export default function CampaignDetailPage() {
     const replied = enriched.filter((t) => t.comment?.response_text).length;
     setFunnel({ discovered, generated, approved, posted, replied, converted: Math.floor(replied * 0.6) });
     setLoading(false);
-  }, [supabase, campaignId, router]);
+  }, [campaignId, router]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 

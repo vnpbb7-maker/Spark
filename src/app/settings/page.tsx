@@ -21,7 +21,6 @@ const DELAY_PRESETS = [
 
 export default function SettingsPage() {
   const router = useRouter();
-  const supabase = createClient();
   const [creds, setCreds] = useState<Record<string, Record<string, string>>>({});
   const [saved, setSaved] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState<string | null>(null);
@@ -29,6 +28,7 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
 
   const fetchCreds = useCallback(async () => {
+    const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { router.push("/auth/login"); return; }
     const { data } = await supabase.from("platform_credentials").select("*").eq("user_id", user.id);
@@ -41,7 +41,7 @@ export default function SettingsPage() {
     setCreds(map);
     setSaved(savedSet);
     setLoading(false);
-  }, [supabase, router]);
+  }, [router]);
 
   useEffect(() => { fetchCreds(); }, [fetchCreds]);
 
@@ -51,6 +51,7 @@ export default function SettingsPage() {
 
   const savePlatform = async (platformId: string) => {
     setSaving(platformId);
+    const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
     const credentials = creds[platformId] || {};
