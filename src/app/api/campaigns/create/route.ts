@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { inngest } from "@/inngest/client";
 
 export async function POST(request: Request) {
   try {
@@ -39,7 +40,7 @@ export async function POST(request: Request) {
         product_description,
         target_personas,
         platforms: platforms || [],
-        daily_limit: daily_limit || 50,
+        daily_limit: daily_limit || 10,
         tone: tone || "casual",
         auto_mode: auto_mode || false,
         status: "running",
@@ -54,6 +55,12 @@ export async function POST(request: Request) {
         { status: 500 }
       );
     }
+
+    // Inngest: ターゲット発見ジョブを発火
+    await inngest.send({
+      name: "campaign/discover",
+      data: { campaign_id: data.id },
+    });
 
     return NextResponse.json({ id: data.id, redirect: `/campaigns/${data.id}` });
   } catch (error) {
