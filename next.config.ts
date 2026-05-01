@@ -4,8 +4,8 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
-  eslint: {
-    ignoreDuringBuilds: true,
+  generateBuildId: async () => {
+    return `build-${Date.now()}`;
   },
 };
 
