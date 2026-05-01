@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, Suspense } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 import { AnalysisResult, CampaignSettings } from "@/types/campaign";
 import Step1Input from "@/components/wizard/Step1Input";
 import Step2Analysis from "@/components/wizard/Step2Analysis";
@@ -20,6 +21,24 @@ function CampaignNewContent() {
   const [error, setError] = useState("");
   const [inputData, setInputData] = useState<{ url?: string; description?: string }>({ url: initialUrl });
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
+  const [userPlan, setUserPlan] = useState("free");
+
+  useEffect(() => {
+    const fetchPlan = async () => {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: sub } = await supabase
+          .from("subscriptions")
+          .select("plan")
+          .eq("user_id", user.id)
+          .eq("status", "active")
+          .single();
+        setUserPlan(sub?.plan || "free");
+      }
+    };
+    fetchPlan();
+  }, []);
 
   const handleAnalyze = async (data: { url?: string; description?: string }) => {
     setInputData(data);
@@ -130,7 +149,7 @@ function CampaignNewContent() {
         ) : step === 1 ? (
           <Step1Input onAnalyze={handleAnalyze} initialUrl={initialUrl} />
         ) : step === 2 && analysis ? (
-          <Step2Analysis analysis={analysis} onContinue={() => setStep(3)} onBack={() => setStep(1)} />
+          <Step2Analysis analysis={analysis} onContinue={() => setStep(3)} onBack={() => setStep(1)} userPlan={userPlan} />
         ) : step === 3 && analysis ? (
           <Step3Settings recommendedPlatforms={analysis.recommended_platforms} onSubmit={handleCreate} loading={creating} />
         ) : null}

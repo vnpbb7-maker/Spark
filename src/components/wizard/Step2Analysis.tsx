@@ -1,23 +1,30 @@
 "use client";
 
 import { AnalysisResult } from "@/types/campaign";
+import { isPlatformAllowed, getRequiredPlan } from "@/lib/plan-guard";
 
-const PLATFORM_ICONS: Record<string, { icon: string; color: string }> = {
-  twitter: { icon: "𝕏", color: "#1d9bf0" },
-  reddit: { icon: "🤖", color: "#ff4500" },
-  linkedin: { icon: "in", color: "#0a66c2" },
-  tiktok: { icon: "♪", color: "#ff0050" },
-  instagram: { icon: "◈", color: "#e1306c" },
-  facebook: { icon: "f", color: "#1877f2" },
+const PLATFORM_ICONS: Record<string, { icon: string; color: string; name: string }> = {
+  twitter: { icon: "𝕏", color: "#1d9bf0", name: "X" },
+  reddit: { icon: "🤖", color: "#ff4500", name: "Reddit" },
+  linkedin: { icon: "in", color: "#0a66c2", name: "LinkedIn" },
+  tiktok: { icon: "♪", color: "#ff0050", name: "TikTok" },
+  instagram: { icon: "◈", color: "#e1306c", name: "Instagram" },
+  facebook: { icon: "f", color: "#1877f2", name: "Facebook" },
+};
+
+const PLAN_LABELS: Record<string, string> = {
+  starter: "Starterプランで利用可能",
+  growth: "Growthプランで利用可能",
 };
 
 type Props = {
   analysis: AnalysisResult;
   onContinue: () => void;
   onBack: () => void;
+  userPlan?: string;
 };
 
-export default function Step2Analysis({ analysis, onContinue, onBack }: Props) {
+export default function Step2Analysis({ analysis, onContinue, onBack, userPlan = "free" }: Props) {
   return (
     <div style={{ maxWidth: "800px", margin: "0 auto" }}>
       {/* Core value */}
@@ -79,10 +86,36 @@ export default function Step2Analysis({ analysis, onContinue, onBack }: Props) {
           {analysis.recommended_platforms.map((p) => {
             const info = PLATFORM_ICONS[p];
             if (!info) return null;
+            const allowed = isPlatformAllowed(p, userPlan);
+            const requiredPlan = getRequiredPlan(p);
             return (
-              <div key={p} style={{ display: "flex", alignItems: "center", gap: "8px", background: "rgba(255,107,53,0.08)", border: "1px solid rgba(255,107,53,0.25)", borderRadius: "10px", padding: "10px 16px", fontSize: "14px", fontWeight: 600, color: "#f0efe8" }}>
-                <span style={{ color: info.color, fontSize: "16px", fontWeight: 700 }}>{info.icon}</span>
-                {p.charAt(0).toUpperCase() + p.slice(1)}
+              <div
+                key={p}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  background: allowed ? "rgba(255,107,53,0.08)" : "rgba(255,255,255,0.03)",
+                  border: `1px solid ${allowed ? "rgba(255,107,53,0.25)" : "rgba(255,255,255,0.08)"}`,
+                  borderRadius: "10px",
+                  padding: "10px 16px",
+                  fontSize: "14px",
+                  fontWeight: 600,
+                  color: allowed ? "#f0efe8" : "rgba(240,239,232,0.4)",
+                  position: "relative",
+                }}
+              >
+                <span style={{ color: allowed ? info.color : "rgba(240,239,232,0.3)", fontSize: "16px", fontWeight: 700 }}>
+                  {allowed ? info.icon : "🔒"}
+                </span>
+                <div>
+                  <div>{info.name} {allowed && <span style={{ fontSize: "10px", color: "#ff6b35" }}>✨推奨</span>}</div>
+                  {!allowed && (
+                    <div style={{ fontSize: "10px", color: "#ff6b35", marginTop: "2px" }}>
+                      {PLAN_LABELS[requiredPlan] || "アップグレード必要"} 🔒
+                    </div>
+                  )}
+                </div>
               </div>
             );
           })}

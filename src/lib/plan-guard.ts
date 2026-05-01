@@ -38,3 +38,28 @@ export async function checkDailyLimit(campaignId: string, userId: string): Promi
 
   return { allowed: remaining > 0, remaining: Math.max(0, remaining) };
 }
+
+// ── Client-side plan utilities ──
+
+export function getPlatformsByPlan(plan: string): string[] {
+  switch (plan) {
+    case "growth":
+    case "agency":
+      return ["twitter", "reddit", "linkedin", "tiktok", "instagram", "facebook"];
+    case "starter":
+      return ["twitter", "reddit", "linkedin"];
+    case "free":
+    default:
+      return ["twitter", "reddit"];
+  }
+}
+
+export function isPlatformAllowed(platform: string, plan: string): boolean {
+  return getPlatformsByPlan(plan).includes(platform);
+}
+
+export function getRequiredPlan(platform: string): string {
+  if (["twitter", "reddit"].includes(platform)) return "free";
+  if (platform === "linkedin") return "starter";
+  return "growth";
+}
