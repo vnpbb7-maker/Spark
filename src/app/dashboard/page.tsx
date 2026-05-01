@@ -19,7 +19,6 @@ const NAV_ITEMS = [
 
 export default function DashboardPage() {
   const router = useRouter();
-  const supabase = createClient();
   const logs = useRealtimeLog();
   const [user, setUser] = useState<{ email?: string } | null>(null);
   const [campaigns, setCampaigns] = useState<Array<Record<string, unknown>>>([]);
@@ -27,6 +26,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
 
   const fetchData = useCallback(async () => {
+    const supabase = createClient();
     const { data: { session } } = await supabase.auth.getSession();
     console.log("session:", session);
 
@@ -56,11 +56,12 @@ export default function DashboardPage() {
       setKpi({ targetsFound: totalTargets, pendingComments: pendCount || 0, postedComments: totalPosted, conversions: totalConversions, prevTargets: Math.max(0, totalTargets - 5), prevPending: Math.max(0, (pendCount || 0) - 2), prevPosted: Math.max(0, totalPosted - 3), prevConversions: Math.max(0, totalConversions - 1) });
     }
     setLoading(false);
-  }, [supabase, router]);
+  }, [router]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
   const handlePause = async (id: string) => {
+    const supabase = createClient();
     const camp = campaigns.find((c) => c.id === id);
     const newStatus = camp?.status === "paused" ? "running" : "paused";
     await supabase.from("campaigns").update({ status: newStatus }).eq("id", id);
@@ -69,11 +70,13 @@ export default function DashboardPage() {
 
   const handleDelete = async (id: string) => {
     if (!confirm("本当に削除しますか？")) return;
+    const supabase = createClient();
     await supabase.from("campaigns").delete().eq("id", id);
     fetchData();
   };
 
   const handleLogout = async () => {
+    const supabase = createClient();
     await supabase.auth.signOut();
     router.push("/");
   };
