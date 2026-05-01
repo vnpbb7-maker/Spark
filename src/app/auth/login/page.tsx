@@ -10,11 +10,10 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const supabase = createClient();
-
   const handleGoogleLogin = async () => {
     setLoading(true);
     setError("");
+    const supabase = createClient();
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
@@ -31,6 +30,7 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
     setError("");
+    const supabase = createClient();
     const { error } = await supabase.auth.signInWithPassword({
       email,
       password,
@@ -50,6 +50,7 @@ export default function LoginPage() {
     }
     setLoading(true);
     setError("");
+    const supabase = createClient();
     const { error } = await supabase.auth.signUp({
       email,
       password,
