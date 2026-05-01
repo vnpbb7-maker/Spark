@@ -18,6 +18,15 @@ interface Particle {
 
 const COLORS = ["#ff6b35", "#ffd60a", "#ff8c5a"];
 
+function hexToRgb(hex: string): [number, number, number] {
+  const h = hex.replace("#", "");
+  return [
+    parseInt(h.substring(0, 2), 16),
+    parseInt(h.substring(2, 4), 16),
+    parseInt(h.substring(4, 6), 16),
+  ];
+}
+
 function createParticle(canvasWidth: number, canvasHeight: number): Particle {
   const maxLife = 150 + Math.random() * 200;
   const angle = (Math.random() - 0.5) * 0.8; // slight horizontal drift
@@ -94,24 +103,28 @@ export default function SparkCanvas() {
 
         // Draw tail
         if (p.trail.length > 1) {
+          const [r, g, b] = hexToRgb(p.color);
           for (let t = 0; t < p.trail.length - 1; t++) {
             const tp = p.trail[t];
             const trailProgress = t / p.trail.length;
-            const trailAlpha = tp.alpha * trailProgress * 0.4;
+            const trailAlpha = Math.max(0, Math.min(1, tp.alpha * trailProgress * 0.4));
             ctx.beginPath();
             ctx.arc(tp.x, tp.y, p.size * 0.3 * trailProgress, 0, Math.PI * 2);
-            ctx.fillStyle = p.color + Math.floor(trailAlpha * 255).toString(16).padStart(2, "0");
+            ctx.fillStyle = `rgba(${r},${g},${b},${trailAlpha})`;
             ctx.fill();
           }
         }
 
         // Draw glow
+        const [gr, gg, gb] = hexToRgb(p.color);
+        const safeAlpha = Math.max(0, Math.min(1, twinkleAlpha));
         const gradient = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size * 4);
-        gradient.addColorStop(
-          0,
-          p.color + Math.floor(twinkleAlpha * 255).toString(16).padStart(2, "0")
-        );
-        gradient.addColorStop(1, p.color + "00");
+        try {
+          gradient.addColorStop(0, `rgba(${gr},${gg},${gb},${safeAlpha})`);
+          gradient.addColorStop(1, `rgba(${gr},${gg},${gb},0)`);
+        } catch {
+          // skip invalid gradient
+        }
         ctx.fillStyle = gradient;
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.size * 4, 0, Math.PI * 2);
