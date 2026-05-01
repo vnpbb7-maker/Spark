@@ -28,11 +28,19 @@ export default function LoginPage() {
 
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    console.log("login attempt:", email, password.length);
     setLoading(true);
     setError("");
+
+    if (!email || !password) {
+      setError("メールアドレスとパスワードを入力してください");
+      setLoading(false);
+      return;
+    }
+
     const supabase = createClient();
     const { data, error } = await supabase.auth.signInWithPassword({
-      email,
+      email: email.trim(),
       password,
     });
     if (error) {
