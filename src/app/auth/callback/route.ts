@@ -5,10 +5,14 @@ import { NextRequest, NextResponse } from "next/server";
 export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get("code");
-  const origin = process.env.NEXT_PUBLIC_SITE_URL || requestUrl.origin;
+  const origin = process.env.NEXT_PUBLIC_SITE_URL!;
 
-  console.log("callback called, code:", code ? "exists" : "missing");
-  console.log("origin:", origin);
+  console.log("callback - code:", code ? "exists" : "missing");
+  console.log("callback - origin:", origin);
+  console.log(
+    "callback - all cookies:",
+    request.cookies.getAll().map((c) => c.name)
+  );
 
   if (code) {
     const cookieStore = await cookies();
@@ -18,7 +22,7 @@ export async function GET(request: NextRequest) {
       {
         cookies: {
           getAll() {
-            return cookieStore.getAll();
+            return request.cookies.getAll();
           },
           setAll(cookiesToSet) {
             cookiesToSet.forEach(({ name, value, options }) =>
@@ -30,18 +34,21 @@ export async function GET(request: NextRequest) {
     );
 
     const { data, error } = await supabase.auth.exchangeCodeForSession(code);
-    console.log("exchange result - data:", data?.user?.email, "session:", !!data?.session, "error:", error);
-
-    if (!error && data.session) {
-      return NextResponse.redirect(`${origin}/dashboard`);
-    }
-
-    console.log("auth error details:", JSON.stringify(error));
-    return NextResponse.redirect(
-      `${origin}/auth/login?error=auth_failed&details=${error.message}`
+    console.log(
+      "exchange - user:",
+      data?.user?.email,
+      "error:",
+      error?.message
     );
+
+    if (!error) {
+      const response = NextResponse.redirect(`${origin}/dashboard`);
+      cookieStore.getAll().forEach((cookie) => {
+        response.cookies.set(cookie.name, cookie.value);
+      });
+      return response;
+    }
   }
 
-  console.log("no code found in callback");
-  return NextResponse.redirect(`${origin}/auth/login?error=no_code`);
+  return NextResponse.redirect(`${origin}/auth/login?error=auth_failed`);
 }
