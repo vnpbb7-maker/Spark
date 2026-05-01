@@ -30,9 +30,9 @@ export async function GET(request: NextRequest) {
     );
 
     const { data, error } = await supabase.auth.exchangeCodeForSession(code);
-    console.log("exchange result - data:", data?.user?.email, "error:", error);
+    console.log("exchange result - data:", data?.user?.email, "session:", !!data?.session, "error:", error);
 
-    if (!error) {
+    if (!error && data.session) {
       return NextResponse.redirect(`${origin}/dashboard`);
     }
 

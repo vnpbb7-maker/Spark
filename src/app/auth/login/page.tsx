@@ -23,7 +23,7 @@ export default function LoginPage() {
           access_type: "offline",
           prompt: "consent",
         },
-        flowType: "pkce",
+        skipBrowserRedirect: false,
       },
     });
     if (error) {
