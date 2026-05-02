@@ -1,11 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 
 export default function Home() {
   const [url, setUrl] = useState("");
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
   const router = useRouter();
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      setIsLoggedIn(!!user);
+    };
+    checkAuth();
+  }, []);
 
   return (
     <div
@@ -39,7 +50,7 @@ export default function Home() {
           ⚡ SPARK
         </div>
         <button
-          onClick={() => router.push("/auth/login")}
+          onClick={() => router.push(isLoggedIn ? "/dashboard" : "/auth/login")}
           style={{
             background: "#ff6b35",
             color: "#fff",
@@ -160,10 +171,18 @@ export default function Home() {
           />
           <button
             onClick={() => {
-              if (url) {
-                router.push(`/auth/login?redirect=${encodeURIComponent(`/campaigns/new?url=${encodeURIComponent(url)}`)}`);
+              if (isLoggedIn) {
+                if (url) {
+                  router.push(`/campaigns/new?url=${encodeURIComponent(url)}`);
+                } else {
+                  router.push("/campaigns/new");
+                }
               } else {
-                router.push("/auth/login?redirect=/campaigns/new");
+                if (url) {
+                  router.push(`/auth/login?redirect=/campaigns/new?url=${encodeURIComponent(url)}`);
+                } else {
+                  router.push("/auth/login");
+                }
               }
             }}
             style={{
@@ -613,7 +632,7 @@ export default function Home() {
             SPARKはその問題を終わらせる。
           </p>
           <button
-            onClick={() => router.push("/auth/login?redirect=/campaigns/new")}
+            onClick={() => router.push(isLoggedIn ? "/campaigns/new" : "/auth/login")}
             style={{
               background: "#ff6b35",
               color: "#fff",
