@@ -28,11 +28,18 @@ export default function DashboardPage() {
   const fetchData = useCallback(async () => {
     const supabase = createClient();
     const { data: { session } } = await supabase.auth.getSession();
-    console.log("session:", session);
+
+    if (!session) {
+      // cookieがまだ反映されていない可能性があるので少し待ってリトライ
+      await new Promise((r) => setTimeout(r, 500));
+      const { data: { session: retrySession } } = await supabase.auth.getSession();
+      if (!retrySession) {
+        router.push("/auth/login");
+        return;
+      }
+    }
 
     const { data: { user: u } } = await supabase.auth.getUser();
-    console.log("user:", u);
-
     if (!u) { router.push("/auth/login"); return; }
     setUser(u);
 
