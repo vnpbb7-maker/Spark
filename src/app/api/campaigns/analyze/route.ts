@@ -34,6 +34,23 @@ JSONのみで返してください。前置き不要。
   "positioning": "競合との差別化（1文）"
 }`;
 
+async function fetchPageContent(url: string): Promise<string> {
+  try {
+    const jinaUrl = `https://r.jina.ai/${url}`;
+    const res = await fetch(jinaUrl, {
+      headers: {
+        Accept: "text/plain",
+      },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) return "";
+    const text = await res.text();
+    return text.slice(0, 3000);
+  } catch {
+    return "";
+  }
+}
+
 async function callClaude(input: string, retryCount = 0): Promise<Record<string, unknown>> {
   const client = new Anthropic({
     apiKey: process.env.ANTHROPIC_API_KEY,
@@ -99,9 +116,15 @@ export async function POST(request: Request) {
       );
     }
 
-    const userMessage = url
-      ? `以下のURLのプロダクト・サービスを分析してください：\n${url}\n\nURLからわかる情報（ドメイン名、パス、クエリパラメータなど）を元に、このプロダクトが何をするサービスかを推測して分析してください。`
-      : `プロダクト説明:\n${description}`;
+    let userMessage: string;
+    if (url) {
+      const pageContent = await fetchPageContent(url);
+      userMessage = pageContent
+        ? `URL: ${url}\n\nページ内容:\n${pageContent}`
+        : `URL: ${url}\n\nこのURLのプロダクト・サービスを分析してください。`;
+    } else {
+      userMessage = `プロダクト説明:\n${description}`;
+    }
 
     const result = await callClaude(userMessage);
 
