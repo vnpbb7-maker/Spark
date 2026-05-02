@@ -40,7 +40,15 @@ function CampaignNewContent() {
       }
     };
     fetchPlan();
-  }, []);
+
+    // Stripe checkout完了後のリダイレクト処理
+    const upgraded = searchParams.get("upgraded");
+    const returnStep = searchParams.get("step");
+    if (upgraded === "true") {
+      setUserPlan("growth");
+      if (returnStep) setStep(parseInt(returnStep));
+    }
+  }, [searchParams]);
 
   const handleAnalyze = async (data: { url?: string; description?: string }) => {
     setInputData(data);

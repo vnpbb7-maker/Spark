@@ -250,7 +250,28 @@ export default function Step3Settings({ recommendedPlatforms, onSubmit, loading 
               全6プラットフォームで自動コメント投稿が使えます。
             </div>
             <button
-              onClick={() => { router.push("/pricing"); setUpgradeModal(null); }}
+              onClick={async () => {
+                setUpgradeModal(null);
+                try {
+                  const res = await fetch("/api/stripe/checkout", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      plan: "growth",
+                      successUrl: `${window.location.origin}/campaigns/new?upgraded=true&step=3`,
+                      cancelUrl: `${window.location.origin}/campaigns/new`,
+                    }),
+                  });
+                  const data = await res.json();
+                  if (data.url) {
+                    window.location.href = data.url;
+                  } else {
+                    router.push("/pricing");
+                  }
+                } catch {
+                  router.push("/pricing");
+                }
+              }}
               style={{ width: "100%", background: "#ff6b35", color: "#fff", border: "none", borderRadius: 10, padding: "12px", fontSize: 14, fontWeight: 600, cursor: "pointer", marginBottom: 10, fontFamily: "DM Sans" }}
             >
               アップグレードする →
