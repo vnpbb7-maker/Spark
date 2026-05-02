@@ -34,8 +34,7 @@ function CampaignNewContent() {
           .from("subscriptions")
           .select("plan")
           .eq("user_id", user.id)
-          .eq("status", "active")
-          .single();
+          .maybeSingle();
         setUserPlan(sub?.plan || "free");
       }
     };

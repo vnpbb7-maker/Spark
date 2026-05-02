@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { PLANS, PlanKey } from "@/lib/stripe/client";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: "2025-04-30.basil",
+  apiVersion: "2024-11-20.acacia",
 });
 
 export async function POST(req: Request) {
@@ -67,7 +67,7 @@ export async function POST(req: Request) {
   } catch (error) {
     console.error("Stripe checkout error:", error);
     return NextResponse.json(
-      { error: "Checkout session creation failed" },
+      { error: "Checkout failed", details: String(error) },
       { status: 500 }
     );
   }

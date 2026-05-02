@@ -60,8 +60,7 @@ export default function Step3Settings({ recommendedPlatforms, onSubmit, loading 
           .from("subscriptions")
           .select("plan")
           .eq("user_id", user.id)
-          .eq("status", "active")
-          .single();
+          .maybeSingle();
         const plan = sub?.plan || "free";
         setUserPlan(plan);
         if (plan === "growth" || plan === "agency") setDailyLimit(200);
