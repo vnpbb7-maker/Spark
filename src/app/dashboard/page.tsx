@@ -41,10 +41,14 @@ export default function DashboardPage() {
 
     if (camps) {
       const enriched = await Promise.all(camps.map(async (c) => {
-        const { count: tc } = await supabase.from("targets").select("*", { count: "exact", head: true }).eq("campaign_id", c.id);
-        const { count: pc } = await supabase.from("comments").select("*", { count: "exact", head: true }).eq("campaign_id", c.id).not("posted_at", "is", null);
-        const { count: cc } = await supabase.from("comments").select("*", { count: "exact", head: true }).eq("campaign_id", c.id).not("responded_at", "is", null);
-        return { ...c, targets_count: tc || 0, posted_count: pc || 0, conversion_count: cc || 0 };
+        try {
+          const { count: tc } = await supabase.from("targets").select("*", { count: "exact", head: true }).eq("campaign_id", c.id);
+          const { count: pc } = await supabase.from("comments").select("*", { count: "exact", head: true }).eq("campaign_id", c.id).not("posted_at", "is", null);
+          const { count: cc } = await supabase.from("comments").select("*", { count: "exact", head: true }).eq("campaign_id", c.id).not("responded_at", "is", null);
+          return { ...c, targets_count: tc || 0, posted_count: pc || 0, conversion_count: cc || 0 };
+        } catch {
+          return { ...c, targets_count: 0, posted_count: 0, conversion_count: 0 };
+        }
       }));
       setCampaigns(enriched);
 
@@ -52,8 +56,12 @@ export default function DashboardPage() {
       const totalTargets = enriched.reduce((s, c) => s + (c.targets_count as number), 0);
       const totalPosted = enriched.reduce((s, c) => s + (c.posted_count as number), 0);
       const totalConversions = enriched.reduce((s, c) => s + (c.conversion_count as number), 0);
-      const { count: pendCount } = await supabase.from("comments").select("*", { count: "exact", head: true }).eq("approved", false);
-      setKpi({ targetsFound: totalTargets, pendingComments: pendCount || 0, postedComments: totalPosted, conversions: totalConversions, prevTargets: Math.max(0, totalTargets - 5), prevPending: Math.max(0, (pendCount || 0) - 2), prevPosted: Math.max(0, totalPosted - 3), prevConversions: Math.max(0, totalConversions - 1) });
+      let pendCount = 0;
+      try {
+        const { count } = await supabase.from("comments").select("*", { count: "exact", head: true }).eq("approved", false);
+        pendCount = count || 0;
+      } catch {}
+      setKpi({ targetsFound: totalTargets, pendingComments: pendCount, postedComments: totalPosted, conversions: totalConversions, prevTargets: Math.max(0, totalTargets - 5), prevPending: Math.max(0, pendCount - 2), prevPosted: Math.max(0, totalPosted - 3), prevConversions: Math.max(0, totalConversions - 1) });
     }
     setLoading(false);
   }, [router]);
