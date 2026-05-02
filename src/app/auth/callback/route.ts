@@ -42,7 +42,8 @@ export async function GET(request: NextRequest) {
     );
 
     if (!error) {
-      const response = NextResponse.redirect(`${origin}/dashboard`);
+      const redirectPath = requestUrl.searchParams.get("redirect") || "/dashboard";
+      const response = NextResponse.redirect(`${origin}${redirectPath}`);
       cookieStore.getAll().forEach((cookie) => {
         response.cookies.set(cookie.name, cookie.value);
       });

@@ -161,9 +161,9 @@ export default function Home() {
           <button
             onClick={() => {
               if (url) {
-                router.push(`/campaigns/new?url=${encodeURIComponent(url)}`);
+                router.push(`/auth/login?redirect=${encodeURIComponent(`/campaigns/new?url=${encodeURIComponent(url)}`)}`);
               } else {
-                router.push("/campaigns/new");
+                router.push("/auth/login?redirect=/campaigns/new");
               }
             }}
             style={{
@@ -613,7 +613,7 @@ export default function Home() {
             SPARKはその問題を終わらせる。
           </p>
           <button
-            onClick={() => router.push("/campaigns/new")}
+            onClick={() => router.push("/auth/login?redirect=/campaigns/new")}
             style={{
               background: "#ff6b35",
               color: "#fff",
