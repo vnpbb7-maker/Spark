@@ -4,15 +4,14 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { CampaignSettings } from "@/types/campaign";
 import { createClient } from "@/lib/supabase/client";
-import { isPlatformAllowed, getRequiredPlan } from "@/lib/plan-guard";
 
-const ALL_PLATFORMS = [
-  { id: "twitter", name: "X (Twitter)", icon: "𝕏", color: "#1d9bf0" },
-  { id: "reddit", name: "Reddit", icon: "🤖", color: "#ff4500" },
-  { id: "linkedin", name: "LinkedIn", icon: "in", color: "#0a66c2" },
-  { id: "tiktok", name: "TikTok", icon: "♪", color: "#ff0050" },
-  { id: "instagram", name: "Instagram", icon: "◈", color: "#e1306c" },
-  { id: "facebook", name: "Facebook", icon: "f", color: "#1877f2" },
+const PLATFORMS = [
+  { id: "twitter", name: "X", icon: "𝕏", color: "#1d9bf0", requiredPlan: "free" },
+  { id: "reddit", name: "Reddit", icon: "🤖", color: "#ff4500", requiredPlan: "free" },
+  { id: "linkedin", name: "LinkedIn", icon: "in", color: "#0a66c2", requiredPlan: "starter" },
+  { id: "tiktok", name: "TikTok", icon: "♪", color: "#ff0050", requiredPlan: "growth" },
+  { id: "instagram", name: "Instagram", icon: "◈", color: "#e1306c", requiredPlan: "growth" },
+  { id: "facebook", name: "Facebook", icon: "f", color: "#1877f2", requiredPlan: "growth" },
 ];
 
 const TONES = [
@@ -21,10 +20,21 @@ const TONES = [
   { id: "empathetic" as const, label: "共感型", desc: "相手の悩みに寄り添う温かいトーン" },
 ];
 
-const PLAN_LABELS: Record<string, string> = {
-  starter: "Starterプラン以上",
-  growth: "Growthプラン以上",
+const PLAN_ORDER = ["free", "starter", "growth", "agency"];
+
+const PLAN_PRICE: Record<string, string> = {
+  starter: "Starterプラン（$99/月）",
+  growth: "Growthプラン（$299/月）",
 };
+
+function canUsePlatform(platformRequiredPlan: string, userPlan: string): boolean {
+  return PLAN_ORDER.indexOf(userPlan) >= PLAN_ORDER.indexOf(platformRequiredPlan);
+}
+
+function getPlanLabel(requiredPlan: string): string {
+  if (requiredPlan === "starter") return "Starterプラン";
+  return "Growthプラン";
+}
 
 type Props = {
   recommendedPlatforms: string[];
@@ -39,11 +49,9 @@ export default function Step3Settings({ recommendedPlatforms, onSubmit, loading 
   const [tone, setTone] = useState<CampaignSettings["tone"]>("casual");
   const [autoMode, setAutoMode] = useState(false);
   const [userPlan, setUserPlan] = useState("free");
-  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
-  const [lockedPlatform, setLockedPlatform] = useState("");
+  const [upgradeModal, setUpgradeModal] = useState<string | null>(null);
 
   useEffect(() => {
-    // Fetch user plan
     const fetchPlan = async () => {
       const supabase = createClient();
       const { data: { user } } = await supabase.auth.getUser();
@@ -56,8 +64,6 @@ export default function Step3Settings({ recommendedPlatforms, onSubmit, loading 
           .single();
         const plan = sub?.plan || "free";
         setUserPlan(plan);
-
-        // Set daily limit based on plan
         if (plan === "growth" || plan === "agency") setDailyLimit(200);
         else if (plan === "starter") setDailyLimit(50);
         else setDailyLimit(10);
@@ -67,24 +73,23 @@ export default function Step3Settings({ recommendedPlatforms, onSubmit, loading 
   }, []);
 
   useEffect(() => {
-    // Auto-select allowed recommended platforms
-    const allowed = recommendedPlatforms.filter((p) => isPlatformAllowed(p, userPlan));
+    const allowed = recommendedPlatforms.filter((p) => {
+      const plat = PLATFORMS.find((pl) => pl.id === p);
+      return plat && canUsePlatform(plat.requiredPlan, userPlan);
+    });
     setPlatforms(allowed);
   }, [recommendedPlatforms, userPlan]);
 
-  const togglePlatform = (id: string) => {
-    if (!isPlatformAllowed(id, userPlan)) {
-      setLockedPlatform(id);
-      setShowUpgradeModal(true);
+  const handlePlatformClick = (p: typeof PLATFORMS[number]) => {
+    if (!canUsePlatform(p.requiredPlan, userPlan)) {
+      setUpgradeModal(p.name);
       return;
     }
-    setPlatforms((prev) => prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]);
+    setPlatforms((prev) => prev.includes(p.id) ? prev.filter((x) => x !== p.id) : [...prev, p.id]);
   };
 
-  const hasAllowedPlatforms = platforms.some((p) => isPlatformAllowed(p, userPlan));
-
   const handleSubmit = () => {
-    if (!hasAllowedPlatforms) {
+    if (platforms.length === 0) {
       router.push("/pricing");
       return;
     }
@@ -104,46 +109,53 @@ export default function Step3Settings({ recommendedPlatforms, onSubmit, loading 
       <div style={{ marginBottom: "36px" }}>
         <h3 style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600, fontSize: "15px", color: "#f0efe8", marginBottom: "12px" }}>プラットフォーム選択</h3>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "10px" }}>
-          {ALL_PLATFORMS.map((p) => {
-            const allowed = isPlatformAllowed(p.id, userPlan);
+          {PLATFORMS.map((p) => {
+            const allowed = canUsePlatform(p.requiredPlan, userPlan);
             const selected = platforms.includes(p.id);
             const recommended = recommendedPlatforms.includes(p.id);
-            const requiredPlan = getRequiredPlan(p.id);
             return (
               <button
                 key={p.id}
-                onClick={() => togglePlatform(p.id)}
+                onClick={() => handlePlatformClick(p)}
                 style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "10px",
-                  padding: "14px 16px",
-                  background: !allowed
-                    ? "rgba(255,255,255,0.02)"
-                    : selected
-                      ? "rgba(255,107,53,0.1)"
-                      : "rgba(255,255,255,0.03)",
+                  display: "flex", flexDirection: "column", gap: "6px",
+                  padding: "16px", textAlign: "left",
+                  background: !allowed ? "rgba(255,255,255,0.02)" : selected ? "rgba(255,107,53,0.1)" : "rgba(255,255,255,0.03)",
                   border: `1px solid ${!allowed ? "rgba(255,255,255,0.05)" : selected ? "rgba(255,107,53,0.4)" : "rgba(255,255,255,0.07)"}`,
-                  borderRadius: "12px",
-                  cursor: "pointer",
-                  transition: "all 0.2s",
-                  position: "relative",
-                  opacity: allowed ? 1 : 0.6,
+                  borderRadius: "14px", cursor: "pointer", transition: "all 0.2s", position: "relative",
                 }}
               >
-                <span style={{ fontSize: "18px", fontWeight: 700, color: allowed ? p.color : "rgba(240,239,232,0.3)" }}>{allowed ? p.icon : "🔒"}</span>
-                <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
-                  <span style={{ fontSize: "14px", color: allowed ? (selected ? "#f0efe8" : "rgba(240,239,232,0.5)") : "rgba(240,239,232,0.35)", fontWeight: selected ? 600 : 400 }}>
+                {/* Row 1: icon + name */}
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <span style={{ fontSize: "18px", fontWeight: 700, color: allowed ? p.color : "rgba(240,239,232,0.25)" }}>
+                    {allowed ? p.icon : "🔒"}
+                  </span>
+                  <span style={{ fontSize: "15px", fontWeight: selected ? 700 : 500, color: allowed ? (selected ? "#f0efe8" : "rgba(240,239,232,0.6)") : "rgba(240,239,232,0.3)" }}>
                     {p.name}
                   </span>
-                  {!allowed && (
-                    <span style={{ fontSize: "10px", color: "#ff6b35", fontWeight: 500 }}>
-                      {PLAN_LABELS[requiredPlan] || "アップグレード必要"}
+                </div>
+                {/* Row 2: badges */}
+                <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+                  {recommended && (
+                    <span style={{ fontSize: "10px", fontWeight: 600, color: "#2dd17a", background: "rgba(45,209,122,0.1)", padding: "2px 8px", borderRadius: "6px" }}>
+                      ✨ AI推奨
+                    </span>
+                  )}
+                  {allowed ? (
+                    <span style={{ fontSize: "10px", fontWeight: 600, color: "rgba(240,239,232,0.4)", background: "rgba(255,255,255,0.05)", padding: "2px 8px", borderRadius: "6px" }}>
+                      ✓ 無料で使える
+                    </span>
+                  ) : (
+                    <span style={{ fontSize: "10px", fontWeight: 600, color: "#ff6b35", background: "rgba(255,107,53,0.1)", padding: "2px 8px", borderRadius: "6px" }}>
+                      🔒 {getPlanLabel(p.requiredPlan)}
                     </span>
                   )}
                 </div>
-                {recommended && allowed && (
-                  <span style={{ position: "absolute", top: "6px", right: "8px", fontSize: "9px", color: "#ff6b35", fontWeight: 600 }}>推奨</span>
+                {/* Row 3: locked CTA */}
+                {!allowed && (
+                  <div style={{ fontSize: "11px", color: "rgba(255,107,53,0.7)", marginTop: "2px" }}>
+                    アップグレードして使う →
+                  </div>
                 )}
               </button>
             );
@@ -170,7 +182,7 @@ export default function Step3Settings({ recommendedPlatforms, onSubmit, loading 
         />
         <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", color: "rgba(240,239,232,0.3)", marginTop: "4px" }}>
           <span>10</span>
-          <span>{userPlan === "free" ? "10 (Freeプラン)" : userPlan === "starter" ? "50" : "200"}</span>
+          <span>{userPlan === "free" ? "10（Freeプラン）" : userPlan === "starter" ? "50" : "200"}</span>
         </div>
       </div>
 
@@ -213,53 +225,42 @@ export default function Step3Settings({ recommendedPlatforms, onSubmit, loading 
         onClick={handleSubmit}
         disabled={loading || platforms.length === 0}
         style={{
-          width: "100%",
-          padding: "18px 24px",
+          width: "100%", padding: "18px 24px",
           background: platforms.length > 0 ? "#ff6b35" : "rgba(255,107,53,0.3)",
-          color: "#fff",
-          border: "none",
-          borderRadius: "14px",
-          fontSize: "18px",
-          fontWeight: 700,
-          fontFamily: "'Space Grotesk', sans-serif",
+          color: "#fff", border: "none", borderRadius: "14px",
+          fontSize: "18px", fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif",
           cursor: platforms.length > 0 && !loading ? "pointer" : "not-allowed",
           boxShadow: platforms.length > 0 ? "0 0 40px rgba(255,107,53,0.35)" : "none",
-          transition: "all 0.2s",
-          opacity: loading ? 0.7 : 1,
+          transition: "all 0.2s", opacity: loading ? 0.7 : 1,
         }}
       >
-        {loading ? "作成中..." : hasAllowedPlatforms ? "キャンペーン開始 🚀" : "プランをアップグレード"}
+        {loading ? "作成中..." : platforms.length > 0 ? "キャンペーン開始 🚀" : "プランをアップグレード"}
       </button>
 
       {/* Upgrade Modal */}
-      {showUpgradeModal && (
-        <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }}>
-          <div style={{ background: "#13132a", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "20px", padding: "36px", maxWidth: "420px", width: "100%", textAlign: "center" }}>
-            <div style={{ fontSize: "40px", marginBottom: "16px" }}>🔒</div>
-            <h3 style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: "20px", color: "#f0efe8", marginBottom: "12px" }}>
-              プランのアップグレードが必要です
-            </h3>
-            <p style={{ fontSize: "14px", color: "rgba(240,239,232,0.6)", lineHeight: 1.6, marginBottom: "28px" }}>
-              {lockedPlatform.charAt(0).toUpperCase() + lockedPlatform.slice(1)} は
-              {getRequiredPlan(lockedPlatform) === "starter" ? " Starterプラン（$99/月）" : " Growthプラン（$299/月）"}
-              以上でご利用いただけます。
-              <br />
-              今すぐアップグレードしますか？
-            </p>
-            <div style={{ display: "flex", gap: "12px" }}>
-              <button
-                onClick={() => setShowUpgradeModal(false)}
-                style={{ flex: 1, padding: "12px", background: "rgba(255,255,255,0.06)", color: "rgba(240,239,232,0.6)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "12px", fontSize: "14px", fontWeight: 600, cursor: "pointer" }}
-              >
-                キャンセル
-              </button>
-              <button
-                onClick={() => router.push("/pricing")}
-                style={{ flex: 1, padding: "12px", background: "#ff6b35", color: "#fff", border: "none", borderRadius: "12px", fontSize: "14px", fontWeight: 700, cursor: "pointer", boxShadow: "0 0 20px rgba(255,107,53,0.35)" }}
-              >
-                アップグレードする
-              </button>
+      {upgradeModal && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
+          <div style={{ background: "#13132a", border: "0.5px solid rgba(255,255,255,0.15)", borderRadius: 20, padding: 32, maxWidth: 400, width: "90%", textAlign: "center" }}>
+            <div style={{ fontSize: 32, marginBottom: 16 }}>🔒</div>
+            <div style={{ fontFamily: "Space Grotesk", fontSize: 18, fontWeight: 700, color: "#f0efe8", marginBottom: 8 }}>
+              {upgradeModal}はGrowthプランで利用可能
             </div>
+            <div style={{ fontSize: 13, color: "rgba(240,239,232,0.5)", marginBottom: 24, lineHeight: 1.6 }}>
+              Growthプラン（$299/月）にアップグレードすると
+              全6プラットフォームで自動コメント投稿が使えます。
+            </div>
+            <button
+              onClick={() => { router.push("/pricing"); setUpgradeModal(null); }}
+              style={{ width: "100%", background: "#ff6b35", color: "#fff", border: "none", borderRadius: 10, padding: "12px", fontSize: 14, fontWeight: 600, cursor: "pointer", marginBottom: 10, fontFamily: "DM Sans" }}
+            >
+              アップグレードする →
+            </button>
+            <button
+              onClick={() => setUpgradeModal(null)}
+              style={{ width: "100%", background: "transparent", color: "rgba(240,239,232,0.5)", border: "0.5px solid rgba(255,255,255,0.1)", borderRadius: 10, padding: "12px", fontSize: 14, cursor: "pointer", fontFamily: "DM Sans" }}
+            >
+              キャンセル
+            </button>
           </div>
         </div>
       )}
