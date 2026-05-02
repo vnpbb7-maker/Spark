@@ -1,13 +1,15 @@
 import { createClient } from "@supabase/supabase-js";
 import { PLANS, PlanKey } from "@/lib/stripe/client";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+function getSupabase() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+}
 
 export async function getPlanForUser(userId: string) {
-  const { data: subscription } = await supabase
+  const { data: subscription } = await getSupabase()
     .from("subscriptions")
     .select("plan")
     .eq("user_id", userId)
@@ -27,7 +29,7 @@ export async function checkDailyLimit(campaignId: string, userId: string): Promi
   }
 
   const today = new Date().toISOString().split("T")[0];
-  const { count } = await supabase
+  const { count } = await getSupabase()
     .from("targets")
     .select("*", { count: "exact", head: true })
     .eq("campaign_id", campaignId)

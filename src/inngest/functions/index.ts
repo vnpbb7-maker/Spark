@@ -1,10 +1,12 @@
 import { inngest } from "../client";
 import { createClient } from "@supabase/supabase-js";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+function getSupabase() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+}
 
 export const discoverTargets = inngest.createFunction(
   { id: "discover-targets", triggers: [{ event: "campaign/discover" }] },
@@ -12,7 +14,7 @@ export const discoverTargets = inngest.createFunction(
     const campaignId = event.data.campaign_id as string;
 
     // 1. キャンペーン取得
-    const { data: campaign } = await supabase
+    const { data: campaign } = await getSupabase()
       .from("campaigns")
       .select("*")
       .eq("id", campaignId)
@@ -22,7 +24,7 @@ export const discoverTargets = inngest.createFunction(
 
     // 2. 本日の接触数確認
     const today = new Date().toISOString().split("T")[0];
-    const { count } = await supabase
+    const { count } = await getSupabase()
       .from("targets")
       .select("*", { count: "exact", head: true })
       .eq("campaign_id", campaignId)
@@ -102,7 +104,7 @@ export const discoverTargets = inngest.createFunction(
                 } catch {}
 
                 if (matchData.score >= 50) {
-                  await supabase.from("targets").insert({
+                  await getSupabase().from("targets").insert({
                     campaign_id: campaignId,
                     platform,
                     username,
