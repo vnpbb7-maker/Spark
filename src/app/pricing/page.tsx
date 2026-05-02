@@ -99,7 +99,7 @@ export default function PricingPage() {
     fetchUser();
   }, []);
 
-  const handlePlanClick = (plan: typeof PLANS[number]) => {
+  const handlePlanClick = async (plan: typeof PLANS[number]) => {
     if (plan.key === "free") {
       router.push("/campaigns/new");
       return;
@@ -108,8 +108,25 @@ export default function PricingPage() {
       router.push("/auth/login");
       return;
     }
-    // TODO: Stripe Checkout integration
-    alert(`${plan.name}プランのStripe Checkoutは準備中です。`);
+    try {
+      const res = await fetch("/api/stripe/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          plan: plan.key,
+          successUrl: `${window.location.origin}/dashboard?success=true`,
+          cancelUrl: `${window.location.origin}/pricing`,
+        }),
+      });
+      const data = await res.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        alert(data.error || "チェックアウトの作成に失敗しました");
+      }
+    } catch {
+      alert("エラーが発生しました。もう一度お試しください。");
+    }
   };
 
   return (
