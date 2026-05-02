@@ -12,6 +12,7 @@ export const discoverTargets = inngest.createFunction(
   { id: "discover-targets", triggers: [{ event: "campaign/discover" }] },
   async ({ event }: any) => {
     const campaignId = event.data.campaign_id as string;
+    console.log("Starting discover for campaign:", campaignId);
 
     // 1. キャンペーン取得
     const { data: campaign } = await getSupabase()
@@ -37,6 +38,8 @@ export const discoverTargets = inngest.createFunction(
     // 3. Tavily APIでターゲット発見
     const personas = campaign.target_personas?.personas || [];
     const platforms = campaign.platforms || [];
+    console.log("Personas count:", personas.length);
+    console.log("Platforms:", platforms);
 
     for (const persona of personas.slice(0, 1)) {
       for (const platform of platforms.slice(0, 2)) {
@@ -44,6 +47,7 @@ export const discoverTargets = inngest.createFunction(
 
         for (const keyword of keywords.slice(0, 2)) {
           try {
+            console.log("Calling Tavily for keyword:", keyword, "platform:", platform);
             const tavilyResponse = await fetch(
               "https://api.tavily.com/search",
               {
@@ -59,6 +63,7 @@ export const discoverTargets = inngest.createFunction(
 
             const tavilyData = await tavilyResponse.json();
             const results = tavilyData.results || [];
+            console.log("Tavily results:", results.length);
 
             for (const result of results) {
               // URLからユーザー名を抽出
@@ -102,6 +107,7 @@ export const discoverTargets = inngest.createFunction(
                 try {
                   matchData = JSON.parse(text);
                 } catch {}
+                console.log("Match score:", matchData.score, "for:", username);
 
                 if (matchData.score >= 50) {
                   await getSupabase().from("targets").insert({
@@ -115,6 +121,7 @@ export const discoverTargets = inngest.createFunction(
                     match_reason: matchData.reason,
                     status: "pending",
                   });
+                  console.log("Inserted target:", username);
                 }
               }
             }
