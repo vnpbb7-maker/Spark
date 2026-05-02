@@ -99,7 +99,7 @@ function CampaignNewContent() {
       }
 
       const result = await res.json();
-      router.push(result.redirect || "/dashboard");
+      window.location.href = result.redirect || "/dashboard";
     } catch (e) {
       setError(e instanceof Error ? e.message : "エラーが発生しました");
       setCreating(false);

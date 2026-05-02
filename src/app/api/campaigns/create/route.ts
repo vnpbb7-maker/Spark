@@ -56,17 +56,22 @@ export async function POST(request: Request) {
       );
     }
 
-    // Inngest: ターゲット発見ジョブを発火
-    await inngest.send({
-      name: "campaign/discover",
-      data: { campaign_id: data.id },
-    });
+    // Inngest: ターゲット発見ジョブを発火（失敗してもキャンペーン作成は成功させる）
+    try {
+      await inngest.send({
+        name: "campaign/discover",
+        data: { campaign_id: data.id },
+      });
+    } catch (inngestError) {
+      console.error("Inngest send error (non-blocking):", inngestError);
+    }
 
     return NextResponse.json({ id: data.id, redirect: `/campaigns/${data.id}` });
   } catch (error) {
     console.error("Campaign create error:", error);
+    const message = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
-      { error: "キャンペーンの作成に失敗しました" },
+      { error: `キャンペーンの作成に失敗しました: ${message}` },
       { status: 500 }
     );
   }
