@@ -2,7 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 
-export async function POST(req: Request) {
+export async function GET() {
   const cookieStore = await cookies();
 
   const supabase = createServerClient(
@@ -22,30 +22,31 @@ export async function POST(req: Request) {
     }
   );
 
-  let redirectPath = "/dashboard";
-  try {
-    const body = await req.json();
-    redirectPath = body.redirect || "/dashboard";
-  } catch {}
-
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "google",
     options: {
-      redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback?redirect=${encodeURIComponent(redirectPath)}`,
+      redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`,
+      scopes: "email profile",
     },
   });
 
   if (error || !data.url) {
-    return NextResponse.json(
-      { error: error?.message || "OAuth URL generation failed" },
-      { status: 500 }
+    return NextResponse.redirect(
+      `${process.env.NEXT_PUBLIC_SITE_URL}/auth/login?error=oauth_failed`
     );
   }
 
+  // 直接Googleにリダイレクト
+  const response = NextResponse.redirect(data.url);
+
   // cookieをレスポンスに設定
-  const response = NextResponse.json({ url: data.url });
   cookieStore.getAll().forEach((cookie) => {
-    response.cookies.set(cookie.name, cookie.value);
+    response.cookies.set(cookie.name, cookie.value, {
+      path: "/",
+      sameSite: "lax",
+      secure: true,
+      httpOnly: true,
+    });
   });
 
   return response;

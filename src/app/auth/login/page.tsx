@@ -15,22 +15,7 @@ function LoginContent() {
 
   const handleGoogleLogin = async () => {
     setLoading(true);
-    setError("");
-
-    const res = await fetch("/api/auth/google", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ redirect: redirectTo }),
-    });
-
-    const data = await res.json();
-
-    if (data.url) {
-      window.location.href = data.url;
-    } else {
-      setError(data.error || "Googleログインに失敗しました");
-      setLoading(false);
-    }
+    window.location.href = "/api/auth/google";
   };
 
   const handleEmailLogin = async (e: React.FormEvent) => {
