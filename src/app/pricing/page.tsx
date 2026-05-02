@@ -92,8 +92,7 @@ export default function PricingPage() {
           .from("subscriptions")
           .select("plan")
           .eq("user_id", u.id)
-          .eq("status", "active")
-          .single();
+          .maybeSingle();
         setCurrentPlan(sub?.plan || "free");
       }
     };

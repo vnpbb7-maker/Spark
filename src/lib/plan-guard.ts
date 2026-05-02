@@ -13,8 +13,7 @@ export async function getPlanForUser(userId: string) {
     .from("subscriptions")
     .select("plan")
     .eq("user_id", userId)
-    .eq("status", "active")
-    .single();
+    .maybeSingle();
 
   const planKey: PlanKey = (subscription?.plan as PlanKey) || "free";
   return PLANS[planKey] || PLANS.free;
