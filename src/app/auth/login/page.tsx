@@ -16,15 +16,19 @@ function LoginContent() {
   const handleGoogleLogin = async () => {
     setLoading(true);
     setError("");
-    const supabase = createClient();
-    const { data, error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback?redirect=${encodeURIComponent(redirectTo)}`,
-      },
+
+    const res = await fetch("/api/auth/google", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ redirect: redirectTo }),
     });
-    if (error) {
-      setError(error.message);
+
+    const data = await res.json();
+
+    if (data.url) {
+      window.location.href = data.url;
+    } else {
+      setError(data.error || "Googleログインに失敗しました");
       setLoading(false);
     }
   };
