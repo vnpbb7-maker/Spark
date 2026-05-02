@@ -12,9 +12,9 @@ import PendingBanner from "@/components/dashboard/PendingBanner";
 const NAV_ITEMS = [
   { label: "ダッシュボード", href: "/dashboard", icon: "📊", active: true },
   { label: "キャンペーン", href: "/campaigns/new", icon: "🚀" },
-  { label: "承認待ち", href: "/dashboard", icon: "✍", badge: true },
-  { label: "アナリティクス", href: "/dashboard", icon: "📈" },
-  { label: "設定", href: "/dashboard", icon: "⚙️" },
+  { label: "承認待ち", href: "/approve", icon: "✍", badge: true },
+  { label: "アナリティクス", href: "/analytics", icon: "📈" },
+  { label: "設定", href: "/settings", icon: "⚙️" },
 ];
 
 export default function DashboardPage() {
