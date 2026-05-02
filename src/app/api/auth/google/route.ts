@@ -45,7 +45,6 @@ export async function GET() {
       path: "/",
       sameSite: "lax",
       secure: true,
-      httpOnly: true,
     });
   });
 
