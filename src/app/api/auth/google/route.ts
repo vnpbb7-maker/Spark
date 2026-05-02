@@ -5,6 +5,9 @@ import { NextResponse } from "next/server";
 export async function GET() {
   const cookieStore = await cookies();
 
+  // Supabaseが設定するcookieをトラッキング
+  const responseCookies: { name: string; value: string; options: Record<string, unknown> }[] = [];
+
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -14,9 +17,12 @@ export async function GET() {
           return cookieStore.getAll();
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) =>
-            cookieStore.set(name, value, options)
-          );
+          cookiesToSet.forEach(({ name, value, options }) => {
+            try {
+              cookieStore.set(name, value, options);
+            } catch {}
+            responseCookies.push({ name, value, options: options as Record<string, unknown> });
+          });
         },
       },
     }
@@ -36,14 +42,14 @@ export async function GET() {
     );
   }
 
-  // 直接Googleにリダイレクト
   const response = NextResponse.redirect(data.url);
 
-  // cookieをレスポンスに設定
-  cookieStore.getAll().forEach((cookie) => {
-    response.cookies.set(cookie.name, cookie.value, {
+  // PKCE code_verifier等のcookieをレスポンスに設定
+  responseCookies.forEach(({ name, value, options }) => {
+    response.cookies.set(name, value, {
+      ...options,
       path: "/",
-      sameSite: "lax",
+      sameSite: "lax" as const,
       secure: true,
     });
   });

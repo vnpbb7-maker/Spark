@@ -8,16 +8,16 @@ export async function GET(request: NextRequest) {
   const origin = process.env.NEXT_PUBLIC_SITE_URL!;
 
   console.log("callback - code:", code ? "exists" : "missing");
-  console.log(
-    "callback - all cookies:",
-    request.cookies.getAll().map((c) => c.name)
-  );
 
   if (!code) {
     return NextResponse.redirect(`${origin}/auth/login?error=no_code`);
   }
 
   const cookieStore = await cookies();
+
+  // Supabaseが設定するcookieをトラッキング
+  const responseCookies: { name: string; value: string; options: Record<string, unknown> }[] = [];
+
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -27,34 +27,34 @@ export async function GET(request: NextRequest) {
           return request.cookies.getAll();
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) =>
-            cookieStore.set(name, value, options)
-          );
+          cookiesToSet.forEach(({ name, value, options }) => {
+            try {
+              cookieStore.set(name, value, options);
+            } catch {}
+            // レスポンス用にトラッキング
+            responseCookies.push({ name, value, options: options as Record<string, unknown> });
+          });
         },
       },
     }
   );
 
   const { data, error } = await supabase.auth.exchangeCodeForSession(code);
-  console.log(
-    "exchange - user:",
-    data?.user?.email,
-    "error:",
-    error?.message
-  );
+  console.log("exchange - user:", data?.user?.email, "error:", error?.message);
+  console.log("exchange - cookies to set:", responseCookies.map((c) => c.name));
 
   if (error) {
     return NextResponse.redirect(`${origin}/auth/login?error=auth_failed`);
   }
 
-  // セッションcookieをレスポンスに設定
   const response = NextResponse.redirect(`${origin}/dashboard`);
 
-  // cookieStoreから全cookieをレスポンスにコピー
-  cookieStore.getAll().forEach((cookie) => {
-    response.cookies.set(cookie.name, cookie.value, {
+  // Supabaseが設定したcookieをレスポンスにコピー
+  responseCookies.forEach(({ name, value, options }) => {
+    response.cookies.set(name, value, {
+      ...options,
       path: "/",
-      sameSite: "lax",
+      sameSite: "lax" as const,
       secure: true,
     });
   });
