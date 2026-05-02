@@ -34,26 +34,6 @@ JSONのみで返してください。前置き不要。
   "positioning": "競合との差別化（1文）"
 }`;
 
-async function fetchPageContent(url: string): Promise<string> {
-  try {
-    const tavilyRes = await fetch("https://api.tavily.com/search", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        api_key: process.env.TAVILY_API_KEY,
-        query: url,
-        max_results: 1,
-        include_raw_content: true,
-      }),
-    });
-    const tavilyData = await tavilyRes.json();
-    return tavilyData.results?.[0]?.content || "";
-  } catch (err) {
-    console.error("Tavily fetch error:", err);
-    return "";
-  }
-}
-
 async function callClaude(input: string, retryCount = 0): Promise<Record<string, unknown>> {
   const client = new Anthropic({
     apiKey: process.env.ANTHROPIC_API_KEY,
@@ -119,16 +99,9 @@ export async function POST(request: Request) {
       );
     }
 
-    // URLが入力された場合、Tavilyでページ内容を取得
-    let userMessage: string;
-    if (url) {
-      const pageContent = await fetchPageContent(url);
-      userMessage = pageContent
-        ? `URL: ${url}\n\nページ内容:\n${pageContent.slice(0, 2000)}`
-        : `プロダクトURL: ${url}`;
-    } else {
-      userMessage = `プロダクト説明:\n${description}`;
-    }
+    const userMessage = url
+      ? `以下のURLのプロダクト・サービスを分析してください：\n${url}\n\nURLからわかる情報（ドメイン名、パス、クエリパラメータなど）を元に、このプロダクトが何をするサービスかを推測して分析してください。`
+      : `プロダクト説明:\n${description}`;
 
     const result = await callClaude(userMessage);
 

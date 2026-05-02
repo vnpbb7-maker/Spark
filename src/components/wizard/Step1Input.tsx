@@ -104,6 +104,9 @@ export default function Step1Input({ onAnalyze, initialUrl = "" }: Props) {
             onFocus={(e) => (e.target.style.borderColor = "rgba(255,107,53,0.5)")}
             onBlur={(e) => (e.target.style.borderColor = "rgba(255,255,255,0.1)")}
           />
+          <p style={{ fontSize: "12px", color: "rgba(240,239,232,0.35)", marginTop: "10px", lineHeight: 1.5 }}>
+            💡 より正確な分析のために、「テキストで説明」タブにプロダクトの詳しい説明を入力することをおすすめします
+          </p>
         </div>
       ) : (
         <div>
