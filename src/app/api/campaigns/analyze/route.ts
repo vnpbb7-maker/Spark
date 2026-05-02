@@ -5,8 +5,14 @@ const SYSTEM_PROMPT = `あなたはスタートアップのGrowth専門家です
 以下のプロダクト情報を分析し、
 JSONのみで返してください。前置き不要。
 
+重要：
+- URLが入力された場合、そのURLのサービス・プロダクトを分析する
+- 個人のSNSアカウント（instagram.com/@xxx等）の場合は
+  そのアカウントのブランド・コンテンツを分析する
+- 分析対象はURLまたは説明文に記載されたプロダクト・サービスそのもの
+
 {
-  "core_value": "本質的価値（1文・40字以内）",
+  "core_value": "プロダクトの本質的価値（1文・40字以内）",
   "problem_solved": "解決している問題（1文）",
   "personas": [
     {
@@ -27,6 +33,26 @@ JSONのみで返してください。前置き不要。
   "recommended_platforms": ["reddit","twitter"],
   "positioning": "競合との差別化（1文）"
 }`;
+
+async function fetchPageContent(url: string): Promise<string> {
+  try {
+    const tavilyRes = await fetch("https://api.tavily.com/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        api_key: process.env.TAVILY_API_KEY,
+        query: url,
+        max_results: 1,
+        include_raw_content: true,
+      }),
+    });
+    const tavilyData = await tavilyRes.json();
+    return tavilyData.results?.[0]?.content || "";
+  } catch (err) {
+    console.error("Tavily fetch error:", err);
+    return "";
+  }
+}
 
 async function callClaude(input: string, retryCount = 0): Promise<Record<string, unknown>> {
   const client = new Anthropic({
@@ -93,11 +119,18 @@ export async function POST(request: Request) {
       );
     }
 
-    const input = url
-      ? `プロダクトURL: ${url}`
-      : `プロダクト説明: ${description}`;
+    // URLが入力された場合、Tavilyでページ内容を取得
+    let userMessage: string;
+    if (url) {
+      const pageContent = await fetchPageContent(url);
+      userMessage = pageContent
+        ? `URL: ${url}\n\nページ内容:\n${pageContent.slice(0, 2000)}`
+        : `プロダクトURL: ${url}`;
+    } else {
+      userMessage = `プロダクト説明:\n${description}`;
+    }
 
-    const result = await callClaude(input);
+    const result = await callClaude(userMessage);
 
     return NextResponse.json(result);
   } catch (error) {
