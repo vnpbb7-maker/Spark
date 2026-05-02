@@ -3,9 +3,12 @@ import Stripe from "stripe";
 import { createClient } from "@/lib/supabase/server";
 import { PLANS, PlanKey } from "@/lib/stripe/client";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: "2024-11-20.acacia",
-});
+function getStripe() {
+  if (!process.env.STRIPE_SECRET_KEY) {
+    throw new Error("STRIPE_SECRET_KEY is not set");
+  }
+  return new Stripe(process.env.STRIPE_SECRET_KEY);
+}
 
 export async function POST(req: Request) {
   try {
@@ -23,24 +26,32 @@ export async function POST(req: Request) {
     const planKey = plan as PlanKey;
     const planConfig = PLANS[planKey];
 
-    if (!planConfig || !planConfig.priceId) {
+    if (!planConfig) {
       return NextResponse.json(
-        { error: "Invalid plan or no price configured" },
+        { error: `Invalid plan: ${plan}` },
         { status: 400 }
       );
     }
+
+    if (!planConfig.priceId) {
+      return NextResponse.json(
+        { error: `No price configured for plan: ${plan}. Set STRIPE_${plan.toUpperCase()}_PRICE_ID env var.` },
+        { status: 400 }
+      );
+    }
+
+    const stripe = getStripe();
 
     // Check if user already has a Stripe customer ID
     const { data: existingCustomer } = await supabase
       .from("subscriptions")
       .select("stripe_customer_id")
       .eq("user_id", user.id)
-      .single();
+      .maybeSingle();
 
     let customerId = existingCustomer?.stripe_customer_id;
 
     if (!customerId) {
-      // Create Stripe customer
       const customer = await stripe.customers.create({
         email: user.email,
         metadata: { user_id: user.id },
