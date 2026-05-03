@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 export default function Home() {
   const [url, setUrl] = useState("");
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [openIndex, setOpenIndex] = useState<number | null>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -583,6 +584,120 @@ export default function Home() {
               >
                 {plan.cta}
               </button>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* FAQ */}
+      <section
+        style={{
+          width: "100%",
+          maxWidth: 800,
+          margin: "0 auto",
+          padding: "80px 24px",
+        }}
+      >
+        <h2
+          style={{
+            fontFamily: "Space Grotesk",
+            fontSize: 32,
+            fontWeight: 700,
+            textAlign: "center",
+            marginBottom: 40,
+          }}
+        >
+          よくある質問
+        </h2>
+        <div>
+          {[
+            {
+              q: "誰のアカウントで投稿されますか？",
+              a: "あなた自身のSNSアカウントで投稿されます。SPARKはあなたのアカウントを代理操作するツールです。SPARKのアカウントは使用しません。",
+            },
+            {
+              q: "クレジットカードなしで試せますか？",
+              a: "はい。Freeプランはカード不要で今すぐ始められます。X・RedditでAIがターゲットを発見し、コメントを生成します（1日10件まで）。",
+            },
+            {
+              q: "自動投稿はBANされませんか？",
+              a: "対策として、投稿間隔をランダムに（30〜90秒）設定し、1日の投稿数に上限を設けています。また半自動モードでは人間が内容を確認してから投稿します。各プラットフォームの利用規約はご確認ください。",
+            },
+            {
+              q: "どのプラットフォームに対応していますか？",
+              a: "X(Twitter)・RedditはFreeプランから利用可能。LinkedIn・TikTok・Instagram・FacebookはGrowthプラン（$299/月）以上でご利用いただけます。",
+            },
+            {
+              q: "半自動と全自動の違いは？",
+              a: "半自動モードはAIがコメントを生成し、あなたが内容を確認してから投稿します。全自動モードはAIが生成から投稿まで完全に自動で実行します。最初は半自動をおすすめします。",
+            },
+            {
+              q: "いつでもキャンセルできますか？",
+              a: "はい。いつでもキャンセル可能です。請求期間終了まで引き続きご利用いただけます。",
+            },
+            {
+              q: "どのくらいで最初のユーザーが獲得できますか？",
+              a: "プロダクトやターゲット層によって異なりますが、多くの場合1〜2週間で最初の反応が得られます。AIが継続的に学習・改善するため、時間とともに精度が上がります。",
+            },
+          ].map((faq, i) => (
+            <div
+              key={i}
+              style={{
+                borderBottom: "0.5px solid rgba(255,255,255,0.07)",
+              }}
+            >
+              <button
+                onClick={() => setOpenIndex(openIndex === i ? null : i)}
+                style={{
+                  width: "100%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: "20px 0",
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  fontFamily: "DM Sans",
+                  fontSize: 15,
+                  fontWeight: 600,
+                  color: openIndex === i ? "#ff6b35" : "#f0efe8",
+                  textAlign: "left",
+                  transition: "color 0.2s",
+                }}
+              >
+                {faq.q}
+                <span
+                  style={{
+                    fontSize: 12,
+                    marginLeft: 16,
+                    flexShrink: 0,
+                    transition: "transform 0.2s",
+                    transform: openIndex === i ? "rotate(180deg)" : "rotate(0deg)",
+                  }}
+                >
+                  ▼
+                </span>
+              </button>
+              <div
+                style={{
+                  maxHeight: openIndex === i ? 200 : 0,
+                  overflow: "hidden",
+                  transition: "max-height 0.3s ease, opacity 0.3s ease",
+                  opacity: openIndex === i ? 1 : 0,
+                }}
+              >
+                <p
+                  style={{
+                    fontSize: 14,
+                    lineHeight: 1.7,
+                    color: "rgba(240,239,232,0.6)",
+                    paddingBottom: 20,
+                    margin: 0,
+                  }}
+                >
+                  {faq.a}
+                </p>
+              </div>
             </div>
           ))}
         </div>
