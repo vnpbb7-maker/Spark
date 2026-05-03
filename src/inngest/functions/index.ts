@@ -182,10 +182,11 @@ export const discoverTargets = inngest.createFunction(
               // URLからユーザー名を抽出
               const url = result.url || "";
               const username = extractUsername(url, platform);
+              console.log("URL:", url, "→ username:", username);
 
               if (username && username !== "unknown") {
                 // 即保存（スコアはバッチ処理で後から更新）
-                console.log("Found target:", username, "on", platform);
+                console.log("Inserting target:", username, "on", platform);
 
                 await getSupabase().from("targets").insert({
                   campaign_id: campaignId,
@@ -200,6 +201,8 @@ export const discoverTargets = inngest.createFunction(
                 });
                 insertedTargets.push(username);
                 console.log("Inserted target:", username);
+              } else {
+                console.log("Skipping - invalid username:", username, "from URL:", url);
               }
             }
           } catch (err) {
