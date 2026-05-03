@@ -589,6 +589,142 @@ export default function Home() {
         </div>
       </section>
 
+      {/* Agency */}
+      <section
+        style={{
+          width: "100%",
+          padding: "80px 24px",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+        }}
+      >
+        <div
+          style={{
+            fontSize: 11,
+            color: "#ff6b35",
+            letterSpacing: 2,
+            textTransform: "uppercase",
+            marginBottom: 12,
+            textAlign: "center",
+          }}
+        >
+          Agency プラン
+        </div>
+
+        <h2
+          style={{
+            fontFamily: "Space Grotesk",
+            fontSize: "clamp(24px, 4vw, 42px)",
+            fontWeight: 700,
+            textAlign: "center",
+            marginBottom: 16,
+          }}
+        >
+          代理店・プロ向けの
+          <span style={{ color: "#ff6b35" }}>最強プラン</span>
+        </h2>
+
+        <p
+          style={{
+            fontSize: 16,
+            color: "rgba(240,239,232,0.5)",
+            textAlign: "center",
+            maxWidth: 600,
+            margin: "0 auto 48px",
+            lineHeight: 1.7,
+          }}
+        >
+          1つの契約で無制限のクライアントを管理。
+          <br />
+          あなたのブランドでSPARKを提供できる。
+        </p>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+            gap: 20,
+            width: "100%",
+            maxWidth: 1100,
+            margin: "0 auto",
+          }}
+        >
+          {[
+            {
+              icon: "🏷️",
+              title: "ホワイトラベルUI",
+              desc: "SPARKのロゴを消して自社ブランドとして提供。クライアントにはあなたのAIツールとして見える。",
+            },
+            {
+              icon: "👥",
+              title: "複数クライアント管理",
+              desc: "クライアントごとにキャンペーンを分けて管理。成果レポートをリアルタイムで確認できる。",
+            },
+            {
+              icon: "🔗",
+              title: "API直接アクセス",
+              desc: "自社システムとSPARKを連携。独自のワークフローに組み込んで完全自動化を実現。",
+            },
+            {
+              icon: "📊",
+              title: "採用・マーケに特化",
+              desc: "候補者発見・スカウト・ブランド認知まで。SNSを活用した現代型の顧客獲得を代行できる。",
+            },
+          ].map((item) => (
+            <div
+              key={item.title}
+              style={{
+                background: "#13132a",
+                border: "0.5px solid rgba(255,255,255,0.07)",
+                borderRadius: 16,
+                padding: 24,
+              }}
+            >
+              <div style={{ fontSize: 32, marginBottom: 12 }}>{item.icon}</div>
+              <div
+                style={{
+                  fontFamily: "Space Grotesk",
+                  fontSize: 16,
+                  fontWeight: 600,
+                  marginBottom: 8,
+                  color: "#f0efe8",
+                }}
+              >
+                {item.title}
+              </div>
+              <div
+                style={{
+                  fontSize: 13,
+                  color: "rgba(240,239,232,0.5)",
+                  lineHeight: 1.6,
+                }}
+              >
+                {item.desc}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <button
+          onClick={() => router.push("/auth/login")}
+          style={{
+            marginTop: 40,
+            background: "transparent",
+            color: "#ff6b35",
+            border: "1px solid #ff6b35",
+            borderRadius: 12,
+            padding: "12px 32px",
+            fontSize: 14,
+            fontWeight: 600,
+            cursor: "pointer",
+            fontFamily: "DM Sans",
+          }}
+        >
+          Agencyプランについて相談する →
+        </button>
+      </section>
+
       {/* FAQ */}
       <section
         style={{
@@ -638,6 +774,22 @@ export default function Home() {
             {
               q: "どのくらいで最初のユーザーが獲得できますか？",
               a: "プロダクトやターゲット層によって異なりますが、多くの場合1〜2週間で最初の反応が得られます。AIが継続的に学習・改善するため、時間とともに精度が上がります。",
+            },
+            {
+              q: "Agencyプランのホワイトラベルとは何ですか？",
+              a: "SPARKのロゴや名前を消して、あなた自身のブランドとしてクライアントに提供できる機能です。例えばマーケティング代理店がSPARKを使いながら、クライアントには「自社のAIツール」として提供できます。",
+            },
+            {
+              q: "Agencyプランはどんな人に向いていますか？",
+              a: "マーケティング代理店・スタートアップ支援会社・VC・採用コンサルタントなど、複数のクライアントのユーザー獲得を支援するプロ向けです。1つの契約で無制限のクライアントを管理できます。",
+            },
+            {
+              q: "Agencyプランで複数クライアントをどう管理しますか？",
+              a: "専用の管理画面からクライアントごとにキャンペーンを分けて管理できます。各クライアントの成果をリアルタイムで確認・レポート出力でき、ホワイトラベルUIでクライアントに直接アクセス権を付与することも可能です。",
+            },
+            {
+              q: "どう活用できますか？",
+              a: "需要に合った候補者をAIが自動発見し、SNSで自然なアプローチメッセージを送ります。従来のスカウトメール・求人広告と異なり、候補者が既に発信している悩みや関心に合わせて接触するため、返信率が高くなります。",
             },
           ].map((faq, i) => (
             <div
