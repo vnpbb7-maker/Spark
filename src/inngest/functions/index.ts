@@ -27,6 +27,46 @@ function buildSearchQuery(platform: string, keyword: string): string {
   }
 }
 
+function extractUsername(url: string, platform: string): string {
+  try {
+    const urlObj = new URL(url);
+    const pathParts = urlObj.pathname.split("/").filter(Boolean);
+
+    switch (platform) {
+      case "reddit":
+        // /r/subreddit/comments/id/title → r/subreddit
+        if (pathParts[0] === "r" && pathParts[1]) {
+          return `r/${pathParts[1]}`;
+        }
+        // /user/username → username
+        if (pathParts[0] === "user" && pathParts[1]) {
+          return pathParts[1];
+        }
+        return pathParts[0] || "reddit";
+
+      case "twitter":
+        // /username/status/id → username
+        // /search?q=... → search
+        if (urlObj.pathname.includes("search")) {
+          return `search:${urlObj.searchParams.get("q")?.slice(0, 20) || "query"}`;
+        }
+        return pathParts[0] || "twitter";
+
+      case "linkedin":
+        // /in/username → username
+        if (pathParts[0] === "in" && pathParts[1]) {
+          return pathParts[1];
+        }
+        return pathParts[0] || "linkedin";
+
+      default:
+        return pathParts[0] || platform;
+    }
+  } catch {
+    return platform;
+  }
+}
+
 export const discoverTargets = inngest.createFunction(
   { id: "discover-targets", triggers: [{ event: "campaign/discover" }] },
   async ({ event }: any) => {
@@ -99,7 +139,7 @@ export const discoverTargets = inngest.createFunction(
             for (const result of results) {
               // URLからユーザー名を抽出
               const url = result.url || "";
-              const username = url.split("/")[3] || "unknown";
+              const username = extractUsername(url, platform);
 
               if (username && username !== "unknown") {
                 // マッチスコアをClaudeで算出
