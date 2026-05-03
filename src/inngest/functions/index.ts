@@ -9,32 +9,63 @@ function getSupabase() {
 }
 
 function buildSearchQuery(platform: string, keyword: string, language: string = ""): string {
-  const langQuery =
-    language === "ja"
-      ? "Japanese 日本語"
-      : language === "zh"
-        ? "Chinese 中文"
-        : language === "ko"
-          ? "Korean 한국어"
-          : language === "any"
-            ? ""
-            : "";
+  if (language === "ja") {
+    switch (platform) {
+      case "twitter":
+        return `${keyword} 日本語 スタートアップ site:twitter.com OR site:x.com`;
+      case "reddit":
+        return `${keyword} 日本語 スタートアップ`;
+      case "linkedin":
+        return `${keyword} 日本 LinkedIn`;
+      case "tiktok":
+        return `${keyword} 日本語 tiktok`;
+      case "instagram":
+        return `${keyword} 日本語 instagram`;
+      case "facebook":
+        return `${keyword} 日本語 facebook`;
+      default:
+        return `${keyword} 日本語`;
+    }
+  }
 
+  if (language === "zh") {
+    switch (platform) {
+      case "twitter":
+        return `${keyword} 中文 startup site:twitter.com OR site:x.com`;
+      case "reddit":
+        return `${keyword} 中文 startup`;
+      default:
+        return `${keyword} 中文`;
+    }
+  }
+
+  if (language === "ko") {
+    switch (platform) {
+      case "twitter":
+        return `${keyword} 한국어 startup site:twitter.com OR site:x.com`;
+      case "reddit":
+        return `${keyword} 한국어 startup`;
+      default:
+        return `${keyword} 한국어`;
+    }
+  }
+
+  // 英語 / any / その他
   switch (platform) {
     case "twitter":
-      return `${keyword} ${langQuery} startup founder twitter`.trim();
+      return `${keyword} startup founder twitter`;
     case "reddit":
-      return `reddit ${keyword} ${langQuery} startup`.trim();
+      return `reddit ${keyword} startup`;
     case "linkedin":
-      return `${keyword} ${langQuery} linkedin professional`.trim();
+      return `${keyword} linkedin professional`;
     case "tiktok":
-      return `${keyword} ${langQuery} tiktok`.trim();
+      return `${keyword} tiktok`;
     case "instagram":
-      return `${keyword} ${langQuery} instagram`.trim();
+      return `${keyword} instagram`;
     case "facebook":
-      return `${keyword} ${langQuery} facebook group`.trim();
+      return `${keyword} facebook group`;
     default:
-      return `${keyword} ${langQuery}`.trim();
+      return keyword;
   }
 }
 
@@ -192,6 +223,21 @@ export const discoverTargets = inngest.createFunction(
                 console.log("Match score:", matchData.score, "for:", username);
 
                 if (matchData.score >= (campaign.min_match_score || 60)) {
+                  // 言語フィルター
+                  if (campaign.target_language === "ja") {
+                    const content = result.content || "";
+                    const hasJapanese = /[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FFF]/.test(content);
+                    const hasJapaneseUrl =
+                      result.url?.includes(".jp") ||
+                      result.url?.includes("japan") ||
+                      result.url?.includes("japanese");
+
+                    if (!hasJapanese && !hasJapaneseUrl) {
+                      console.log("Skipping non-Japanese target:", result.url);
+                      continue;
+                    }
+                  }
+
                   await getSupabase().from("targets").insert({
                     campaign_id: campaignId,
                     platform,
