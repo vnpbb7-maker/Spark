@@ -15,6 +15,11 @@ app.get("/health", (req, res) => {
   res.json({ status: "ok", service: "spark-playwright" });
 });
 
+// バージョン確認
+app.get("/version", (req, res) => {
+  res.json({ version: "1.1.0", routes: ["/health", "/post-comment", "/test-connection"] });
+});
+
 // APIキー認証ミドルウェア
 function authMiddleware(req, res, next) {
   const apiKey = req.headers["x-api-key"];
