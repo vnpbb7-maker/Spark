@@ -330,26 +330,35 @@ JSONのみ返してください：
         }
 
         // コメントが文字列かどうか確認
-        let commentText =
+        let finalContent =
           typeof commentData.comment === "string"
             ? commentData.comment
             : JSON.stringify(commentData.comment);
 
-        // contentがJSON文字列の場合はパース
-        if (typeof commentText === "string" && commentText.startsWith("{")) {
+        // ```json {...} ``` 形式を除去
+        const codeBlockMatch = finalContent.match(/```json\s*(\{[\s\S]*?\})\s*```/);
+        if (codeBlockMatch) {
           try {
-            const parsed = JSON.parse(commentText);
-            commentText = parsed.comment || commentText;
+            const parsed = JSON.parse(codeBlockMatch[1]);
+            finalContent = parsed.comment || finalContent;
           } catch {}
         }
 
-        if (commentText) {
+        // { "comment": "..." } 形式を除去
+        if (typeof finalContent === "string" && /^\s*\{[\s\S]*\}\s*$/.test(finalContent)) {
+          try {
+            const parsed = JSON.parse(finalContent);
+            finalContent = parsed.comment || finalContent;
+          } catch {}
+        }
+
+        if (finalContent) {
           // commentsテーブルに保存
           await supabase.from("comments").insert({
             target_id: target.id,
             campaign_id: campaignId,
             platform: target.platform,
-            content: commentText,
+            content: finalContent,
             approach: commentData.approach || "",
             approved: false,
           });
