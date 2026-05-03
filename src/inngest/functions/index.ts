@@ -68,6 +68,9 @@ export const discoverTargets = inngest.createFunction(
           try {
             const query = buildSearchQuery(platform, keyword);
             console.log("Tavily query:", query);
+            console.log("TAVILY_API_KEY exists:", !!process.env.TAVILY_API_KEY);
+            console.log("TAVILY_API_KEY prefix:", process.env.TAVILY_API_KEY?.slice(0, 8));
+
             const tavilyResponse = await fetch(
               "https://api.tavily.com/search",
               {
@@ -84,10 +87,13 @@ export const discoverTargets = inngest.createFunction(
               }
             );
 
-            const tavilyData = await tavilyResponse.json();
+            console.log("Tavily status:", tavilyResponse.status);
+            const tavilyText = await tavilyResponse.text();
+            console.log("Tavily raw response:", tavilyText.slice(0, 500));
+
+            const tavilyData = JSON.parse(tavilyText);
             const results = tavilyData.results || [];
-            console.log("Tavily response status:", tavilyResponse.status);
-            console.log("Tavily results:", results.length);
+            console.log("Tavily results count:", results.length);
 
             for (const result of results) {
               // URLからユーザー名を抽出
