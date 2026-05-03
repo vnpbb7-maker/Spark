@@ -204,17 +204,15 @@ export const discoverTargets = inngest.createFunction(
       }
     }
 
-    // 発見したtargetsに対してコメント生成を発火
-    if (insertedTargets.length > 0) {
-      console.log("Firing generate for", insertedTargets.length, "targets");
-      try {
-        await inngest.send({
-          name: "campaign/generate",
-          data: { campaign_id: campaignId },
-        });
-      } catch (e) {
-        console.error("Failed to fire generate:", e);
-      }
+    // コメント生成を発火
+    try {
+      await inngest.send({
+        name: "campaign/generate",
+        data: { campaign_id: campaignId },
+      });
+      console.log("Triggered generate-comments for campaign:", campaignId);
+    } catch (e) {
+      console.error("Failed to fire generate:", e);
     }
 
     return { success: true, campaignId, targetsFound: insertedTargets.length };
