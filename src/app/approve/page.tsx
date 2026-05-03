@@ -4,6 +4,36 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
+function parseCommentContent(content: string): { comment: string; approach: string } {
+  if (!content) return { comment: "", approach: "" };
+
+  // ```json {...} ``` 形式を処理
+  const jsonMatch = content.match(/```json\s*(\{[\s\S]*?\})\s*```/);
+  if (jsonMatch) {
+    try {
+      const parsed = JSON.parse(jsonMatch[1]);
+      return {
+        comment: parsed.comment || content,
+        approach: parsed.approach || "",
+      };
+    } catch {}
+  }
+
+  // { ... } 形式を処理
+  const objMatch = content.match(/\{[\s\S]*\}/);
+  if (objMatch) {
+    try {
+      const parsed = JSON.parse(objMatch[0]);
+      return {
+        comment: parsed.comment || content,
+        approach: parsed.approach || "",
+      };
+    } catch {}
+  }
+
+  return { comment: content, approach: "" };
+}
+
 export default function ApprovePage() {
   const router = useRouter();
   const [comments, setComments] = useState<any[]>([]);
@@ -236,32 +266,39 @@ export default function ApprovePage() {
               </div>
             )}
 
-            <div
-              style={{
-                background: "rgba(255,107,53,0.05)",
-                border: "0.5px solid rgba(255,107,53,0.2)",
-                borderRadius: 10,
-                padding: 12,
-                fontSize: 14,
-                color: "#f0efe8",
-                marginBottom: 8,
-              }}
-            >
-              {comment.content}
-            </div>
+            {(() => {
+              const { comment: commentText, approach: commentApproach } = parseCommentContent(comment.content);
+              return (
+                <>
+                  <div
+                    style={{
+                      background: "rgba(255,107,53,0.05)",
+                      border: "0.5px solid rgba(255,107,53,0.2)",
+                      borderRadius: 10,
+                      padding: 12,
+                      fontSize: 14,
+                      color: "#f0efe8",
+                      marginBottom: 8,
+                    }}
+                  >
+                    {commentText}
+                  </div>
 
-            {comment.approach && (
-              <div
-                style={{
-                  fontSize: 12,
-                  color: "rgba(240,239,232,0.4)",
-                  fontStyle: "italic",
-                  marginBottom: 16,
-                }}
-              >
-                💡 {comment.approach}
-              </div>
-            )}
+                  {(commentApproach || comment.approach) && (
+                    <div
+                      style={{
+                        fontSize: 12,
+                        color: "rgba(240,239,232,0.4)",
+                        fontStyle: "italic",
+                        marginBottom: 16,
+                      }}
+                    >
+                      💡 {commentApproach || comment.approach}
+                    </div>
+                  )}
+                </>
+              );
+            })()}
 
             <div style={{ display: "flex", gap: 10 }}>
               <button
