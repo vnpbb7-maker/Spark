@@ -8,6 +8,25 @@ function getSupabase() {
   );
 }
 
+function buildSearchQuery(platform: string, keyword: string): string {
+  switch (platform) {
+    case "twitter":
+      return `${keyword} startup founder twitter`;
+    case "reddit":
+      return `reddit ${keyword} startup`;
+    case "linkedin":
+      return `${keyword} linkedin professional`;
+    case "tiktok":
+      return `${keyword} tiktok`;
+    case "instagram":
+      return `${keyword} instagram`;
+    case "facebook":
+      return `${keyword} facebook group`;
+    default:
+      return keyword;
+  }
+}
+
 export const discoverTargets = inngest.createFunction(
   { id: "discover-targets", triggers: [{ event: "campaign/discover" }] },
   async ({ event }: any) => {
@@ -47,22 +66,27 @@ export const discoverTargets = inngest.createFunction(
 
         for (const keyword of keywords.slice(0, 2)) {
           try {
-            console.log("Calling Tavily for keyword:", keyword, "platform:", platform);
+            const query = buildSearchQuery(platform, keyword);
+            console.log("Tavily query:", query);
             const tavilyResponse = await fetch(
               "https://api.tavily.com/search",
               {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: {
+                  "Content-Type": "application/json",
+                  "Authorization": `Bearer ${process.env.TAVILY_API_KEY}`,
+                },
                 body: JSON.stringify({
-                  api_key: process.env.TAVILY_API_KEY,
-                  query: `site:${platform === "twitter" ? "twitter.com" : platform === "reddit" ? "reddit.com" : platform + ".com"} ${keyword}`,
-                  max_results: 3,
+                  query: query,
+                  max_results: 5,
+                  search_depth: "basic",
                 }),
               }
             );
 
             const tavilyData = await tavilyResponse.json();
             const results = tavilyData.results || [];
+            console.log("Tavily response status:", tavilyResponse.status);
             console.log("Tavily results:", results.length);
 
             for (const result of results) {
