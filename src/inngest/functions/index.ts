@@ -290,19 +290,31 @@ JSONのみ返してください：
 
         let commentData = { comment: "", approach: "" };
         try {
-          commentData = JSON.parse(text);
+          // テキストからJSONブロックを抽出
+          const jsonMatch = text.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            commentData = JSON.parse(jsonMatch[0]);
+          } else {
+            commentData = { comment: text.slice(0, 200), approach: "自動生成" };
+          }
         } catch {
           commentData = { comment: text.slice(0, 200), approach: "自動生成" };
         }
 
-        if (commentData.comment) {
+        // コメントが文字列かどうか確認
+        const commentText =
+          typeof commentData.comment === "string"
+            ? commentData.comment
+            : JSON.stringify(commentData.comment);
+
+        if (commentText) {
           // commentsテーブルに保存
           await supabase.from("comments").insert({
             target_id: target.id,
             campaign_id: campaignId,
             platform: target.platform,
-            content: commentData.comment,
-            approach: commentData.approach,
+            content: commentText,
+            approach: commentData.approach || "",
             approved: false,
           });
 
