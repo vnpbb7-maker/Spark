@@ -98,7 +98,19 @@ app.post("/test-connection", authMiddleware, async (req, res) => {
   const { platform, credentials } = req.body;
 
   try {
-    const browser = await chromium.launch({ headless: true });
+    const browser = await chromium.launch({
+    headless: true,
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-gpu",
+      "--no-first-run",
+      "--no-zygote",
+      "--single-process",
+      "--disable-extensions",
+    ],
+  });
     const context = await browser.newContext({
       userAgent:
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -128,7 +140,19 @@ app.post("/test-connection", authMiddleware, async (req, res) => {
 // ---- Reddit ----
 
 async function postRedditComment(credentials, target, comment) {
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({
+    headless: true,
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-gpu",
+      "--no-first-run",
+      "--no-zygote",
+      "--single-process",
+      "--disable-extensions",
+    ],
+  });
   try {
     const context = await browser.newContext({
       userAgent:
@@ -213,7 +237,19 @@ async function testRedditLogin(page, credentials) {
 // ---- Twitter ----
 
 async function postTwitterComment(credentials, target, comment) {
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({
+    headless: true,
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-gpu",
+      "--no-first-run",
+      "--no-zygote",
+      "--single-process",
+      "--disable-extensions",
+    ],
+  });
   try {
     const context = await browser.newContext({
       userAgent:

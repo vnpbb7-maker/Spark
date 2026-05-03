@@ -302,10 +302,18 @@ JSONのみ返してください：
         }
 
         // コメントが文字列かどうか確認
-        const commentText =
+        let commentText =
           typeof commentData.comment === "string"
             ? commentData.comment
             : JSON.stringify(commentData.comment);
+
+        // contentがJSON文字列の場合はパース
+        if (typeof commentText === "string" && commentText.startsWith("{")) {
+          try {
+            const parsed = JSON.parse(commentText);
+            commentText = parsed.comment || commentText;
+          } catch {}
+        }
 
         if (commentText) {
           // commentsテーブルに保存
