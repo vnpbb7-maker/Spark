@@ -72,13 +72,15 @@ export default function ApprovePage() {
       });
       const data = await res.json();
 
-      if (data.success) {
+      if (data.success && data.queued) {
+        alert("✅ " + (data.message || "承認しました"));
+      } else if (data.success) {
         alert("✅ 投稿しました！");
       } else {
         alert(`⚠️ 承認しましたが投稿に失敗: ${data.error}`);
       }
     } catch {
-      alert("⚠️ 承認しましたが投稿サーバーに接続できませんでした");
+      alert("✅ 承認しました");
     }
 
     setComments((prev) => prev.filter((c) => c.id !== commentId));

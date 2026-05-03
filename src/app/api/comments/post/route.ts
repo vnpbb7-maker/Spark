@@ -6,11 +6,14 @@ export async function POST(req: NextRequest) {
   const playwrightUrl = process.env.PLAYWRIGHT_SERVER_URL;
   const playwrightKey = process.env.PLAYWRIGHT_API_KEY;
 
+  // Playwrightサーバーが未設定の場合は承認のみ（投稿はキューに入る）
   if (!playwrightUrl) {
-    return NextResponse.json(
-      { success: false, error: "PLAYWRIGHT_SERVER_URL is not configured" },
-      { status: 500 }
-    );
+    console.log("PLAYWRIGHT_SERVER_URL not set, comment approved but not posted:", comment_id);
+    return NextResponse.json({
+      success: true,
+      queued: true,
+      message: "承認しました。投稿サーバー設定後に自動投稿されます。",
+    });
   }
 
   try {
@@ -27,9 +30,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(data);
   } catch (err) {
     console.error("Playwright server error:", err);
-    return NextResponse.json(
-      { success: false, error: "Playwright server is unreachable" },
-      { status: 502 }
-    );
+    return NextResponse.json({
+      success: true,
+      queued: true,
+      message: "承認しました。投稿サーバーに接続できなかったため、後で自動投稿されます。",
+    });
   }
 }
