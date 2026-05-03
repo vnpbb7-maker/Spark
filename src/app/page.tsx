@@ -173,11 +173,7 @@ export default function Home() {
           <button
             onClick={() => {
               if (isLoggedIn) {
-                if (url) {
-                  router.push(`/campaigns/new?url=${encodeURIComponent(url)}`);
-                } else {
-                  router.push("/campaigns/new");
-                }
+                router.push("/dashboard");
               } else {
                 if (url) {
                   router.push(`/auth/login?redirect=/campaigns/new?url=${encodeURIComponent(url)}`);
