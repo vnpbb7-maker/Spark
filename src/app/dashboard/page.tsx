@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { useRealtimeLog } from "@/hooks/useRealtimeLog";
+import { useRealtimeLog, LogEntry } from "@/hooks/useRealtimeLog";
 import KpiCards from "@/components/dashboard/KpiCards";
 import CampaignList from "@/components/dashboard/CampaignList";
 import DashboardLiveLog from "@/components/dashboard/DashboardLiveLog";
@@ -19,11 +19,12 @@ const NAV_ITEMS = [
 
 export default function DashboardPage() {
   const router = useRouter();
-  const logs = useRealtimeLog();
+  const realtimeLogs = useRealtimeLog();
   const [user, setUser] = useState<{ email?: string } | null>(null);
   const [campaigns, setCampaigns] = useState<Array<Record<string, unknown>>>([]);
   const [kpi, setKpi] = useState({ targetsFound: 0, pendingComments: 0, postedComments: 0, conversions: 0, prevTargets: 0, prevPending: 0, prevPosted: 0, prevConversions: 0 });
   const [loading, setLoading] = useState(true);
+  const [initialLogs, setInitialLogs] = useState<LogEntry[]>([]);
 
   const fetchData = useCallback(async () => {
     const supabase = createClient();
@@ -69,6 +70,44 @@ export default function DashboardPage() {
         pendCount = count || 0;
       } catch {}
       setKpi({ targetsFound: totalTargets, pendingComments: pendCount, postedComments: totalPosted, conversions: totalConversions, prevTargets: Math.max(0, totalTargets - 5), prevPending: Math.max(0, pendCount - 2), prevPosted: Math.max(0, totalPosted - 3), prevConversions: Math.max(0, totalConversions - 1) });
+
+      // 最近のアクティビティを取得
+      const campIds = camps.map((c) => c.id);
+      const { data: recentTargets } = await supabase
+        .from("targets")
+        .select("platform, username, match_score, created_at")
+        .in("campaign_id", campIds)
+        .order("created_at", { ascending: false })
+        .limit(15);
+
+      const { data: recentComments } = await supabase
+        .from("comments")
+        .select("platform, approved, posted_at, created_at")
+        .in("campaign_id", campIds)
+        .order("created_at", { ascending: false })
+        .limit(10);
+
+      const entries: { log: LogEntry; time: string }[] = [];
+      let counter = 0;
+
+      recentComments?.forEach((c) => {
+        const ts = new Date(c.posted_at || c.created_at).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+        if (c.posted_at) {
+          entries.push({ log: { id: `dinit-${++counter}`, icon: "📤", text: `${c.platform}に投稿完了`, color: "#2dd17a", timestamp: ts, type: "post" }, time: c.posted_at });
+        } else if (c.approved) {
+          entries.push({ log: { id: `dinit-${++counter}`, icon: "✅", text: `コメント承認: ${c.platform}`, color: "#7c5cfc", timestamp: ts, type: "approve" }, time: c.created_at });
+        } else {
+          entries.push({ log: { id: `dinit-${++counter}`, icon: "✍", text: `コメント生成: ${c.platform}`, color: "#ffd60a", timestamp: ts, type: "generate" }, time: c.created_at });
+        }
+      });
+
+      recentTargets?.forEach((t) => {
+        const ts = new Date(t.created_at).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+        entries.push({ log: { id: `dinit-${++counter}`, icon: "🔍", text: `${t.platform}で発見: @${t.username} (${t.match_score}%)`, color: "#ff6b35", timestamp: ts, type: "find" }, time: t.created_at });
+      });
+
+      entries.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
+      setInitialLogs(entries.slice(0, 20).map((e) => e.log));
     }
     setLoading(false);
   }, [router]);
@@ -150,7 +189,7 @@ export default function DashboardPage() {
 
         {/* Right sidebar - Live Log */}
         <aside style={{ width: "320px", borderLeft: "1px solid rgba(255,255,255,0.07)", flexShrink: 0, padding: "32px 16px" }}>
-          <DashboardLiveLog logs={logs} />
+          <DashboardLiveLog logs={[...realtimeLogs, ...initialLogs.filter((il) => !realtimeLogs.some((rl) => rl.text === il.text))].slice(0, 20)} />
         </aside>
       </div>
     </div>
