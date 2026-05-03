@@ -21,12 +21,27 @@ export default function ApprovePage() {
       }
 
       try {
-        const { data } = await supabase
+        const { data, error } = await supabase
           .from("comments")
-          .select("*, targets(*), campaigns(*)")
+          .select(`
+            *,
+            targets (
+              username,
+              platform,
+              post_url,
+              post_content,
+              match_score
+            ),
+            campaigns (
+              product_url,
+              product_description
+            )
+          `)
           .eq("approved", false)
           .order("created_at", { ascending: false });
 
+        console.log("comments error:", error);
+        console.log("comments count:", data?.length);
         setComments(data || []);
       } catch {
         setComments([]);
