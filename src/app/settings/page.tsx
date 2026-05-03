@@ -60,6 +60,20 @@ export default function SettingsPage() {
     setSaving(null);
   };
 
+  const testConnection = async (platformId: string) => {
+    const res = await fetch("/api/platforms/test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ platform: platformId }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      alert(`✅ ${platformId} の接続に成功しました`);
+    } else {
+      alert(`❌ 失敗: ${data.error}`);
+    }
+  };
+
   if (loading) return <div style={{ minHeight: "100vh", background: "#0d0d1a", display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(240,239,232,0.3)" }}>読み込み中...</div>;
 
   return (
@@ -103,9 +117,16 @@ export default function SettingsPage() {
                     />
                   </div>
                 ))}
-                <button onClick={() => savePlatform(p.id)} disabled={saving === p.id} style={{ width: "100%", padding: "10px", background: saving === p.id ? "rgba(255,107,53,0.3)" : "#ff6b35", color: "#fff", border: "none", borderRadius: "10px", fontSize: "13px", fontWeight: 600, cursor: "pointer" }}>
-                  {saving === p.id ? "保存中..." : "保存"}
-                </button>
+                <div style={{ display: "flex", gap: "8px" }}>
+                  <button onClick={() => savePlatform(p.id)} disabled={saving === p.id} style={{ flex: 1, padding: "10px", background: saving === p.id ? "rgba(255,107,53,0.3)" : "#ff6b35", color: "#fff", border: "none", borderRadius: "10px", fontSize: "13px", fontWeight: 600, cursor: "pointer" }}>
+                    {saving === p.id ? "保存中..." : "保存"}
+                  </button>
+                  {isSaved && (
+                    <button onClick={() => testConnection(p.id)} style={{ background: "transparent", border: "0.5px solid rgba(255,255,255,0.15)", borderRadius: 8, padding: "6px 12px", fontSize: 12, color: "rgba(240,239,232,0.5)", cursor: "pointer", fontFamily: "DM Sans", whiteSpace: "nowrap" }}>
+                      🔗 接続テスト
+                    </button>
+                  )}
+                </div>
               </div>
             );
           })}
