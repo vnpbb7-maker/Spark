@@ -43,7 +43,7 @@ export function useRealtimeLog(campaignId?: string) {
     const filter = campaignId ? `campaign_id=eq.${campaignId}` : undefined;
 
     const channel = supabase
-      .channel(`realtime-${campaignId || "all"}`)
+      .channel(`campaign-${campaignId || "all"}`)
       .on(
         "postgres_changes",
         {
@@ -127,7 +127,12 @@ export function useRealtimeLog(campaignId?: string) {
           }
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log("Realtime status:", status);
+        if (status === "CHANNEL_ERROR") {
+          console.error("Realtime channel error - check Supabase Realtime settings");
+        }
+      });
 
     return () => {
       supabase.removeChannel(channel);
