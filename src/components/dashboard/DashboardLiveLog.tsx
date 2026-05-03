@@ -14,8 +14,15 @@ export default function DashboardLiveLog({ logs }: { logs: LogEntry[] }) {
       </div>
       <div style={{ flex: 1, overflow: "auto", padding: "12px 16px" }}>
         {logs.length === 0 ? (
-          <div style={{ textAlign: "center", padding: "40px 16px", color: "rgba(240,239,232,0.2)", fontSize: "13px" }}>
-            アクティビティを待機中...
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "32px 16px", gap: 12 }}>
+            <div style={{ width: 32, height: 32, border: "3px solid rgba(255,107,53,0.2)", borderTop: "3px solid #ff6b35", borderRadius: "50%", animation: "spin 1s linear infinite" }} />
+            <div style={{ fontSize: 13, color: "rgba(240,239,232,0.7)", textAlign: "center", lineHeight: 1.6 }}>
+              Reddit・TwitterでAIがターゲットを探しています
+            </div>
+            <div style={{ fontSize: 11, color: "rgba(240,239,232,0.4)", textAlign: "center", lineHeight: 1.6 }}>
+              マッチするターゲットが見つかり次第<br />
+              リアルタイムで表示されます
+            </div>
           </div>
         ) : (
           logs.map((log) => (
@@ -29,7 +36,7 @@ export default function DashboardLiveLog({ logs }: { logs: LogEntry[] }) {
           ))
         )}
       </div>
-      <style>{`@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.2} }`}</style>
+      <style>{`@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.2} } @keyframes spin { 0%{transform:rotate(0deg)} 100%{transform:rotate(360deg)} }`}</style>
     </div>
   );
 }
