@@ -53,10 +53,34 @@ export default function ApprovePage() {
 
   const handleApprove = async (commentId: string) => {
     const supabase = createClient();
+
+    // まずapprovedをtrueに更新
     await supabase
       .from("comments")
-      .update({ approved: true, approved_at: new Date().toISOString() })
+      .update({
+        approved: true,
+        approved_at: new Date().toISOString(),
+      })
       .eq("id", commentId);
+
+    // Railwayに投稿リクエストを送る
+    try {
+      const res = await fetch("/api/comments/post", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ comment_id: commentId }),
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        alert("✅ 投稿しました！");
+      } else {
+        alert(`⚠️ 承認しましたが投稿に失敗: ${data.error}`);
+      }
+    } catch {
+      alert("⚠️ 承認しましたが投稿サーバーに接続できませんでした");
+    }
+
     setComments((prev) => prev.filter((c) => c.id !== commentId));
   };
 
