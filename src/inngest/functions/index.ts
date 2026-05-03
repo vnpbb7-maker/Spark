@@ -8,22 +8,33 @@ function getSupabase() {
   );
 }
 
-function buildSearchQuery(platform: string, keyword: string): string {
+function buildSearchQuery(platform: string, keyword: string, language: string = ""): string {
+  const langQuery =
+    language === "ja"
+      ? "Japanese 日本語"
+      : language === "zh"
+        ? "Chinese 中文"
+        : language === "ko"
+          ? "Korean 한국어"
+          : language === "any"
+            ? ""
+            : "";
+
   switch (platform) {
     case "twitter":
-      return `${keyword} startup founder twitter`;
+      return `${keyword} ${langQuery} startup founder twitter`.trim();
     case "reddit":
-      return `reddit ${keyword} startup`;
+      return `reddit ${keyword} ${langQuery} startup`.trim();
     case "linkedin":
-      return `${keyword} linkedin professional`;
+      return `${keyword} ${langQuery} linkedin professional`.trim();
     case "tiktok":
-      return `${keyword} tiktok`;
+      return `${keyword} ${langQuery} tiktok`.trim();
     case "instagram":
-      return `${keyword} instagram`;
+      return `${keyword} ${langQuery} instagram`.trim();
     case "facebook":
-      return `${keyword} facebook group`;
+      return `${keyword} ${langQuery} facebook group`.trim();
     default:
-      return keyword;
+      return `${keyword} ${langQuery}`.trim();
   }
 }
 
@@ -107,7 +118,7 @@ export const discoverTargets = inngest.createFunction(
 
         for (const keyword of keywords.slice(0, 2)) {
           try {
-            const query = buildSearchQuery(platform, keyword);
+            const query = buildSearchQuery(platform, keyword, campaign.target_language || "");
             console.log("Tavily query:", query);
             console.log("TAVILY_API_KEY exists:", !!process.env.TAVILY_API_KEY);
             console.log("TAVILY_API_KEY prefix:", process.env.TAVILY_API_KEY?.slice(0, 8));
@@ -180,7 +191,7 @@ export const discoverTargets = inngest.createFunction(
                 } catch {}
                 console.log("Match score:", matchData.score, "for:", username);
 
-                if (matchData.score >= 50) {
+                if (matchData.score >= (campaign.min_match_score || 60)) {
                   await getSupabase().from("targets").insert({
                     campaign_id: campaignId,
                     platform,
@@ -245,6 +256,22 @@ export const generateComments = inngest.createFunction(
       try {
         const campaign = target.campaigns;
 
+        const requiredKeywords = campaign?.required_keywords || "";
+        const keywordInstruction = requiredKeywords
+          ? `\n・必ず以下のキーワードを自然に含める：${requiredKeywords}`
+          : "";
+
+        const languageInstruction =
+          campaign?.target_language === "ja"
+            ? "日本語で書く"
+            : campaign?.target_language === "en"
+              ? "英語で書く"
+              : campaign?.target_language === "zh"
+                ? "中国語で書く"
+                : campaign?.target_language === "ko"
+                  ? "韓国語で書く"
+                  : "投稿と同じ言語で書く";
+
         // Claude APIでコメント生成
         const response = await fetch(
           "https://api.anthropic.com/v1/messages",
@@ -268,14 +295,15 @@ export const generateComments = inngest.createFunction(
 対象投稿URL：${target.post_url}
 投稿内容：${target.post_content?.slice(0, 300) || ""}
 プラットフォーム：${target.platform}
-トーン：casual
 
 【ルール】
+・${languageInstruction}
 ・売り込みから始めない
-・対象投稿の内容に触れる
-・自然な会話調
+・対象投稿の内容に具体的に触れる
+・自然な会話調で書く
 ・最後は問いかけで終わる
-・100文字以内
+・150文字以内${keywordInstruction}
+・プロダクトについて最後に1文だけ自然に触れる
 
 JSONのみ返してください：
 {"comment": "コメント本文", "approach": "このアプローチにした理由1文"}`,

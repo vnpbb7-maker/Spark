@@ -23,6 +23,9 @@ export async function POST(request: Request) {
       daily_limit,
       tone,
       auto_mode,
+      target_language,
+      required_keywords,
+      min_match_score,
     } = body;
 
     if (!product_description) {
@@ -43,6 +46,9 @@ export async function POST(request: Request) {
         daily_limit: daily_limit || 10,
         tone: tone || "casual",
         auto_mode: auto_mode || false,
+        target_language: target_language || "ja",
+        required_keywords: required_keywords || "",
+        min_match_score: min_match_score || 60,
         status: "running",
       })
       .select()

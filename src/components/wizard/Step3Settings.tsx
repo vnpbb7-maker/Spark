@@ -50,6 +50,9 @@ export default function Step3Settings({ recommendedPlatforms, onSubmit, loading 
   const [autoMode, setAutoMode] = useState(false);
   const [userPlan, setUserPlan] = useState("free");
   const [upgradeModal, setUpgradeModal] = useState<string | null>(null);
+  const [targetLanguage, setTargetLanguage] = useState("ja");
+  const [requiredKeywords, setRequiredKeywords] = useState("");
+  const [minMatchScore, setMinMatchScore] = useState(60);
 
   useEffect(() => {
     const fetchPlan = async () => {
@@ -92,7 +95,7 @@ export default function Step3Settings({ recommendedPlatforms, onSubmit, loading 
       router.push("/pricing");
       return;
     }
-    onSubmit({ platforms, daily_limit: dailyLimit, tone, auto_mode: autoMode });
+    onSubmit({ platforms, daily_limit: dailyLimit, tone, auto_mode: autoMode, target_language: targetLanguage, required_keywords: requiredKeywords, min_match_score: minMatchScore });
   };
 
   return (
@@ -216,6 +219,82 @@ export default function Step3Settings({ recommendedPlatforms, onSubmit, loading 
               <div style={{ fontSize: "12px", color: "rgba(240,239,232,0.4)" }}>AIが全て自動で実行</div>
             </div>
           </button>
+        </div>
+      </div>
+
+      {/* Language selection */}
+      <div style={{ marginBottom: "36px" }}>
+        <h3 style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600, fontSize: "15px", color: "#f0efe8", marginBottom: "12px" }}>ターゲットの言語</h3>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {[
+            { id: "ja", label: "日本語" },
+            { id: "en", label: "英語" },
+            { id: "zh", label: "中国語" },
+            { id: "ko", label: "韓国語" },
+            { id: "any", label: "全言語" },
+          ].map((lang) => (
+            <button
+              key={lang.id}
+              onClick={() => setTargetLanguage(lang.id)}
+              style={{
+                background: targetLanguage === lang.id ? "#ff6b35" : "rgba(255,255,255,0.05)",
+                border: targetLanguage === lang.id ? "none" : "0.5px solid rgba(255,255,255,0.15)",
+                borderRadius: 20,
+                padding: "6px 16px",
+                fontSize: 13,
+                fontWeight: 600,
+                color: targetLanguage === lang.id ? "#fff" : "rgba(240,239,232,0.6)",
+                cursor: "pointer",
+              }}
+            >
+              {lang.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Required keywords */}
+      <div style={{ marginBottom: "36px" }}>
+        <h3 style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600, fontSize: "15px", color: "#f0efe8", marginBottom: "4px" }}>コメントに必ず含めるキーワード</h3>
+        <div style={{ fontSize: 12, color: "rgba(240,239,232,0.4)", marginBottom: 8 }}>
+          例：SPARK, spark-ai.jp, 初期ユーザー獲得
+        </div>
+        <input
+          type="text"
+          value={requiredKeywords}
+          onChange={(e) => setRequiredKeywords(e.target.value)}
+          placeholder="カンマ区切りで入力（例：SPARK, ユーザー獲得）"
+          style={{
+            width: "100%",
+            background: "rgba(255,255,255,0.05)",
+            border: "0.5px solid rgba(255,255,255,0.15)",
+            borderRadius: 10,
+            padding: "10px 14px",
+            fontSize: 14,
+            color: "#f0efe8",
+            fontFamily: "DM Sans",
+            outline: "none",
+            boxSizing: "border-box",
+          }}
+        />
+      </div>
+
+      {/* Min match score */}
+      <div style={{ marginBottom: "36px" }}>
+        <h3 style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600, fontSize: "15px", color: "#f0efe8", marginBottom: "8px" }}>
+          ターゲットの最低マッチスコア: {minMatchScore}%以上
+        </h3>
+        <input
+          type="range"
+          min={30}
+          max={90}
+          value={minMatchScore}
+          onChange={(e) => setMinMatchScore(Number(e.target.value))}
+          style={{ width: "100%", accentColor: "#ff6b35" }}
+        />
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "rgba(240,239,232,0.4)" }}>
+          <span>30%（広く）</span>
+          <span>90%（厳密）</span>
         </div>
       </div>
 

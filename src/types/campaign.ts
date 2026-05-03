@@ -26,4 +26,7 @@ export type CampaignSettings = {
   daily_limit: number;
   tone: "casual" | "professional" | "empathetic";
   auto_mode: boolean;
+  target_language?: string;
+  required_keywords?: string;
+  min_match_score?: number;
 };
