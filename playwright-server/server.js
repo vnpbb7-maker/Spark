@@ -105,6 +105,7 @@ app.post("/test-connection", authMiddleware, async (req, res) => {
   try {
     const browser = await chromium.launch({
     headless: true,
+    executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || undefined,
     args: [
       "--no-sandbox",
       "--disable-setuid-sandbox",
@@ -114,6 +115,13 @@ app.post("/test-connection", authMiddleware, async (req, res) => {
       "--no-zygote",
       "--single-process",
       "--disable-extensions",
+      "--disable-background-networking",
+      "--disable-default-apps",
+      "--disable-sync",
+      "--metrics-recording-only",
+      "--mute-audio",
+      "--no-default-browser-check",
+      "--safebrowsing-disable-auto-update",
     ],
   });
     const context = await browser.newContext({
@@ -147,6 +155,7 @@ app.post("/test-connection", authMiddleware, async (req, res) => {
 async function postRedditComment(credentials, target, comment) {
   const browser = await chromium.launch({
     headless: true,
+    executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || undefined,
     args: [
       "--no-sandbox",
       "--disable-setuid-sandbox",
@@ -156,6 +165,13 @@ async function postRedditComment(credentials, target, comment) {
       "--no-zygote",
       "--single-process",
       "--disable-extensions",
+      "--disable-background-networking",
+      "--disable-default-apps",
+      "--disable-sync",
+      "--metrics-recording-only",
+      "--mute-audio",
+      "--no-default-browser-check",
+      "--safebrowsing-disable-auto-update",
     ],
   });
   try {
@@ -244,6 +260,7 @@ async function testRedditLogin(page, credentials) {
 async function postTwitterComment(credentials, target, comment) {
   const browser = await chromium.launch({
     headless: true,
+    executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || undefined,
     args: [
       "--no-sandbox",
       "--disable-setuid-sandbox",
@@ -253,6 +270,13 @@ async function postTwitterComment(credentials, target, comment) {
       "--no-zygote",
       "--single-process",
       "--disable-extensions",
+      "--disable-background-networking",
+      "--disable-default-apps",
+      "--disable-sync",
+      "--metrics-recording-only",
+      "--mute-audio",
+      "--no-default-browser-check",
+      "--safebrowsing-disable-auto-update",
     ],
   });
   try {
