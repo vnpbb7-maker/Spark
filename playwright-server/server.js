@@ -257,6 +257,20 @@ async function testRedditLogin(page, credentials) {
 
 // ---- Twitter ----
 
+// ヘルパー：ランダム遅延
+function randomDelay(min, max) {
+  const ms = Math.floor(Math.random() * (max - min)) + min;
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// ヘルパー：人間らしいタイピング
+async function humanType(page, selector, text) {
+  await page.click(selector);
+  for (const char of text) {
+    await page.keyboard.type(char, { delay: 40 + Math.random() * 80 });
+  }
+}
+
 async function postTwitterComment(credentials, target, comment) {
   const browser = await chromium.launch({
     headless: true,
@@ -285,54 +299,75 @@ async function postTwitterComment(credentials, target, comment) {
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     });
     const page = await context.newPage();
+    page.setDefaultTimeout(60000);
 
     // Twitter ログイン
-    await page.goto("https://twitter.com/i/flow/login", {
-      waitUntil: "networkidle",
+    await page.goto("https://twitter.com/login", {
+      waitUntil: "domcontentloaded",
+      timeout: 60000,
     });
-    await page.waitForTimeout(2000);
+    await randomDelay(2000, 4000);
 
     // ユーザー名入力
-    const usernameInput = await page.$('input[autocomplete="username"]');
-    if (usernameInput) {
-      await usernameInput.fill(credentials.username);
-      await page.keyboard.press("Enter");
-      await page.waitForTimeout(2000);
-    }
+    await page.waitForSelector('input[autocomplete="username"]', { timeout: 30000 });
+    await humanType(page, 'input[autocomplete="username"]', credentials.username);
+    await randomDelay(500, 1000);
+
+    // 「次へ」ボタン
+    await page.keyboard.press("Enter");
+    await randomDelay(1500, 2500);
 
     // パスワード入力
-    const passwordInput = await page.$('input[type="password"]');
-    if (passwordInput) {
-      await passwordInput.fill(credentials.password);
-      await page.keyboard.press("Enter");
-      await page.waitForTimeout(3000);
+    try {
+      await page.waitForSelector('input[type="password"]', { timeout: 10000 });
+    } catch {
+      // 「不審なアクティビティ」画面が出た場合
+      return { success: false, error: "Twitter security check triggered" };
     }
 
-    // 投稿に移動
-    await page.goto(target.post_url, { waitUntil: "networkidle" });
-    await page.waitForTimeout(2000);
+    await humanType(page, 'input[type="password"]', credentials.password);
+    await randomDelay(500, 1000);
+    await page.keyboard.press("Enter");
 
-    // リプライ入力
-    const replyBox = await page.$('[data-testid="tweetTextarea_0"]');
-    if (!replyBox) {
-      return { success: false, error: "Reply box not found" };
+    // ログイン完了待ち
+    try {
+      await page.waitForNavigation({ timeout: 15000 });
+    } catch {
+      // タイムアウトしても続行
     }
-    await replyBox.click();
-    await page.keyboard.type(comment.content, { delay: 50 });
 
-    // ランダム遅延
-    const delay = Math.floor(Math.random() * 3000) + 1000;
-    await page.waitForTimeout(delay);
-
-    // 投稿
-    const replyBtn = await page.$('[data-testid="tweetButtonInline"]');
-    if (replyBtn) {
-      await replyBtn.click();
-      await page.waitForTimeout(3000);
+    // ログイン失敗チェック
+    const currentUrl = page.url();
+    if (currentUrl.includes("login") || currentUrl.includes("error")) {
+      return { success: false, error: "Login failed - check username/password" };
     }
+
+    await randomDelay(2000, 4000);
+    await page.goto(target.post_url, { waitUntil: "domcontentloaded", timeout: 30000 });
+    await randomDelay(1000, 2000);
+
+    // リプライボタンをクリック
+    const replyButton = await page.$('[data-testid="reply"]');
+    if (!replyButton) {
+      return { success: false, error: "Reply button not found" };
+    }
+    await replyButton.click();
+    await randomDelay(1000, 2000);
+
+    // コメント入力
+    await page.waitForSelector('[data-testid="tweetTextarea_0"]', { timeout: 10000 });
+    for (const char of comment.content) {
+      await page.keyboard.type(char, { delay: 40 + Math.random() * 80 });
+    }
+    await randomDelay(1000, 2000);
+
+    // 投稿ボタン
+    await page.click('[data-testid="tweetButton"]');
+    await page.waitForTimeout(3000);
 
     return { success: true };
   } catch (err) {
+    console.error("Twitter post error:", err.message);
     return { success: false, error: err.message };
   } finally {
     await browser.close();
@@ -341,28 +376,37 @@ async function postTwitterComment(credentials, target, comment) {
 
 async function testTwitterLogin(page, credentials) {
   try {
-    await page.goto("https://twitter.com/i/flow/login", {
-      waitUntil: "networkidle",
+    page.setDefaultTimeout(60000);
+
+    await page.goto("https://twitter.com/login", {
+      waitUntil: "domcontentloaded",
+      timeout: 60000,
     });
-    await page.waitForTimeout(2000);
+    await randomDelay(2000, 4000);
 
-    const usernameInput = await page.$('input[autocomplete="username"]');
-    if (usernameInput) {
-      await usernameInput.fill(credentials.username);
-      await page.keyboard.press("Enter");
-      await page.waitForTimeout(2000);
+    await page.waitForSelector('input[autocomplete="username"]', { timeout: 30000 });
+    await humanType(page, 'input[autocomplete="username"]', credentials.username);
+    await randomDelay(500, 1000);
+    await page.keyboard.press("Enter");
+    await randomDelay(1500, 2500);
+
+    try {
+      await page.waitForSelector('input[type="password"]', { timeout: 10000 });
+    } catch {
+      return { success: false, error: "セキュリティチェックが発生しました。手動でログインしてください。" };
     }
 
-    const passwordInput = await page.$('input[type="password"]');
-    if (passwordInput) {
-      await passwordInput.fill(credentials.password);
-      await page.keyboard.press("Enter");
-      await page.waitForTimeout(3000);
-    }
+    await humanType(page, 'input[type="password"]', credentials.password);
+    await randomDelay(500, 1000);
+    await page.keyboard.press("Enter");
+
+    try {
+      await page.waitForNavigation({ timeout: 15000 });
+    } catch {}
 
     // ログイン後のURLを確認
     const url = page.url();
-    if (url.includes("/home") || url.includes("/compose")) {
+    if (url.includes("/home") || url.includes("/compose") || !url.includes("login")) {
       return { success: true, message: "Twitterログイン成功" };
     }
 

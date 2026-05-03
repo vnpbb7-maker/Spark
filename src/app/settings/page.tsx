@@ -88,6 +88,9 @@ export default function SettingsPage() {
       </div>
 
       <div style={{ maxWidth: "900px", margin: "0 auto", padding: "32px 24px" }}>
+        <div style={{ background: "rgba(255,200,0,0.1)", border: "0.5px solid rgba(255,200,0,0.3)", borderRadius: 12, padding: "12px 16px", marginBottom: 24, fontSize: 13, color: "rgba(255,200,0,0.9)", lineHeight: 1.6 }}>
+          ⚠️ <strong>重要：</strong> 2段階認証（2FA）が有効なアカウントは自動投稿できません。設定前に各SNSの2FAを無効にしてください。また、パスワードが間違っている場合は投稿時にエラーが表示されます。
+        </div>
         {/* Platform credentials */}
         <h2 style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: "18px", marginBottom: "20px" }}>プラットフォーム認証情報</h2>
         <p style={{ fontSize: "13px", color: "rgba(240,239,232,0.4)", marginBottom: "24px" }}>自動コメント投稿に使用するアカウント情報を設定してください。情報は暗号化して保存されます。</p>
