@@ -184,74 +184,22 @@ export const discoverTargets = inngest.createFunction(
               const username = extractUsername(url, platform);
 
               if (username && username !== "unknown") {
-                // マッチスコアをClaudeで算出
-                const anthropicResponse = await fetch(
-                  "https://api.anthropic.com/v1/messages",
-                  {
-                    method: "POST",
-                    headers: {
-                      "Content-Type": "application/json",
-                      "x-api-key": process.env.ANTHROPIC_API_KEY!,
-                      "anthropic-version": "2023-06-01",
-                    },
-                    body: JSON.stringify({
-                      model: "claude-sonnet-4-20250514",
-                      max_tokens: 200,
-                      messages: [
-                        {
-                          role: "user",
-                          content: `以下のターゲットとプロダクトを比較し、JSONのみで返してください：
-プロダクト：${campaign.product_description || campaign.product_url}
-ターゲットURL：${url}
-コンテンツ：${result.content?.slice(0, 200) || ""}
-{"score": 0-100の数値, "reason": "マッチ理由1文"}`,
-                        },
-                      ],
-                    }),
-                  }
-                );
+                // 即保存（スコアはバッチ処理で後から更新）
+                console.log("Found target:", username, "on", platform);
 
-                const anthropicData = await anthropicResponse.json();
-                const text =
-                  anthropicData.content?.[0]?.text ||
-                  '{"score":50,"reason":"分析中"}';
-
-                let matchData = { score: 50, reason: "分析中" };
-                try {
-                  matchData = JSON.parse(text);
-                } catch {}
-                console.log("Match score:", matchData.score, "for:", username);
-
-                if (matchData.score >= (campaign.min_match_score || 60)) {
-                  // 言語フィルター
-                  if (campaign.target_language === "ja") {
-                    const content = result.content || "";
-                    const hasJapanese = /[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FFF]/.test(content);
-                    const hasJapaneseUrl =
-                      result.url?.includes(".jp") ||
-                      result.url?.includes("japan") ||
-                      result.url?.includes("japanese");
-
-                    if (!hasJapanese && !hasJapaneseUrl) {
-                      console.log("Skipping non-Japanese target:", result.url);
-                      continue;
-                    }
-                  }
-
-                  await getSupabase().from("targets").insert({
-                    campaign_id: campaignId,
-                    platform,
-                    username,
-                    profile_url: url,
-                    post_url: url,
-                    post_content: result.content?.slice(0, 500) || "",
-                    match_score: matchData.score,
-                    match_reason: matchData.reason,
-                    status: "pending",
-                  });
-                  insertedTargets.push(username);
-                  console.log("Inserted target:", username);
-                }
+                await getSupabase().from("targets").insert({
+                  campaign_id: campaignId,
+                  platform,
+                  username,
+                  profile_url: url,
+                  post_url: url,
+                  post_content: result.content?.slice(0, 500) || "",
+                  match_score: 50,
+                  match_reason: "AI分析待ち",
+                  status: "pending",
+                });
+                insertedTargets.push(username);
+                console.log("Inserted target:", username);
               }
             }
           } catch (err) {
