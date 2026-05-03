@@ -45,19 +45,23 @@ export default function CampaignDetailPage() {
     const fetchExistingActivity = async () => {
       const supabase = createClient();
 
-      const { data: existingTargets } = await supabase
+      const { data: existingTargets, error: targetsError } = await supabase
         .from("targets")
         .select("platform, username, match_score, created_at")
         .eq("campaign_id", campaignId)
         .order("created_at", { ascending: false })
         .limit(20);
 
-      const { data: existingComments } = await supabase
+      console.log("targets:", existingTargets?.length, "error:", targetsError);
+
+      const { data: existingComments, error: commentsError } = await supabase
         .from("comments")
         .select("platform, approved, posted_at, created_at")
         .eq("campaign_id", campaignId)
         .order("created_at", { ascending: false })
         .limit(10);
+
+      console.log("comments:", existingComments?.length, "error:", commentsError);
 
       const entries: { log: LogEntry; time: string }[] = [];
       let counter = 0;
