@@ -144,7 +144,7 @@ export default function DashboardPage() {
           </div>
 
           <KpiCards data={kpi} />
-          <PendingBanner count={kpi.pendingComments} onNavigate={() => router.push("/dashboard")} />
+          <PendingBanner count={kpi.pendingComments} onNavigate={() => router.push("/approve")} />
           <CampaignList campaigns={campaigns as never[]} onPause={handlePause} onDelete={handleDelete} />
         </main>
 
