@@ -57,6 +57,7 @@ export const discoverTargets = inngest.createFunction(
     // 3. Tavily APIでターゲット発見
     const personas = campaign.target_personas?.personas || [];
     const platforms = campaign.platforms || [];
+    const insertedTargets: string[] = [];
     console.log("Personas count:", personas.length);
     console.log("Platforms:", platforms);
 
@@ -151,6 +152,7 @@ export const discoverTargets = inngest.createFunction(
                     match_reason: matchData.reason,
                     status: "pending",
                   });
+                  insertedTargets.push(username);
                   console.log("Inserted target:", username);
                 }
               }
@@ -162,14 +164,124 @@ export const discoverTargets = inngest.createFunction(
       }
     }
 
-    return { success: true, campaignId };
+    // 発見したtargetsに対してコメント生成を発火
+    if (insertedTargets.length > 0) {
+      console.log("Firing generate for", insertedTargets.length, "targets");
+      try {
+        await inngest.send({
+          name: "campaign/generate",
+          data: { campaign_id: campaignId },
+        });
+      } catch (e) {
+        console.error("Failed to fire generate:", e);
+      }
+    }
+
+    return { success: true, campaignId, targetsFound: insertedTargets.length };
   }
 );
 
 export const generateComments = inngest.createFunction(
   { id: "generate-comments", triggers: [{ event: "campaign/generate" }] },
   async ({ event }: any) => {
-    return { success: true };
+    const campaignId = event.data.campaign_id as string;
+    console.log("Starting comment generation for campaign:", campaignId);
+
+    const supabase = getSupabase();
+
+    // pending状態のtargetsを取得（最大10件）
+    const { data: targets } = await supabase
+      .from("targets")
+      .select("*, campaigns(*)")
+      .eq("campaign_id", campaignId)
+      .eq("status", "pending")
+      .limit(10);
+
+    if (!targets || targets.length === 0) {
+      return { success: true, message: "No pending targets" };
+    }
+
+    console.log("Generating comments for", targets.length, "targets");
+
+    for (const target of targets) {
+      try {
+        const campaign = target.campaigns;
+
+        // Claude APIでコメント生成
+        const response = await fetch(
+          "https://api.anthropic.com/v1/messages",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-api-key": process.env.ANTHROPIC_API_KEY!,
+              "anthropic-version": "2023-06-01",
+            },
+            body: JSON.stringify({
+              model: "claude-haiku-4-5-20251001",
+              max_tokens: 300,
+              messages: [
+                {
+                  role: "user",
+                  content: `あなたは共感力の高いGrowthハッカーです。
+以下の情報を元に自然なコメントを生成してください。
+
+プロダクト：${campaign?.product_description || campaign?.product_url}
+対象投稿URL：${target.post_url}
+投稿内容：${target.post_content?.slice(0, 300) || ""}
+プラットフォーム：${target.platform}
+トーン：casual
+
+【ルール】
+・売り込みから始めない
+・対象投稿の内容に触れる
+・自然な会話調
+・最後は問いかけで終わる
+・100文字以内
+
+JSONのみ返してください：
+{"comment": "コメント本文", "approach": "このアプローチにした理由1文"}`,
+                },
+              ],
+            }),
+          }
+        );
+
+        const data = await response.json();
+        const text = data.content?.[0]?.text || "{}";
+
+        let commentData = { comment: "", approach: "" };
+        try {
+          commentData = JSON.parse(text);
+        } catch {
+          commentData = { comment: text.slice(0, 200), approach: "自動生成" };
+        }
+
+        if (commentData.comment) {
+          // commentsテーブルに保存
+          await supabase.from("comments").insert({
+            target_id: target.id,
+            campaign_id: campaignId,
+            platform: target.platform,
+            content: commentData.comment,
+            approach: commentData.approach,
+            approved: false,
+          });
+
+          // targetのstatusを更新
+          await supabase
+            .from("targets")
+            .update({ status: "contacted" })
+            .eq("id", target.id);
+
+          console.log("Comment generated for:", target.username);
+        }
+      } catch (err) {
+        console.error("Comment generation error:", err);
+      }
+    }
+
+    return { success: true, campaignId };
   }
 );
 
