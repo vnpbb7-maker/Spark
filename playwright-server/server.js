@@ -180,44 +180,73 @@ async function postRedditComment(credentials, target, comment) {
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     });
     const page = await context.newPage();
+    page.setDefaultTimeout(60000);
 
     // Reddit ログイン
     await page.goto("https://www.reddit.com/login", {
-      waitUntil: "networkidle",
+      waitUntil: "domcontentloaded",
+      timeout: 60000,
     });
-    await page.fill('input[name="username"]', credentials.username);
-    await page.fill('input[name="password"]', credentials.password);
-    await page.click('button[type="submit"]');
-    await page.waitForTimeout(3000);
+    await randomDelay(2000, 3000);
 
-    // ログイン確認
-    const loginFailed = await page.$('text="Incorrect username or password"');
-    if (loginFailed) {
-      return { success: false, error: "Reddit login failed" };
+    // ユーザー名入力
+    await page.waitForSelector("#login-username", { timeout: 30000 });
+    await humanType(page, "#login-username", credentials.username);
+    await randomDelay(500, 1000);
+
+    // パスワード入力
+    await humanType(page, "#login-password", credentials.password);
+    await randomDelay(500, 1000);
+
+    // ログインボタン
+    await page.click('button[type="submit"]');
+
+    // ログイン完了待ち
+    try {
+      await page.waitForNavigation({
+        waitUntil: "domcontentloaded",
+        timeout: 15000,
+      });
+    } catch {
+      // タイムアウトしても続行
     }
 
-    // 投稿ページに移動
-    await page.goto(target.post_url, { waitUntil: "networkidle" });
-    await page.waitForTimeout(2000);
+    // ログイン確認
+    const currentUrl = page.url();
+    console.log("After Reddit login URL:", currentUrl);
+
+    if (currentUrl.includes("login")) {
+      return { success: false, error: "Reddit login failed - check credentials" };
+    }
+
+    // 対象投稿に移動
+    await randomDelay(2000, 3000);
+    await page.goto(target.post_url, {
+      waitUntil: "domcontentloaded",
+      timeout: 30000,
+    });
+    await randomDelay(1000, 2000);
 
     // コメント入力
     const commentBox = await page.$('[contenteditable="true"]');
     if (!commentBox) {
-      // 別のセレクタを試す
       const textarea = await page.$("textarea");
       if (textarea) {
-        await textarea.fill(comment.content);
+        await textarea.click();
+        for (const char of comment.content) {
+          await page.keyboard.type(char, { delay: 30 + Math.random() * 50 });
+        }
       } else {
         return { success: false, error: "Comment box not found" };
       }
     } else {
       await commentBox.click();
-      await page.keyboard.type(comment.content, { delay: 30 });
+      for (const char of comment.content) {
+        await page.keyboard.type(char, { delay: 30 + Math.random() * 50 });
+      }
     }
 
-    // ランダム遅延（30〜90秒の代わりにテスト用に短く）
-    const delay = Math.floor(Math.random() * 3000) + 1000;
-    await page.waitForTimeout(delay);
+    await randomDelay(1000, 2000);
 
     // 投稿ボタンクリック
     const submitBtn = await page.$('button:has-text("Comment")');
@@ -228,6 +257,7 @@ async function postRedditComment(credentials, target, comment) {
 
     return { success: true };
   } catch (err) {
+    console.error("Reddit post error:", err.message);
     return { success: false, error: err.message };
   } finally {
     await browser.close();
@@ -236,16 +266,34 @@ async function postRedditComment(credentials, target, comment) {
 
 async function testRedditLogin(page, credentials) {
   try {
-    await page.goto("https://www.reddit.com/login", {
-      waitUntil: "networkidle",
-    });
-    await page.fill('input[name="username"]', credentials.username);
-    await page.fill('input[name="password"]', credentials.password);
-    await page.click('button[type="submit"]');
-    await page.waitForTimeout(3000);
+    page.setDefaultTimeout(60000);
 
-    const loginFailed = await page.$('text="Incorrect username or password"');
-    if (loginFailed) {
+    await page.goto("https://www.reddit.com/login", {
+      waitUntil: "domcontentloaded",
+      timeout: 60000,
+    });
+    await randomDelay(2000, 3000);
+
+    await page.waitForSelector("#login-username", { timeout: 30000 });
+    await humanType(page, "#login-username", credentials.username);
+    await randomDelay(500, 1000);
+
+    await humanType(page, "#login-password", credentials.password);
+    await randomDelay(500, 1000);
+
+    await page.click('button[type="submit"]');
+
+    try {
+      await page.waitForNavigation({
+        waitUntil: "domcontentloaded",
+        timeout: 15000,
+      });
+    } catch {}
+
+    const currentUrl = page.url();
+    console.log("After Reddit login URL:", currentUrl);
+
+    if (currentUrl.includes("login")) {
       return { success: false, error: "ユーザー名またはパスワードが正しくありません" };
     }
 
