@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 
 const PLATFORMS = [
   { id: "twitter", name: "X (Twitter)", icon: "𝕏", color: "#1d9bf0", fields: [{ key: "username", label: "ユーザー名" }, { key: "password", label: "パスワード" }] },
-  { id: "reddit", name: "Reddit", icon: "🤖", color: "#ff4500", fields: [{ key: "username", label: "ユーザー名" }, { key: "password", label: "パスワード" }] },
+  { id: "reddit", name: "Reddit", icon: "🤖", color: "#ff4500", fields: [{ key: "username", label: "ユーザー名" }, { key: "password", label: "パスワード" }, { key: "session_cookie", label: "セッションクッキー（任意・推奨）" }] },
   { id: "linkedin", name: "LinkedIn", icon: "in", color: "#0a66c2", fields: [{ key: "email", label: "メールアドレス" }, { key: "password", label: "パスワード" }] },
   { id: "tiktok", name: "TikTok", icon: "♪", color: "#ff0050", fields: [{ key: "username", label: "ユーザー名" }, { key: "password", label: "パスワード" }] },
   { id: "instagram", name: "Instagram", icon: "◈", color: "#e1306c", fields: [{ key: "username", label: "ユーザー名" }, { key: "password", label: "パスワード" }] },
@@ -113,11 +113,17 @@ export default function SettingsPage() {
                   <div key={f.key} style={{ marginBottom: "12px" }}>
                     <label style={{ display: "block", fontSize: "12px", color: "rgba(240,239,232,0.4)", marginBottom: "4px" }}>{f.label}</label>
                     <input
-                      type={f.key === "password" ? "password" : "text"}
+                      type={f.key === "password" || f.key === "session_cookie" ? "password" : "text"}
+                      placeholder={f.key === "session_cookie" ? "reddit_session の値を貼り付け" : ""}
                       value={(creds[p.id] || {})[f.key] || ""}
                       onChange={(e) => updateField(p.id, f.key, e.target.value)}
                       style={{ width: "100%", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "8px", padding: "10px 12px", color: "#f0efe8", fontSize: "13px", outline: "none", boxSizing: "border-box" }}
                     />
+                    {f.key === "session_cookie" && (
+                      <div style={{ fontSize: 11, color: "rgba(240,239,232,0.3)", marginTop: 4 }}>
+                        Chrome → reddit.com → F12 → Application → Cookies → reddit_session
+                      </div>
+                    )}
                   </div>
                 ))}
                 <div style={{ display: "flex", gap: "8px" }}>
