@@ -1,6 +1,7 @@
 const express = require("express");
 const { chromium } = require("playwright");
 const { createClient } = require("@supabase/supabase-js");
+const crypto = require("crypto");
 
 const app = express();
 app.use(express.json());
@@ -71,9 +72,17 @@ app.post("/post-comment", authMiddleware, async (req, res) => {
       case "reddit":
         result = await postRedditComment(credentials, target, comment);
         break;
-      case "twitter":
-        result = await postTwitterComment(credentials, target, comment);
+      case "twitter": {
+        // Twitter API を先に試す
+        const apiResult = await postWithTwitterAPI(target.post_url, comment.content);
+        if (apiResult.success) {
+          result = apiResult;
+        } else {
+          console.log("Twitter API failed, falling back to Playwright:", apiResult.error);
+          result = await postTwitterComment(credentials, target, comment);
+        }
         break;
+      }
       default:
         result = { success: false, error: `${platform} is not yet supported` };
     }
@@ -542,6 +551,106 @@ async function humanType(page, selector, text) {
   for (const char of text) {
     await page.keyboard.type(char, { delay: 40 + Math.random() * 80 });
   }
+}
+
+// ---- Twitter API ----
+
+async function postWithTwitterAPI(postUrl, commentText) {
+  try {
+    const twitterApiKey = process.env.TWITTER_API_KEY;
+    const twitterApiSecret = process.env.TWITTER_API_SECRET;
+    const twitterAccessToken = process.env.TWITTER_ACCESS_TOKEN;
+    const twitterAccessTokenSecret = process.env.TWITTER_ACCESS_TOKEN_SECRET;
+
+    if (!twitterApiKey || !twitterApiSecret || !twitterAccessToken || !twitterAccessTokenSecret) {
+      return { success: false, error: "Twitter API credentials not configured" };
+    }
+
+    // ツイートIDをURLから抽出
+    const tweetIdMatch = postUrl.match(/status\/(\d+)/);
+    if (!tweetIdMatch) {
+      return { success: false, error: "Could not extract tweet ID from URL" };
+    }
+    const tweetId = tweetIdMatch[1];
+
+    // OAuth 1.0a署名を生成
+    const oauth = generateOAuthHeader("POST", "https://api.twitter.com/2/tweets", {
+      apiKey: twitterApiKey,
+      apiSecret: twitterApiSecret,
+      accessToken: twitterAccessToken,
+      accessTokenSecret: twitterAccessTokenSecret,
+    });
+
+    // Twitter API v2でリプライ投稿
+    const response = await fetch("https://api.twitter.com/2/tweets", {
+      method: "POST",
+      headers: {
+        Authorization: oauth,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        text: commentText,
+        reply: {
+          in_reply_to_tweet_id: tweetId,
+        },
+      }),
+    });
+
+    const data = await response.json();
+    console.log("Twitter API response:", JSON.stringify(data));
+
+    if (response.ok && data.data?.id) {
+      return { success: true, tweetId: data.data.id };
+    } else {
+      return { success: false, error: data.detail || JSON.stringify(data) };
+    }
+  } catch (err) {
+    console.error("Twitter API error:", err.message);
+    return { success: false, error: err.message };
+  }
+}
+
+function generateOAuthHeader(method, url, credentials) {
+  const oauthParams = {
+    oauth_consumer_key: credentials.apiKey,
+    oauth_nonce: crypto.randomBytes(16).toString("hex"),
+    oauth_signature_method: "HMAC-SHA1",
+    oauth_timestamp: Math.floor(Date.now() / 1000).toString(),
+    oauth_token: credentials.accessToken,
+    oauth_version: "1.0",
+  };
+
+  // シグネチャベース文字列を生成
+  const paramString = Object.keys(oauthParams)
+    .sort()
+    .map((key) => `${encodeURIComponent(key)}=${encodeURIComponent(oauthParams[key])}`)
+    .join("&");
+
+  const baseString = [
+    method.toUpperCase(),
+    encodeURIComponent(url),
+    encodeURIComponent(paramString),
+  ].join("&");
+
+  // 署名キーを生成
+  const signingKey = `${encodeURIComponent(credentials.apiSecret)}&${encodeURIComponent(credentials.accessTokenSecret)}`;
+
+  // HMAC-SHA1署名
+  const signature = crypto
+    .createHmac("sha1", signingKey)
+    .update(baseString)
+    .digest("base64");
+
+  oauthParams.oauth_signature = signature;
+
+  // Authorizationヘッダーを生成
+  const authHeader =
+    "OAuth " +
+    Object.keys(oauthParams)
+      .map((key) => `${encodeURIComponent(key)}="${encodeURIComponent(oauthParams[key])}"`)
+      .join(", ");
+
+  return authHeader;
 }
 
 async function postTwitterComment(credentials, target, comment) {
