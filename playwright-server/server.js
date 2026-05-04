@@ -283,11 +283,20 @@ async function postToReddit(page, postUrl, commentText, credentials) {
     await randomDelay(5000, 8000);
 
     const currentUrl = page.url();
-    console.log("After login URL:", currentUrl);
+    console.log("Full URL after login:", currentUrl);
 
-    if (currentUrl.includes("/login")) {
+    const isStillOnLogin = currentUrl.includes("reddit.com/login") &&
+                           !currentUrl.includes("reddit.com/login/success");
+
+    if (isStillOnLogin) {
       const screenshot = await page.screenshot({ encoding: "base64" });
-      console.log("Login page screenshot (base64 first 100 chars):", screenshot.slice(0, 100));
+      console.log("Screenshot:", screenshot.slice(0, 200));
+
+      const pageContent = await page.content();
+      console.log("Page title:", await page.title());
+      console.log("Has CAPTCHA:", pageContent.includes("captcha") || pageContent.includes("CAPTCHA"));
+      console.log("Has error msg:", pageContent.includes("incorrect") || pageContent.includes("error"));
+
       return { success: false, error: "Reddit login failed - still on login page" };
     }
 
@@ -432,9 +441,17 @@ async function testRedditLogin(page, credentials) {
     await randomDelay(5000, 8000);
 
     const currentUrl = page.url();
-    console.log("After Reddit login URL:", currentUrl);
+    console.log("Full URL after login:", currentUrl);
 
-    if (currentUrl.includes("/login")) {
+    const isStillOnLogin = currentUrl.includes("reddit.com/login") &&
+                           !currentUrl.includes("reddit.com/login/success");
+
+    if (isStillOnLogin) {
+      const pageContent = await page.content();
+      console.log("Page title:", await page.title());
+      console.log("Has CAPTCHA:", pageContent.includes("captcha") || pageContent.includes("CAPTCHA"));
+      console.log("Has error msg:", pageContent.includes("incorrect") || pageContent.includes("error"));
+
       return { success: false, error: "ユーザー名またはパスワードが正しくありません" };
     }
 
