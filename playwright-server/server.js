@@ -341,23 +341,60 @@ async function postToReddit(page, postUrl, commentText, credentials) {
 async function writeRedditComment(page, commentText) {
   await randomDelay(2000, 3000);
 
+  // ページのタイトルとURLを確認
+  console.log("Post page URL:", page.url());
+  console.log("Post page title:", await page.title());
+
+  // コメントボックスを探す前にページをスクロール
+  await page.evaluate(() => window.scrollTo(0, 500));
+  await randomDelay(1000, 2000);
+
+  // 利用可能なinput/textareaを確認
+  const textareas = await page.$$("textarea");
+  console.log("Textarea count:", textareas.length);
+
+  const contentEditables = await page.$$('[contenteditable="true"]');
+  console.log("ContentEditable count:", contentEditables.length);
+
+  // 新しいReddit UIのセレクター
   const commentSelectors = [
     '[placeholder="What are your thoughts?"]',
+    '[placeholder="Add a comment"]',
     '[data-testid="comment-submission-form-textarea"]',
     ".public-DraftEditor-content",
     '[contenteditable="true"]',
+    "textarea",
+    "#comment-textarea",
+    '[name="comment"]',
+    "shreddit-composer",
   ];
 
   let commentBox = null;
   for (const sel of commentSelectors) {
     try {
-      commentBox = await page.waitForSelector(sel, { timeout: 5000 });
+      commentBox = await page.waitForSelector(sel, { timeout: 3000 });
       console.log("Comment box found:", sel);
       break;
-    } catch {}
+    } catch {
+      console.log("Selector not found:", sel);
+    }
   }
 
   if (!commentBox) {
+    // ページ内の全要素を確認
+    const allInputs = await page.$$eval(
+      "input, textarea, [contenteditable]",
+      (els) =>
+        els.map((el) => ({
+          tag: el.tagName,
+          type: el.type || "",
+          placeholder: el.placeholder || "",
+          contenteditable: el.contentEditable || "",
+          id: el.id || "",
+          name: el.name || "",
+        }))
+    );
+    console.log("All inputs:", JSON.stringify(allInputs));
     return { success: false, error: "Comment box not found" };
   }
 
