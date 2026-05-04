@@ -289,13 +289,15 @@ async function postToReddit(page, postUrl, commentText, credentials) {
                            !currentUrl.includes("reddit.com/login/success");
 
     if (isStillOnLogin) {
-      const screenshot = await page.screenshot({ encoding: "base64" });
-      console.log("Screenshot:", screenshot.slice(0, 200));
+      console.log("Page title:", await page.title());
+      console.log("Page URL:", page.url());
 
       const pageContent = await page.content();
-      console.log("Page title:", await page.title());
-      console.log("Has CAPTCHA:", pageContent.includes("captcha") || pageContent.includes("CAPTCHA"));
-      console.log("Has error msg:", pageContent.includes("incorrect") || pageContent.includes("error"));
+      const lc = pageContent.toLowerCase();
+      console.log("Has CAPTCHA:", lc.includes("captcha"));
+      console.log("Has error:", lc.includes("incorrect") || lc.includes("wrong"));
+      console.log("Has verification:", lc.includes("verify") || lc.includes("verification"));
+      console.log("Page content (first 500):", pageContent.slice(0, 500));
 
       return { success: false, error: "Reddit login failed - still on login page" };
     }
