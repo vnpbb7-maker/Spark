@@ -45,6 +45,15 @@ export default function CampaignDetailPage() {
     const fetchExistingActivity = async () => {
       const supabase = createClient();
 
+      // ユーザー確認
+      const { data: { user } } = await supabase.auth.getUser();
+      console.log("user:", user?.id);
+
+      if (!user) {
+        console.log("No user found - skipping fetchExistingActivity");
+        return;
+      }
+
       const { data: existingTargets, error: targetsError } = await supabase
         .from("targets")
         .select("platform, username, match_score, created_at")
@@ -52,7 +61,7 @@ export default function CampaignDetailPage() {
         .order("created_at", { ascending: false })
         .limit(20);
 
-      console.log("targets:", existingTargets?.length, "error:", targetsError);
+      console.log("targets:", existingTargets?.length, "error:", targetsError?.message);
 
       const { data: existingComments, error: commentsError } = await supabase
         .from("comments")
