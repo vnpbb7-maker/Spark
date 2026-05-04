@@ -182,104 +182,172 @@ async function postRedditComment(credentials, target, comment) {
     const page = await context.newPage();
     page.setDefaultTimeout(60000);
 
-    // Reddit ログイン
+    const result = await postToReddit(page, target.post_url, comment.content, credentials);
+    return result;
+  } catch (err) {
+    console.error("Reddit post error:", err.message);
+    return { success: false, error: err.message };
+  } finally {
+    await browser.close();
+  }
+}
+
+async function postToReddit(page, postUrl, commentText, credentials) {
+  try {
+    page.setDefaultTimeout(60000);
+
     await page.goto("https://www.reddit.com/login", {
       waitUntil: "domcontentloaded",
       timeout: 60000,
     });
     await randomDelay(2000, 3000);
 
+    console.log("Reddit login page loaded:", page.url());
+
+    const inputs = await page.$$("input");
+    console.log("Input count:", inputs.length);
+
     // ユーザー名入力
-    try {
-      await page.waitForSelector("#login-username", { timeout: 5000 });
-      await humanType(page, "#login-username", credentials.username);
-    } catch {
-      await page.waitForSelector('input[name="username"]', { timeout: 10000 });
-      await humanType(page, 'input[name="username"]', credentials.username);
+    const usernameSelectors = [
+      'input[name="username"]',
+      'input[id="login-username"]',
+      'input[placeholder*="username" i]',
+      'input[autocomplete="username"]',
+      'input[type="text"]',
+    ];
+
+    let usernameInput = null;
+    for (const sel of usernameSelectors) {
+      try {
+        await page.waitForSelector(sel, { timeout: 3000 });
+        usernameInput = sel;
+        console.log("Username selector found:", sel);
+        break;
+      } catch {}
     }
+
+    if (!usernameInput) {
+      return { success: false, error: "Username input not found" };
+    }
+
+    await page.fill(usernameInput, credentials.username);
     await randomDelay(500, 1000);
 
     // パスワード入力
-    try {
-      await page.waitForSelector("#login-password", { timeout: 5000 });
-      await humanType(page, "#login-password", credentials.password);
-    } catch {
-      await page.waitForSelector('input[name="password"]', { timeout: 10000 });
-      await humanType(page, 'input[name="password"]', credentials.password);
+    const passwordSelectors = [
+      'input[name="password"]',
+      'input[id="login-password"]',
+      'input[type="password"]',
+    ];
+
+    let passwordInput = null;
+    for (const sel of passwordSelectors) {
+      try {
+        await page.waitForSelector(sel, { timeout: 3000 });
+        passwordInput = sel;
+        console.log("Password selector found:", sel);
+        break;
+      } catch {}
     }
+
+    if (!passwordInput) {
+      return { success: false, error: "Password input not found" };
+    }
+
+    await page.fill(passwordInput, credentials.password);
     await randomDelay(500, 1000);
 
     // ログインボタン
-    try {
-      await page.click('button[type="submit"]', { timeout: 5000 });
-    } catch {
+    const loginSelectors = [
+      'button[type="submit"]',
+      'button:has-text("Log In")',
+      'button:has-text("Login")',
+      'button:has-text("Sign In")',
+    ];
+
+    let clicked = false;
+    for (const sel of loginSelectors) {
       try {
-        await page.click('[data-step="username"] + div button', { timeout: 5000 });
-      } catch {
-        await page.keyboard.press("Enter");
-      }
+        await page.click(sel, { timeout: 3000 });
+        clicked = true;
+        console.log("Login button clicked:", sel);
+        break;
+      } catch {}
     }
 
-    // ログイン完了待ち
-    try {
-      await page.waitForNavigation({
-        waitUntil: "domcontentloaded",
-        timeout: 15000,
-      });
-    } catch {
-      // タイムアウトしても続行
+    if (!clicked) {
+      await page.keyboard.press("Enter");
+      console.log("Pressed Enter for login");
     }
 
-    // ログイン確認
+    await randomDelay(3000, 5000);
+
     const currentUrl = page.url();
-    console.log("After Reddit login URL:", currentUrl);
+    console.log("After login URL:", currentUrl);
 
-    if (currentUrl.includes("login")) {
-      return { success: false, error: "Reddit login failed - check credentials" };
+    if (currentUrl.includes("/login")) {
+      const screenshot = await page.screenshot({ encoding: "base64" });
+      console.log("Login page screenshot (base64 first 100 chars):", screenshot.slice(0, 100));
+      return { success: false, error: "Reddit login failed - still on login page" };
     }
 
-    // 対象投稿に移動
-    await randomDelay(2000, 3000);
-    await page.goto(target.post_url, {
-      waitUntil: "domcontentloaded",
-      timeout: 30000,
-    });
+    // 投稿ページに移動
     await randomDelay(1000, 2000);
+    await page.goto(postUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
+    await randomDelay(2000, 3000);
 
     // コメント入力
-    const commentBox = await page.$('[contenteditable="true"]');
+    const commentSelectors = [
+      '[placeholder="What are your thoughts?"]',
+      '[data-testid="comment-submission-form-textarea"]',
+      ".public-DraftEditor-content",
+      '[contenteditable="true"]',
+    ];
+
+    let commentBox = null;
+    for (const sel of commentSelectors) {
+      try {
+        commentBox = await page.waitForSelector(sel, { timeout: 5000 });
+        console.log("Comment box found:", sel);
+        break;
+      } catch {}
+    }
+
     if (!commentBox) {
-      const textarea = await page.$("textarea");
-      if (textarea) {
-        await textarea.click();
-        for (const char of comment.content) {
-          await page.keyboard.type(char, { delay: 30 + Math.random() * 50 });
-        }
-      } else {
-        return { success: false, error: "Comment box not found" };
-      }
-    } else {
-      await commentBox.click();
-      for (const char of comment.content) {
-        await page.keyboard.type(char, { delay: 30 + Math.random() * 50 });
-      }
+      return { success: false, error: "Comment box not found" };
+    }
+
+    await commentBox.click();
+    await randomDelay(500, 1000);
+
+    for (const char of commentText) {
+      await page.keyboard.type(char, { delay: 30 + Math.random() * 60 });
     }
 
     await randomDelay(1000, 2000);
 
-    // 投稿ボタンクリック
-    const submitBtn = await page.$('button:has-text("Comment")');
-    if (submitBtn) {
-      await submitBtn.click();
-      await page.waitForTimeout(3000);
+    // 投稿ボタン
+    const submitSelectors = [
+      'button:has-text("Comment")',
+      'button[type="submit"]',
+      'button:has-text("Reply")',
+    ];
+
+    for (const sel of submitSelectors) {
+      try {
+        await page.click(sel, { timeout: 3000 });
+        console.log("Submit button clicked:", sel);
+        break;
+      } catch {}
     }
+
+    await page.waitForTimeout(3000);
+    console.log("Comment posted successfully");
 
     return { success: true };
   } catch (err) {
     console.error("Reddit post error:", err.message);
     return { success: false, error: err.message };
-  } finally {
-    await browser.close();
   }
 }
 
@@ -293,45 +361,80 @@ async function testRedditLogin(page, credentials) {
     });
     await randomDelay(2000, 3000);
 
-    try {
-      await page.waitForSelector("#login-username", { timeout: 5000 });
-      await humanType(page, "#login-username", credentials.username);
-    } catch {
-      await page.waitForSelector('input[name="username"]', { timeout: 10000 });
-      await humanType(page, 'input[name="username"]', credentials.username);
-    }
-    await randomDelay(500, 1000);
+    console.log("Reddit login page loaded:", page.url());
 
-    try {
-      await page.waitForSelector("#login-password", { timeout: 5000 });
-      await humanType(page, "#login-password", credentials.password);
-    } catch {
-      await page.waitForSelector('input[name="password"]', { timeout: 10000 });
-      await humanType(page, 'input[name="password"]', credentials.password);
-    }
-    await randomDelay(500, 1000);
+    const usernameSelectors = [
+      'input[name="username"]',
+      'input[id="login-username"]',
+      'input[placeholder*="username" i]',
+      'input[autocomplete="username"]',
+      'input[type="text"]',
+    ];
 
-    try {
-      await page.click('button[type="submit"]', { timeout: 5000 });
-    } catch {
+    let usernameInput = null;
+    for (const sel of usernameSelectors) {
       try {
-        await page.click('[data-step="username"] + div button', { timeout: 5000 });
-      } catch {
-        await page.keyboard.press("Enter");
-      }
+        await page.waitForSelector(sel, { timeout: 3000 });
+        usernameInput = sel;
+        break;
+      } catch {}
     }
 
-    try {
-      await page.waitForNavigation({
-        waitUntil: "domcontentloaded",
-        timeout: 15000,
-      });
-    } catch {}
+    if (!usernameInput) {
+      return { success: false, error: "Username input not found" };
+    }
+
+    await page.fill(usernameInput, credentials.username);
+    await randomDelay(500, 1000);
+
+    const passwordSelectors = [
+      'input[name="password"]',
+      'input[id="login-password"]',
+      'input[type="password"]',
+    ];
+
+    let passwordInput = null;
+    for (const sel of passwordSelectors) {
+      try {
+        await page.waitForSelector(sel, { timeout: 3000 });
+        passwordInput = sel;
+        break;
+      } catch {}
+    }
+
+    if (!passwordInput) {
+      return { success: false, error: "Password input not found" };
+    }
+
+    await page.fill(passwordInput, credentials.password);
+    await randomDelay(500, 1000);
+
+    const loginSelectors = [
+      'button[type="submit"]',
+      'button:has-text("Log In")',
+      'button:has-text("Login")',
+      'button:has-text("Sign In")',
+    ];
+
+    let clicked = false;
+    for (const sel of loginSelectors) {
+      try {
+        await page.click(sel, { timeout: 3000 });
+        clicked = true;
+        break;
+      } catch {}
+    }
+
+    if (!clicked) {
+      await page.keyboard.press("Enter");
+    }
+
+    await randomDelay(3000, 5000);
 
     const currentUrl = page.url();
     console.log("After Reddit login URL:", currentUrl);
 
-    if (currentUrl.includes("login")) {
+    if (currentUrl.includes("/login")) {
       return { success: false, error: "ユーザー名またはパスワードが正しくありません" };
     }
 
