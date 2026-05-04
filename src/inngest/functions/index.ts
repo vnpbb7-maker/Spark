@@ -69,6 +69,24 @@ function buildSearchQuery(platform: string, keyword: string, language: string = 
   }
 }
 
+function isValidPlatformUrl(url: string, platform: string): boolean {
+  if (!url) return false;
+  switch (platform) {
+    case "reddit":
+      return url.includes("reddit.com");
+    case "twitter":
+      return url.includes("twitter.com") || url.includes("x.com");
+    case "linkedin":
+      return url.includes("linkedin.com");
+    case "tiktok":
+      return url.includes("tiktok.com");
+    case "instagram":
+      return url.includes("instagram.com");
+    default:
+      return true;
+  }
+}
+
 function extractUsername(url: string, platform: string): string {
   try {
     const urlObj = new URL(url);
@@ -183,6 +201,11 @@ export const discoverTargets = inngest.createFunction(
               const url = result.url || "";
               const username = extractUsername(url, platform);
               console.log("URL:", url, "→ username:", username);
+
+              if (!isValidPlatformUrl(url, platform)) {
+                console.log("Skipping invalid URL for platform:", platform, url);
+                continue;
+              }
 
               if (username && username !== "unknown") {
                 // 即保存（スコアはバッチ処理で後から更新）
