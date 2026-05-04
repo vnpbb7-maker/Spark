@@ -230,7 +230,7 @@ async function postToReddit(page, postUrl, commentText, credentials) {
       return { success: false, error: "Username input not found" };
     }
 
-    await page.fill(usernameInput, credentials.username);
+    await humanType(page, usernameInput, credentials.username);
     await randomDelay(500, 1000);
 
     // パスワード入力
@@ -254,7 +254,7 @@ async function postToReddit(page, postUrl, commentText, credentials) {
       return { success: false, error: "Password input not found" };
     }
 
-    await page.fill(passwordInput, credentials.password);
+    await humanType(page, passwordInput, credentials.password);
     await randomDelay(500, 1000);
 
     // ログインボタン
@@ -280,7 +280,7 @@ async function postToReddit(page, postUrl, commentText, credentials) {
       console.log("Pressed Enter for login");
     }
 
-    await randomDelay(3000, 5000);
+    await randomDelay(5000, 8000);
 
     const currentUrl = page.url();
     console.log("After login URL:", currentUrl);
@@ -384,7 +384,7 @@ async function testRedditLogin(page, credentials) {
       return { success: false, error: "Username input not found" };
     }
 
-    await page.fill(usernameInput, credentials.username);
+    await humanType(page, usernameInput, credentials.username);
     await randomDelay(500, 1000);
 
     const passwordSelectors = [
@@ -406,7 +406,7 @@ async function testRedditLogin(page, credentials) {
       return { success: false, error: "Password input not found" };
     }
 
-    await page.fill(passwordInput, credentials.password);
+    await humanType(page, passwordInput, credentials.password);
     await randomDelay(500, 1000);
 
     const loginSelectors = [
@@ -429,7 +429,7 @@ async function testRedditLogin(page, credentials) {
       await page.keyboard.press("Enter");
     }
 
-    await randomDelay(3000, 5000);
+    await randomDelay(5000, 8000);
 
     const currentUrl = page.url();
     console.log("After Reddit login URL:", currentUrl);
