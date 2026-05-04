@@ -190,16 +190,35 @@ async function postRedditComment(credentials, target, comment) {
     await randomDelay(2000, 3000);
 
     // ユーザー名入力
-    await page.waitForSelector("#login-username", { timeout: 30000 });
-    await humanType(page, "#login-username", credentials.username);
+    try {
+      await page.waitForSelector("#login-username", { timeout: 5000 });
+      await humanType(page, "#login-username", credentials.username);
+    } catch {
+      await page.waitForSelector('input[name="username"]', { timeout: 10000 });
+      await humanType(page, 'input[name="username"]', credentials.username);
+    }
     await randomDelay(500, 1000);
 
     // パスワード入力
-    await humanType(page, "#login-password", credentials.password);
+    try {
+      await page.waitForSelector("#login-password", { timeout: 5000 });
+      await humanType(page, "#login-password", credentials.password);
+    } catch {
+      await page.waitForSelector('input[name="password"]', { timeout: 10000 });
+      await humanType(page, 'input[name="password"]', credentials.password);
+    }
     await randomDelay(500, 1000);
 
     // ログインボタン
-    await page.click('button[type="submit"]');
+    try {
+      await page.click('button[type="submit"]', { timeout: 5000 });
+    } catch {
+      try {
+        await page.click('[data-step="username"] + div button', { timeout: 5000 });
+      } catch {
+        await page.keyboard.press("Enter");
+      }
+    }
 
     // ログイン完了待ち
     try {
@@ -274,14 +293,33 @@ async function testRedditLogin(page, credentials) {
     });
     await randomDelay(2000, 3000);
 
-    await page.waitForSelector("#login-username", { timeout: 30000 });
-    await humanType(page, "#login-username", credentials.username);
+    try {
+      await page.waitForSelector("#login-username", { timeout: 5000 });
+      await humanType(page, "#login-username", credentials.username);
+    } catch {
+      await page.waitForSelector('input[name="username"]', { timeout: 10000 });
+      await humanType(page, 'input[name="username"]', credentials.username);
+    }
     await randomDelay(500, 1000);
 
-    await humanType(page, "#login-password", credentials.password);
+    try {
+      await page.waitForSelector("#login-password", { timeout: 5000 });
+      await humanType(page, "#login-password", credentials.password);
+    } catch {
+      await page.waitForSelector('input[name="password"]', { timeout: 10000 });
+      await humanType(page, 'input[name="password"]', credentials.password);
+    }
     await randomDelay(500, 1000);
 
-    await page.click('button[type="submit"]');
+    try {
+      await page.click('button[type="submit"]', { timeout: 5000 });
+    } catch {
+      try {
+        await page.click('[data-step="username"] + div button', { timeout: 5000 });
+      } catch {
+        await page.keyboard.press("Enter");
+      }
+    }
 
     try {
       await page.waitForNavigation({
