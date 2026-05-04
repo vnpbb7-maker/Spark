@@ -196,6 +196,31 @@ async function postToReddit(page, postUrl, commentText, credentials) {
   try {
     page.setDefaultTimeout(60000);
 
+    // セッションクッキーがあればそれを使う
+    if (credentials.session_cookie) {
+      console.log("Using session cookie for Reddit");
+      await page.context().addCookies([
+        {
+          name: "reddit_session",
+          value: credentials.session_cookie,
+          domain: ".reddit.com",
+          path: "/",
+        },
+      ]);
+
+      // ログインページをスキップして直接投稿ページへ
+      await page.goto(postUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
+      const url = page.url();
+      console.log("Direct navigation URL:", url);
+
+      if (!url.includes("reddit.com/login")) {
+        // セッション有効 → コメント投稿処理へ
+        return await writeRedditComment(page, commentText);
+      }
+      console.log("Session cookie expired, falling back to login");
+    }
+
+    // 通常のログイン処理
     await page.goto("https://www.reddit.com/login", {
       waitUntil: "domcontentloaded",
       timeout: 60000,
@@ -305,61 +330,64 @@ async function postToReddit(page, postUrl, commentText, credentials) {
     // 投稿ページに移動
     await randomDelay(1000, 2000);
     await page.goto(postUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
-    await randomDelay(2000, 3000);
 
-    // コメント入力
-    const commentSelectors = [
-      '[placeholder="What are your thoughts?"]',
-      '[data-testid="comment-submission-form-textarea"]',
-      ".public-DraftEditor-content",
-      '[contenteditable="true"]',
-    ];
-
-    let commentBox = null;
-    for (const sel of commentSelectors) {
-      try {
-        commentBox = await page.waitForSelector(sel, { timeout: 5000 });
-        console.log("Comment box found:", sel);
-        break;
-      } catch {}
-    }
-
-    if (!commentBox) {
-      return { success: false, error: "Comment box not found" };
-    }
-
-    await commentBox.click();
-    await randomDelay(500, 1000);
-
-    for (const char of commentText) {
-      await page.keyboard.type(char, { delay: 30 + Math.random() * 60 });
-    }
-
-    await randomDelay(1000, 2000);
-
-    // 投稿ボタン
-    const submitSelectors = [
-      'button:has-text("Comment")',
-      'button[type="submit"]',
-      'button:has-text("Reply")',
-    ];
-
-    for (const sel of submitSelectors) {
-      try {
-        await page.click(sel, { timeout: 3000 });
-        console.log("Submit button clicked:", sel);
-        break;
-      } catch {}
-    }
-
-    await page.waitForTimeout(3000);
-    console.log("Comment posted successfully");
-
-    return { success: true };
+    return await writeRedditComment(page, commentText);
   } catch (err) {
     console.error("Reddit post error:", err.message);
     return { success: false, error: err.message };
   }
+}
+
+async function writeRedditComment(page, commentText) {
+  await randomDelay(2000, 3000);
+
+  const commentSelectors = [
+    '[placeholder="What are your thoughts?"]',
+    '[data-testid="comment-submission-form-textarea"]',
+    ".public-DraftEditor-content",
+    '[contenteditable="true"]',
+  ];
+
+  let commentBox = null;
+  for (const sel of commentSelectors) {
+    try {
+      commentBox = await page.waitForSelector(sel, { timeout: 5000 });
+      console.log("Comment box found:", sel);
+      break;
+    } catch {}
+  }
+
+  if (!commentBox) {
+    return { success: false, error: "Comment box not found" };
+  }
+
+  await commentBox.click();
+  await randomDelay(500, 1000);
+
+  for (const char of commentText) {
+    await page.keyboard.type(char, { delay: 30 + Math.random() * 60 });
+  }
+
+  await randomDelay(1000, 2000);
+
+  const submitSelectors = [
+    'button:has-text("Comment")',
+    'button[type="submit"]',
+    'button:has-text("Reply")',
+  ];
+
+  for (const sel of submitSelectors) {
+    try {
+      await page.click(sel, { timeout: 3000 });
+      console.log("Submit clicked:", sel);
+      break;
+    } catch {}
+  }
+
+  await page.waitForTimeout(3000);
+  console.log("Comment posted successfully");
+
+  return { success: true };
 }
 
 async function testRedditLogin(page, credentials) {
