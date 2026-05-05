@@ -42,7 +42,6 @@ export default function TargetList({ targets, tab, onTabChange, pendingCount, on
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState("");
-  const supabase = createClient();
 
   const toggleSelect = (id: string) => {
     setSelected((prev) => {
@@ -53,6 +52,7 @@ export default function TargetList({ targets, tab, onTabChange, pendingCount, on
   };
 
   const approveComment = async (commentId: string, content?: string) => {
+    const supabase = createClient();
     const update: Record<string, unknown> = { approved: true, approved_at: new Date().toISOString() };
     if (content) update.content = content;
     await supabase.from("comments").update(update).eq("id", commentId);
@@ -71,6 +71,7 @@ export default function TargetList({ targets, tab, onTabChange, pendingCount, on
   };
 
   const rejectTarget = async (targetId: string) => {
+    const supabase = createClient();
     await supabase.from("targets").update({ status: "rejected" }).eq("id", targetId);
     onRefresh();
   };

@@ -240,7 +240,6 @@ export default function CampaignDetailPage() {
                   ✍ 承認待ち ({pendingComments.length})
                 </h3>
                 {pendingComments.map((comment) => {
-                  console.log("rendering comment", comment.id, comment);
                   return (
                    <div key={comment.id} style={{ background: "#13132a", border: "0.5px solid rgba(255,255,255,0.07)", borderRadius: 16, padding: 20, marginBottom: 12 }}>
                     <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
@@ -292,7 +291,7 @@ export default function CampaignDetailPage() {
           {/* Right - Live log + Insights */}
           <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
             <div style={{ height: "400px" }}>
-              <DashboardLiveLog logs={logs} />
+              <DashboardLiveLog logs={logs} platforms={(campaign?.platforms as string[]) || []} campaignCreatedAt={campaign?.created_at as string} />
             </div>
             <div style={{ background: "#13132a", border: "1px solid rgba(255,255,255,0.07)", borderRadius: "16px", padding: "20px" }}>
               <h3 style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600, fontSize: "14px", color: "#ff6b35", marginBottom: "16px" }}>🧠 AIインサイト（週次）</h3>

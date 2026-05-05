@@ -1,8 +1,42 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { LogEntry } from "@/hooks/useRealtimeLog";
 
-export default function DashboardLiveLog({ logs }: { logs: LogEntry[] }) {
+const STEPS = [
+  { label: "ターゲットを検索中...", icon: "🔍" },
+  { label: "ターゲットを分析中...", icon: "🧠" },
+  { label: "コメントを生成中...", icon: "✍" },
+];
+
+type Props = {
+  logs: LogEntry[];
+  platforms?: string[];
+  campaignCreatedAt?: string;
+};
+
+export default function DashboardLiveLog({ logs, platforms, campaignCreatedAt }: Props) {
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    if (logs.length > 0 || !campaignCreatedAt) return;
+    const createdMs = new Date(campaignCreatedAt).getTime();
+    const tick = () => setElapsed(Math.floor((Date.now() - createdMs) / 1000));
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, [logs.length, campaignCreatedAt]);
+
+  const stepIndex = Math.min(Math.floor(elapsed / 30), STEPS.length - 1);
+  const currentStep = STEPS[stepIndex];
+
+  const platformLabel = platforms && platforms.length > 0
+    ? platforms.map((p) => {
+        const names: Record<string, string> = { twitter: "Twitter", reddit: "Reddit", linkedin: "LinkedIn", tiktok: "TikTok", instagram: "Instagram", facebook: "Facebook" };
+        return names[p] || p;
+      }).join("・")
+    : "SNS";
+
   return (
     <div style={{ background: "#13132a", border: "1px solid rgba(255,255,255,0.07)", borderRadius: "16px", padding: "0", height: "100%", display: "flex", flexDirection: "column" }}>
       <div style={{ padding: "16px 20px", borderBottom: "1px solid rgba(255,255,255,0.07)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -16,12 +50,22 @@ export default function DashboardLiveLog({ logs }: { logs: LogEntry[] }) {
         {logs.length === 0 ? (
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "32px 16px", gap: 12 }}>
             <div style={{ width: 32, height: 32, border: "3px solid rgba(255,107,53,0.2)", borderTop: "3px solid #ff6b35", borderRadius: "50%", animation: "spin 1s linear infinite" }} />
-            <div style={{ fontSize: 13, color: "rgba(240,239,232,0.7)", textAlign: "center", lineHeight: 1.6 }}>
-              Reddit・TwitterでAIがターゲットを探しています
+
+            {/* Step indicator */}
+            <div style={{ display: "flex", gap: 6, marginBottom: 4 }}>
+              {STEPS.map((s, i) => (
+                <div key={i} style={{ width: 8, height: 8, borderRadius: "50%", background: i <= stepIndex ? "#ff6b35" : "rgba(255,255,255,0.1)", transition: "background 0.3s" }} />
+              ))}
             </div>
-            <div style={{ fontSize: 11, color: "rgba(240,239,232,0.4)", textAlign: "center", lineHeight: 1.6 }}>
-              マッチするターゲットが見つかり次第<br />
-              リアルタイムで表示されます
+
+            <div style={{ fontSize: 13, color: "rgba(240,239,232,0.7)", textAlign: "center", lineHeight: 1.6 }}>
+              {currentStep.icon} {currentStep.label}
+            </div>
+            <div style={{ fontSize: 12, color: "rgba(240,239,232,0.5)", textAlign: "center" }}>
+              {platformLabel}でAIがターゲットを探しています
+            </div>
+            <div style={{ fontSize: 11, color: "rgba(240,239,232,0.3)", textAlign: "center", lineHeight: 1.6 }}>
+              通常1〜2分かかります
             </div>
           </div>
         ) : (
