@@ -168,8 +168,15 @@ export default function CampaignDetailPage() {
     const supabase = createClient();
     await supabase.from("comments").update({ approved: true, approved_at: new Date().toISOString() }).eq("id", commentId);
     fetch("/api/comments/post", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ comment_id: commentId }) })
-      .then((r) => r.json()).then((d) => console.log("Post result:", d));
-    fetchData();
+      .then((r) => r.json())
+      .then((d) => {
+        console.log("Post result:", d);
+        fetchData();
+      })
+      .catch((err) => {
+        console.error("Post error:", err);
+        fetchData();
+      });
   };
 
   // 却下
