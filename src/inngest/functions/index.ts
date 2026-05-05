@@ -12,7 +12,7 @@ function buildSearchQuery(platform: string, keyword: string, language: string = 
   if (language === "ja") {
     switch (platform) {
       case "twitter":
-        return `${keyword} 日本語 スタートアップ site:twitter.com OR site:x.com`;
+        return `site:twitter.com OR site:x.com ${keyword} 日本語 スタートアップ status`;
       case "reddit":
         return `${keyword} 日本語 スタートアップ`;
       case "linkedin":
@@ -31,7 +31,7 @@ function buildSearchQuery(platform: string, keyword: string, language: string = 
   if (language === "zh") {
     switch (platform) {
       case "twitter":
-        return `${keyword} 中文 startup site:twitter.com OR site:x.com`;
+        return `site:twitter.com OR site:x.com ${keyword} 中文 startup status`;
       case "reddit":
         return `${keyword} 中文 startup`;
       default:
@@ -42,7 +42,7 @@ function buildSearchQuery(platform: string, keyword: string, language: string = 
   if (language === "ko") {
     switch (platform) {
       case "twitter":
-        return `${keyword} 한국어 startup site:twitter.com OR site:x.com`;
+        return `site:twitter.com OR site:x.com ${keyword} 한국어 startup status`;
       case "reddit":
         return `${keyword} 한국어 startup`;
       default:
@@ -53,7 +53,7 @@ function buildSearchQuery(platform: string, keyword: string, language: string = 
   // 英語 / any / その他
   switch (platform) {
     case "twitter":
-      return `${keyword} startup founder twitter`;
+      return `site:twitter.com OR site:x.com ${keyword} startup founder status`;
     case "reddit":
       return `reddit ${keyword} startup`;
     case "linkedin":
@@ -75,7 +75,8 @@ function isValidPlatformUrl(url: string, platform: string): boolean {
     case "reddit":
       return url.includes("reddit.com");
     case "twitter":
-      return url.includes("twitter.com") || url.includes("x.com");
+      return (url.includes("twitter.com") || url.includes("x.com")) &&
+             url.includes("/status/");
     case "linkedin":
       return url.includes("linkedin.com");
     case "tiktok":
