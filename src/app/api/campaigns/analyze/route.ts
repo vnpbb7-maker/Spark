@@ -62,7 +62,7 @@ async function callClaude(input: string, retryCount = 0): Promise<Record<string,
   try {
     const message = await client.messages.create(
       {
-        model: "claude-sonnet-4-20250514",
+        model: "claude-sonnet-4-5",
         max_tokens: 1000,
         system: SYSTEM_PROMPT,
         messages: [

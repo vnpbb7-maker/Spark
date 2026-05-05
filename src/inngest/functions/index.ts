@@ -214,20 +214,27 @@ export const discoverTargets = inngest.createFunction(
       .in("campaign_id", campaignIds)
       .gte("created_at", today);
 
-    if (count && count >= campaign.daily_limit) {
-      console.log(`Daily limit reached: ${count}/${campaign.daily_limit}`);
+    const dailyLimit = campaign.daily_limit || 10;
+    const usedToday = count || 0;
+    if (usedToday >= dailyLimit) {
+      console.log(`Daily limit already reached: ${usedToday}/${dailyLimit}`);
       return { error: "Daily limit reached" };
     }
+    const remaining = dailyLimit - usedToday;
+    console.log(`Daily limit: ${usedToday}/${dailyLimit}, remaining: ${remaining}`);
 
     // 3. Tavily APIでターゲット発見
     const personas = campaign.target_personas?.personas || [];
     const platforms = campaign.platforms || [];
     const insertedTargets: string[] = [];
+    let limitReached = false;
     console.log("Personas count:", personas.length);
     console.log("Platforms:", platforms);
 
     for (const persona of personas.slice(0, 1)) {
+      if (limitReached) break;
       for (const platform of platforms.slice(0, 2)) {
+        if (limitReached) break;
         const keywords = persona.where_to_find?.[platform] || [];
 
         for (const keyword of keywords.slice(0, 2)) {
@@ -238,6 +245,11 @@ export const discoverTargets = inngest.createFunction(
               console.log(`Twitter API results for "${keyword}":`, tweets.length);
 
               for (const tweet of tweets) {
+                if (insertedTargets.length >= remaining) {
+                  console.log(`Daily limit reached during Twitter insert: ${usedToday + insertedTargets.length}/${dailyLimit}`);
+                  limitReached = true;
+                  break;
+                }
                 if (tweet.username && tweet.username !== "unknown") {
                   await getSupabase().from("targets").insert({
                     campaign_id: campaignId,
@@ -251,7 +263,7 @@ export const discoverTargets = inngest.createFunction(
                     status: "pending",
                   });
                   insertedTargets.push(tweet.username);
-                  console.log("Inserted Twitter target:", tweet.username, tweet.url);
+                  console.log(`Inserted Twitter target (${insertedTargets.length}/${remaining}):`, tweet.username);
                 }
               }
               continue; // Tavilyの処理をスキップ
@@ -296,8 +308,13 @@ export const discoverTargets = inngest.createFunction(
                 continue;
               }
 
+              if (insertedTargets.length >= remaining) {
+                console.log(`Daily limit reached during Tavily insert: ${usedToday + insertedTargets.length}/${dailyLimit}`);
+                limitReached = true;
+                break;
+              }
+
               if (username && username !== "unknown") {
-                // 即保存（スコアはバッチ処理で後から更新）
                 console.log("Inserting target:", username, "on", platform);
 
                 await getSupabase().from("targets").insert({
@@ -312,7 +329,7 @@ export const discoverTargets = inngest.createFunction(
                   status: "pending",
                 });
                 insertedTargets.push(username);
-                console.log("Inserted target:", username);
+                console.log(`Inserted target (${insertedTargets.length}/${remaining}):`, username);
               } else {
                 console.log("Skipping - invalid username:", username, "from URL:", url);
               }

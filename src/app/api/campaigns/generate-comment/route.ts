@@ -24,7 +24,7 @@ export async function POST(request: Request) {
     };
 
     const message = await anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
+      model: "claude-sonnet-4-5",
       max_tokens: 500,
       system: `あなたは共感力の高いGrowthハッカーです。
 以下の情報を元に自動コメントを生成してください。
