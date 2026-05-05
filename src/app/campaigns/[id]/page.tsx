@@ -161,6 +161,7 @@ export default function CampaignDetailPage() {
 
   // 承認
   const handleApprove = async (commentId: string) => {
+    console.log("handleApprove called", commentId);
     setPendingComments((prev) => prev.filter((c) => c.id !== commentId));
     setToast("✅ 承認しました。投稿処理中...");
     setTimeout(() => setToast(""), 3000);
@@ -251,8 +252,10 @@ export default function CampaignDetailPage() {
                 <h3 style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600, fontSize: 15, color: "#ffd60a", marginBottom: 12 }}>
                   ✍ 承認待ち ({pendingComments.length})
                 </h3>
-                {pendingComments.map((comment) => (
-                  <div key={comment.id} style={{ background: "#13132a", border: "0.5px solid rgba(255,255,255,0.07)", borderRadius: 16, padding: 20, marginBottom: 12 }}>
+                {pendingComments.map((comment) => {
+                  console.log("rendering comment", comment.id, comment);
+                  return (
+                   <div key={comment.id} style={{ background: "#13132a", border: "0.5px solid rgba(255,255,255,0.07)", borderRadius: 16, padding: 20, marginBottom: 12 }}>
                     <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
                       <span style={{ background: "rgba(255,255,255,0.07)", borderRadius: 8, padding: "3px 10px", fontSize: 12, color: "rgba(240,239,232,0.6)" }}>{comment.platform}</span>
                       <span style={{ fontSize: 12, color: "rgba(240,239,232,0.5)" }}>@{comment.targets?.username}</span>
@@ -274,7 +277,8 @@ export default function CampaignDetailPage() {
                       </button>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
 
