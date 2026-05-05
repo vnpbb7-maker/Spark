@@ -8,6 +8,52 @@ function getSupabase() {
   );
 }
 
+// Twitter API検索
+async function searchTwitterTargets(keyword: string, language: string): Promise<{ url: string; username: string; content: string }[]> {
+  const bearerToken = process.env.TWITTER_BEARER_TOKEN;
+  if (!bearerToken) {
+    console.log("TWITTER_BEARER_TOKEN not set, skipping Twitter search");
+    return [];
+  }
+
+  const langQuery = language === "ja" ? " lang:ja" : "";
+  const query = `${keyword}${langQuery} -is:retweet has:links`;
+
+  const url = new URL("https://api.twitter.com/2/tweets/search/recent");
+  url.searchParams.set("query", query);
+  url.searchParams.set("max_results", "10");
+  url.searchParams.set("tweet.fields", "author_id,text,created_at");
+  url.searchParams.set("expansions", "author_id");
+  url.searchParams.set("user.fields", "username,name");
+
+  const response = await fetch(url.toString(), {
+    headers: {
+      Authorization: `Bearer ${bearerToken}`,
+    },
+  });
+
+  console.log("Twitter search status:", response.status);
+
+  if (!response.ok) {
+    const error = await response.text();
+    console.log("Twitter search error:", error);
+    return [];
+  }
+
+  const data = await response.json();
+  const tweets = data.data || [];
+  const users = data.includes?.users || [];
+
+  return tweets.map((tweet: { id: string; author_id: string; text: string }) => {
+    const user = users.find((u: { id: string; username: string }) => u.id === tweet.author_id);
+    return {
+      url: `https://x.com/${user?.username}/status/${tweet.id}`,
+      username: user?.username || "unknown",
+      content: tweet.text,
+    };
+  });
+}
+
 function buildSearchQuery(platform: string, keyword: string, language: string = ""): string {
   if (language === "ja") {
     switch (platform) {
@@ -168,6 +214,30 @@ export const discoverTargets = inngest.createFunction(
 
         for (const keyword of keywords.slice(0, 2)) {
           try {
+            // TwitterはAPIで検索
+            if (platform === "twitter") {
+              const tweets = await searchTwitterTargets(keyword, campaign.target_language || "ja");
+              console.log(`Twitter API results for "${keyword}":`, tweets.length);
+
+              for (const tweet of tweets) {
+                if (tweet.username && tweet.username !== "unknown") {
+                  await getSupabase().from("targets").insert({
+                    campaign_id: campaignId,
+                    platform: "twitter",
+                    username: tweet.username,
+                    profile_url: `https://x.com/${tweet.username}`,
+                    post_url: tweet.url,
+                    post_content: tweet.content?.slice(0, 500) || "",
+                    match_score: 60,
+                    match_reason: "Twitter API検索",
+                    status: "pending",
+                  });
+                  insertedTargets.push(tweet.username);
+                  console.log("Inserted Twitter target:", tweet.username, tweet.url);
+                }
+              }
+              continue; // Tavilyの処理をスキップ
+            }
             const query = buildSearchQuery(platform, keyword, campaign.target_language || "");
             console.log("Tavily query:", query);
             console.log("TAVILY_API_KEY exists:", !!process.env.TAVILY_API_KEY);
