@@ -117,7 +117,10 @@ export default function CampaignDetailPage() {
       .order("created_at", { ascending: false })
       .limit(10);
 
-    setInitialLogs(buildLogsFromData(logTargets || [], logComments || []));
+    console.log("[LiveLog] logTargets:", logTargets?.length, "logComments:", logComments?.length);
+    const builtLogs = buildLogsFromData(logTargets || [], logComments || []);
+    console.log("[LiveLog] builtLogs:", builtLogs.length);
+    setInitialLogs(builtLogs);
 
     setLoading(false);
   }, [campaignId, router, buildLogsFromData]);
@@ -181,6 +184,7 @@ export default function CampaignDetailPage() {
 
   // リアルタイム + DBログを結合
   const logs = [...realtimeLogs, ...initialLogs.filter((il) => !realtimeLogs.some((rl) => rl.text === il.text))].slice(0, 20);
+  console.log("[LiveLog] render - realtimeLogs:", realtimeLogs.length, "initialLogs:", initialLogs.length, "merged logs:", logs.length);
 
   const filteredTargets = targets.filter((t) => {
     if (tab === "pending") return t.comment && !t.comment.approved;
