@@ -56,6 +56,17 @@ export default function TargetList({ targets, tab, onTabChange, pendingCount, on
     const update: Record<string, unknown> = { approved: true, approved_at: new Date().toISOString() };
     if (content) update.content = content;
     await supabase.from("comments").update(update).eq("id", commentId);
+
+    // 投稿リクエストを送る
+    fetch("/api/comments/post", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ comment_id: commentId }),
+    })
+      .then((r) => r.json())
+      .then((d) => console.log("Post result:", d))
+      .catch((err) => console.error("Post error:", err));
+
     onRefresh();
   };
 
