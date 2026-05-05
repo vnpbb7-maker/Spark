@@ -39,6 +39,10 @@ export default function CampaignDetailPage() {
   const [tab, setTab] = useState<"pending" | "posted" | "replied">("pending");
   const [funnel, setFunnel] = useState({ discovered: 0, generated: 0, approved: 0, posted: 0, replied: 0, converted: 0 });
   const [loading, setLoading] = useState(true);
+  const [kpi, setKpi] = useState({ targets: 0, generated: 0, approved: 0, posted: 0 });
+  const [pendingComments, setPendingComments] = useState<any[]>([]);
+  const [postedComments, setPostedComments] = useState<any[]>([]);
+  const [toast, setToast] = useState("");
 
   // 既存アクティビティを取得
   const fetchExistingActivity = useCallback(async () => {
@@ -123,10 +127,65 @@ export default function CampaignDetailPage() {
     const posted = enriched.filter((t) => t.comment?.posted_at).length;
     const replied = enriched.filter((t) => t.comment?.response_text).length;
     setFunnel({ discovered, generated, approved, posted, replied, converted: Math.floor(replied * 0.6) });
+
+    // KPI counts
+    const { count: targetsCount } = await supabase.from("targets").select("*", { count: "exact", head: true }).eq("campaign_id", campaignId);
+    const { count: commentsCount } = await supabase.from("comments").select("*", { count: "exact", head: true }).eq("campaign_id", campaignId);
+    const { count: approvedCount } = await supabase.from("comments").select("*", { count: "exact", head: true }).eq("campaign_id", campaignId).eq("approved", true);
+    const { count: postedCount } = await supabase.from("comments").select("*", { count: "exact", head: true }).eq("campaign_id", campaignId).not("posted_at", "is", null);
+    setKpi({ targets: targetsCount || 0, generated: commentsCount || 0, approved: approvedCount || 0, posted: postedCount || 0 });
+
     setLoading(false);
   }, [campaignId, router]);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  // コメント取得
+  const fetchComments = useCallback(async () => {
+    const supabase = createClient();
+    const { data: pending } = await supabase
+      .from("comments")
+      .select("*, targets(username, platform, post_url, post_content)")
+      .eq("campaign_id", campaignId)
+      .eq("approved", false)
+      .is("posted_at", null)
+      .order("created_at", { ascending: false });
+    setPendingComments(pending || []);
+
+    const { data: posted } = await supabase
+      .from("comments")
+      .select("*, targets(username, platform, post_url)")
+      .eq("campaign_id", campaignId)
+      .not("posted_at", "is", null)
+      .order("posted_at", { ascending: false });
+    setPostedComments(posted || []);
+  }, [campaignId]);
+
+  // 承認
+  const handleApprove = async (commentId: string) => {
+    setPendingComments((prev) => prev.filter((c) => c.id !== commentId));
+    setToast("✅ 承認しました。投稿処理中...");
+    setTimeout(() => setToast(""), 3000);
+
+    const supabase = createClient();
+    await supabase.from("comments").update({ approved: true, approved_at: new Date().toISOString() }).eq("id", commentId);
+    fetch("/api/comments/post", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ comment_id: commentId }) })
+      .then((r) => r.json()).then((d) => console.log("Post result:", d));
+    fetchData();
+  };
+
+  // 却下
+  const handleReject = async (commentId: string) => {
+    setPendingComments((prev) => prev.filter((c) => c.id !== commentId));
+    const supabase = createClient();
+    await supabase.from("comments").delete().eq("id", commentId);
+  };
+
+  useEffect(() => { fetchData(); fetchComments(); }, [fetchData, fetchComments]);
+
+  // 10秒ポーリング
+  useEffect(() => {
+    const interval = setInterval(() => { fetchData(); fetchComments(); }, 10000);
+    return () => clearInterval(interval);
+  }, [fetchData, fetchComments]);
 
   const filteredTargets = targets.filter((t) => {
     if (tab === "pending") return t.comment && !t.comment.approved;
@@ -160,10 +219,76 @@ export default function CampaignDetailPage() {
       <div style={{ maxWidth: "1200px", margin: "0 auto", padding: "24px" }}>
         <KpiBar funnel={funnel} />
 
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 24 }}>
+          {[
+            { label: "発見ターゲット", value: kpi.targets, color: "#60a5fa" },
+            { label: "コメント生成", value: kpi.generated, color: "#f59e0b" },
+            { label: "承認済み", value: kpi.approved, color: "#a78bfa" },
+            { label: "投稿済み", value: kpi.posted, color: "#2dd17a" },
+          ].map((k) => (
+            <div key={k.label} style={{ background: "#13132a", border: "0.5px solid rgba(255,255,255,0.07)", borderRadius: 12, padding: 16, textAlign: "center" }}>
+              <div style={{ fontSize: 28, fontWeight: 700, color: k.color }}>{k.value}</div>
+              <div style={{ fontSize: 11, color: "rgba(240,239,232,0.5)", marginTop: 2 }}>{k.label}</div>
+            </div>
+          ))}
+        </div>
+
         <div style={{ display: "grid", gridTemplateColumns: "1fr 380px", gap: "24px" }}>
-          {/* Left - Target list */}
+          {/* Left - Target list + Pending comments */}
           <div>
             <TargetList targets={filteredTargets} tab={tab} onTabChange={setTab} pendingCount={pendingCount} onRefresh={fetchData} />
+
+            {/* 承認待ちコメント */}
+            {pendingComments.length > 0 && (
+              <div style={{ marginTop: 24 }}>
+                <h3 style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600, fontSize: 15, color: "#ffd60a", marginBottom: 12 }}>
+                  ✍ 承認待ち ({pendingComments.length})
+                </h3>
+                {pendingComments.map((comment) => (
+                  <div key={comment.id} style={{ background: "#13132a", border: "0.5px solid rgba(255,255,255,0.07)", borderRadius: 16, padding: 20, marginBottom: 12 }}>
+                    <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+                      <span style={{ background: "rgba(255,255,255,0.07)", borderRadius: 8, padding: "3px 10px", fontSize: 12, color: "rgba(240,239,232,0.6)" }}>{comment.platform}</span>
+                      <span style={{ fontSize: 12, color: "rgba(240,239,232,0.5)" }}>@{comment.targets?.username}</span>
+                    </div>
+                    {comment.targets?.post_content && (
+                      <div style={{ background: "rgba(255,255,255,0.03)", borderRadius: 10, padding: 12, fontSize: 13, color: "rgba(240,239,232,0.5)", marginBottom: 10, fontStyle: "italic" }}>
+                        &quot;{(comment.targets.post_content as string).slice(0, 150)}&quot;
+                      </div>
+                    )}
+                    <div style={{ background: "rgba(255,107,53,0.05)", border: "0.5px solid rgba(255,107,53,0.2)", borderRadius: 10, padding: 12, fontSize: 14, color: "#f0efe8", marginBottom: 12 }}>
+                      {comment.content}
+                    </div>
+                    <div style={{ display: "flex", gap: 10 }}>
+                      <button onClick={() => handleApprove(comment.id)} style={{ background: "#2dd17a", color: "#fff", border: "none", borderRadius: 10, padding: "10px 20px", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "DM Sans" }}>
+                        ✓ 承認して投稿
+                      </button>
+                      <button onClick={() => handleReject(comment.id)} style={{ background: "transparent", color: "rgba(240,239,232,0.5)", border: "0.5px solid rgba(255,255,255,0.15)", borderRadius: 10, padding: "10px 20px", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "DM Sans" }}>
+                        ✗ 却下
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* 投稿済みコメント */}
+            {postedComments.length > 0 && (
+              <div style={{ marginTop: 24 }}>
+                <h3 style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600, fontSize: 15, color: "#2dd17a", marginBottom: 12 }}>
+                  📤 投稿済み ({postedComments.length})
+                </h3>
+                {postedComments.slice(0, 5).map((comment) => (
+                  <div key={comment.id} style={{ background: "#13132a", border: "0.5px solid rgba(45,209,122,0.15)", borderRadius: 16, padding: 16, marginBottom: 10 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                      <span style={{ background: "rgba(255,255,255,0.07)", borderRadius: 8, padding: "3px 10px", fontSize: 12, color: "rgba(240,239,232,0.6)" }}>{comment.platform}</span>
+                      <span style={{ fontSize: 12, color: "rgba(240,239,232,0.5)" }}>@{comment.targets?.username}</span>
+                      <span style={{ marginLeft: "auto", fontSize: 11, color: "rgba(240,239,232,0.3)" }}>{new Date(comment.posted_at).toLocaleString("ja-JP")}</span>
+                    </div>
+                    <div style={{ fontSize: 13, color: "rgba(240,239,232,0.7)", lineHeight: 1.5 }}>{(comment.content as string).slice(0, 200)}</div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Right - Live log + Insights */}
@@ -183,6 +308,12 @@ export default function CampaignDetailPage() {
           </div>
         </div>
       </div>
+
+      {toast && (
+        <div style={{ position: "fixed", bottom: 32, right: 32, background: "#2dd17a", color: "#fff", borderRadius: 12, padding: "12px 20px", fontSize: 14, fontWeight: 600, zIndex: 1000, boxShadow: "0 4px 20px rgba(0,0,0,0.3)", fontFamily: "DM Sans" }}>
+          {toast}
+        </div>
+      )}
     </div>
   );
 }
