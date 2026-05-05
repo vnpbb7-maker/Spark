@@ -189,15 +189,24 @@ export const discoverTargets = inngest.createFunction(
 
     if (!campaign) return { error: "Campaign not found" };
 
-    // 2. 本日の接触数確認
+    // 2. 本日の接触数確認（ユーザー全体）
     const today = new Date().toISOString().split("T")[0];
+
+    const { data: userCampaigns } = await getSupabase()
+      .from("campaigns")
+      .select("id")
+      .eq("user_id", campaign.user_id);
+
+    const campaignIds = userCampaigns?.map((c: { id: string }) => c.id) || [campaignId];
+
     const { count } = await getSupabase()
       .from("targets")
       .select("*", { count: "exact", head: true })
-      .eq("campaign_id", campaignId)
+      .in("campaign_id", campaignIds)
       .gte("created_at", today);
 
     if (count && count >= campaign.daily_limit) {
+      console.log(`Daily limit reached: ${count}/${campaign.daily_limit}`);
       return { error: "Daily limit reached" };
     }
 
