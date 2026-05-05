@@ -38,6 +38,7 @@ export default function ApprovePage() {
   const router = useRouter();
   const [comments, setComments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [toast, setToast] = useState("");
 
   useEffect(() => {
     const fetchComments = async () => {
@@ -82,9 +83,13 @@ export default function ApprovePage() {
   }, [router]);
 
   const handleApprove = async (commentId: string) => {
-    const supabase = createClient();
+    // 即座にUIから削除（レスポンスを待たない）
+    setComments((prev) => prev.filter((c) => c.id !== commentId));
+    setToast("✅ 承認しました。投稿処理中...");
+    setTimeout(() => setToast(""), 3000);
 
-    // まずapprovedをtrueに更新
+    // バックグラウンドでDB更新
+    const supabase = createClient();
     await supabase
       .from("comments")
       .update({
@@ -93,27 +98,15 @@ export default function ApprovePage() {
       })
       .eq("id", commentId);
 
-    // Railwayに投稿リクエストを送る
-    try {
-      const res = await fetch("/api/comments/post", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ comment_id: commentId }),
-      });
-      const data = await res.json();
-
-      if (data.success && data.queued) {
-        alert("✅ " + (data.message || "承認しました"));
-      } else if (data.success) {
-        alert("✅ 投稿しました！");
-      } else {
-        alert(`⚠️ 承認しましたが投稿に失敗: ${data.error}`);
-      }
-    } catch {
-      alert("✅ 承認しました");
-    }
-
-    setComments((prev) => prev.filter((c) => c.id !== commentId));
+    // バックグラウンドで投稿（awaitしない）
+    fetch("/api/comments/post", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ comment_id: commentId }),
+    })
+      .then((res) => res.json())
+      .then((data) => console.log("Post result:", data))
+      .catch((err) => console.error("Post error:", err));
   };
 
   const handleReject = async (commentId: string) => {
@@ -337,6 +330,23 @@ export default function ApprovePage() {
           </div>
         ))}
       </div>
+      {toast && (
+        <div style={{
+          position: "fixed",
+          bottom: 32, right: 32,
+          background: "#2dd17a",
+          color: "#fff",
+          borderRadius: 12,
+          padding: "12px 20px",
+          fontSize: 14,
+          fontWeight: 600,
+          zIndex: 1000,
+          boxShadow: "0 4px 20px rgba(0,0,0,0.3)",
+          fontFamily: "DM Sans",
+        }}>
+          {toast}
+        </div>
+      )}
     </div>
   );
 }
