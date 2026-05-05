@@ -22,7 +22,7 @@ async function searchTwitterTargets(keyword: string, language: string): Promise<
   const url = new URL("https://api.twitter.com/2/tweets/search/recent");
   url.searchParams.set("query", query);
   url.searchParams.set("max_results", "10");
-  url.searchParams.set("tweet.fields", "author_id,text,created_at");
+  url.searchParams.set("tweet.fields", "author_id,text,created_at,reply_settings");
   url.searchParams.set("expansions", "author_id");
   url.searchParams.set("user.fields", "username,name");
 
@@ -44,7 +44,16 @@ async function searchTwitterTargets(keyword: string, language: string): Promise<
   const tweets = data.data || [];
   const users = data.includes?.users || [];
 
-  return tweets.map((tweet: { id: string; author_id: string; text: string }) => {
+  // reply_settings が "everyone" のツイートのみ許可
+  const replyableTweets = tweets.filter((tweet: { reply_settings?: string }) => {
+    const rs = tweet.reply_settings || "everyone";
+    const allowed = rs === "everyone" || rs === "mentionedUsers";
+    if (!allowed) console.log("Skipping reply-restricted tweet:", tweet.reply_settings);
+    return allowed;
+  });
+  console.log(`Replyable tweets: ${replyableTweets.length}/${tweets.length}`);
+
+  return replyableTweets.map((tweet: { id: string; author_id: string; text: string }) => {
     const user = users.find((u: { id: string; username: string }) => u.id === tweet.author_id);
     return {
       url: `https://x.com/${user?.username}/status/${tweet.id}`,

@@ -673,49 +673,99 @@ async function postTwitterComment(credentials, target, comment) {
       "--mute-audio",
       "--no-default-browser-check",
       "--safebrowsing-disable-auto-update",
+      "--disable-blink-features=AutomationControlled",
     ],
   });
   try {
     const context = await browser.newContext({
       userAgent:
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+      viewport: { width: 1280, height: 800 },
+      locale: "en-US",
+      timezoneId: "America/New_York",
     });
+
+    // webdriver検出を回避
+    await context.addInitScript(() => {
+      Object.defineProperty(navigator, "webdriver", { get: () => undefined });
+      Object.defineProperty(navigator, "languages", { get: () => ["en-US", "en"] });
+      Object.defineProperty(navigator, "plugins", { get: () => [1, 2, 3, 4, 5] });
+    });
+
     const page = await context.newPage();
     page.setDefaultTimeout(60000);
 
-    // Twitter ログイン
-    await page.goto("https://twitter.com/login", {
-      waitUntil: "domcontentloaded",
-      timeout: 60000,
-    });
-    await randomDelay(2000, 4000);
+    const attemptLogin = async () => {
+      // Twitter ログイン
+      await page.goto("https://twitter.com/login", {
+        waitUntil: "domcontentloaded",
+        timeout: 60000,
+      });
+      await randomDelay(3000, 5000);
 
-    // ユーザー名入力
-    await page.waitForSelector('input[autocomplete="username"]', { timeout: 30000 });
-    await humanType(page, 'input[autocomplete="username"]', credentials.username);
-    await randomDelay(500, 1000);
+      // ユーザー名入力
+      await page.waitForSelector('input[autocomplete="username"]', { timeout: 30000 });
+      await randomDelay(500, 1000);
+      const usernameInput = await page.$('input[autocomplete="username"]');
+      if (usernameInput) {
+        await usernameInput.hover();
+        await randomDelay(300, 600);
+        await usernameInput.click();
+        await randomDelay(200, 400);
+      }
+      for (const char of credentials.username) {
+        await page.keyboard.type(char, { delay: 50 + Math.random() * 100 });
+      }
+      await randomDelay(800, 1500);
 
-    // 「次へ」ボタン
-    await page.keyboard.press("Enter");
-    await randomDelay(1500, 2500);
+      // 「次へ」ボタン
+      await page.keyboard.press("Enter");
+      await randomDelay(2000, 3500);
 
-    // パスワード入力
-    try {
-      await page.waitForSelector('input[type="password"]', { timeout: 10000 });
-    } catch {
-      // 「不審なアクティビティ」画面が出た場合
-      return { success: false, error: "Twitter security check triggered" };
-    }
+      // セキュリティチェック検出
+      const pageContent = await page.content();
+      if (pageContent.toLowerCase().includes("suspicious") || pageContent.toLowerCase().includes("verify your identity")) {
+        return { success: false, error: "Twitter security check triggered" };
+      }
 
-    await humanType(page, 'input[type="password"]', credentials.password);
-    await randomDelay(500, 1000);
-    await page.keyboard.press("Enter");
+      // パスワード入力
+      try {
+        await page.waitForSelector('input[type="password"]', { timeout: 10000 });
+      } catch {
+        return { success: false, error: "Twitter security check triggered - password field not found" };
+      }
 
-    // ログイン完了待ち
-    try {
-      await page.waitForNavigation({ timeout: 15000 });
-    } catch {
-      // タイムアウトしても続行
+      await randomDelay(500, 1000);
+      const passwordInput = await page.$('input[type="password"]');
+      if (passwordInput) {
+        await passwordInput.hover();
+        await randomDelay(300, 600);
+        await passwordInput.click();
+        await randomDelay(200, 400);
+      }
+      for (const char of credentials.password) {
+        await page.keyboard.type(char, { delay: 50 + Math.random() * 100 });
+      }
+      await randomDelay(800, 1500);
+      await page.keyboard.press("Enter");
+
+      // ログイン完了待ち
+      try {
+        await page.waitForNavigation({ timeout: 15000 });
+      } catch {
+        // タイムアウトしても続行
+      }
+
+      return null; // success
+    };
+
+    // ログイン試行（リトライ付き）
+    let loginError = await attemptLogin();
+    if (loginError) {
+      console.log("First login attempt failed, retrying in 30s...");
+      await page.waitForTimeout(30000);
+      loginError = await attemptLogin();
+      if (loginError) return loginError;
     }
 
     // ログイン失敗チェック
@@ -724,8 +774,14 @@ async function postTwitterComment(credentials, target, comment) {
       return { success: false, error: "Login failed - check username/password" };
     }
 
-    await randomDelay(2000, 4000);
+    await randomDelay(3000, 5000);
+
+    // ツイートページへ移動
     await page.goto(target.post_url, { waitUntil: "domcontentloaded", timeout: 30000 });
+    await randomDelay(2000, 3000);
+
+    // ページをスクロール
+    await page.evaluate(() => window.scrollBy(0, 200 + Math.random() * 300));
     await randomDelay(1000, 2000);
 
     // リプライボタンをクリック
@@ -733,18 +789,26 @@ async function postTwitterComment(credentials, target, comment) {
     if (!replyButton) {
       return { success: false, error: "Reply button not found" };
     }
+    await replyButton.hover();
+    await randomDelay(500, 1000);
     await replyButton.click();
-    await randomDelay(1000, 2000);
+    await randomDelay(1500, 2500);
 
     // コメント入力
     await page.waitForSelector('[data-testid="tweetTextarea_0"]', { timeout: 10000 });
+    await randomDelay(500, 1000);
     for (const char of comment.content) {
       await page.keyboard.type(char, { delay: 40 + Math.random() * 80 });
     }
-    await randomDelay(1000, 2000);
+    await randomDelay(1500, 2500);
 
     // 投稿ボタン
-    await page.click('[data-testid="tweetButton"]');
+    const tweetBtn = await page.$('[data-testid="tweetButton"]');
+    if (tweetBtn) {
+      await tweetBtn.hover();
+      await randomDelay(300, 600);
+      await tweetBtn.click();
+    }
     await page.waitForTimeout(3000);
 
     return { success: true };
