@@ -44,65 +44,32 @@ export default function CampaignDetailPage() {
   const [postedComments, setPostedComments] = useState<any[]>([]);
   const [toast, setToast] = useState("");
 
-  // 既存アクティビティを取得
-  const fetchExistingActivity = useCallback(async () => {
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-
-    const { data: existingTargets } = await supabase
-      .from("targets")
-      .select("platform, username, match_score, created_at")
-      .eq("campaign_id", campaignId)
-      .order("created_at", { ascending: false })
-      .limit(20);
-
-    const { data: existingComments } = await supabase
-      .from("comments")
-      .select("platform, approved, posted_at, created_at")
-      .eq("campaign_id", campaignId)
-      .order("created_at", { ascending: false })
-      .limit(10);
-
+  // 既存アクティビティをログに変換
+  const buildLogsFromData = useCallback((
+    existingTargets: { platform: string; username: string; match_score: number; created_at: string; id: string }[],
+    existingComments: { platform: string; approved: boolean; posted_at: string | null; created_at: string; id: string }[],
+  ): LogEntry[] => {
     const entries: { log: LogEntry; time: string }[] = [];
-    let counter = 0;
 
     existingComments?.forEach((c) => {
       const ts = new Date(c.posted_at || c.created_at).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
       if (c.posted_at) {
-        entries.push({ log: { id: `init-${++counter}`, icon: "📤", text: `投稿完了: ${c.platform}`, color: "#2dd17a", timestamp: ts, type: "post" }, time: c.posted_at });
+        entries.push({ log: { id: `log-c-${c.id}-post`, icon: "📤", text: `投稿完了: ${c.platform}`, color: "#2dd17a", timestamp: ts, type: "post" }, time: c.posted_at });
       } else if (c.approved) {
-        entries.push({ log: { id: `init-${++counter}`, icon: "✅", text: `承認済み: ${c.platform}`, color: "#7c5cfc", timestamp: ts, type: "approve" }, time: c.created_at });
+        entries.push({ log: { id: `log-c-${c.id}-approve`, icon: "✅", text: `承認済み: ${c.platform}`, color: "#7c5cfc", timestamp: ts, type: "approve" }, time: c.created_at });
       } else {
-        entries.push({ log: { id: `init-${++counter}`, icon: "✍", text: `コメント生成: ${c.platform}`, color: "#ffd60a", timestamp: ts, type: "generate" }, time: c.created_at });
+        entries.push({ log: { id: `log-c-${c.id}-gen`, icon: "✍", text: `コメント生成: ${c.platform}`, color: "#ffd60a", timestamp: ts, type: "generate" }, time: c.created_at });
       }
     });
 
     existingTargets?.forEach((t) => {
       const ts = new Date(t.created_at).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-      entries.push({ log: { id: `init-${++counter}`, icon: "🔍", text: `${t.platform}で発見: @${t.username} (マッチ度${t.match_score}%)`, color: "#ff6b35", timestamp: ts, type: "find" }, time: t.created_at });
+      entries.push({ log: { id: `log-t-${t.id}`, icon: "🔍", text: `${t.platform}で発見: @${t.username} (マッチ度${t.match_score}%)`, color: "#ff6b35", timestamp: ts, type: "find" }, time: t.created_at });
     });
 
     entries.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
-    setInitialLogs(entries.slice(0, 20).map((e) => e.log));
-  }, [campaignId]);
-
-  // 初回取得
-  useEffect(() => {
-    if (campaignId) fetchExistingActivity();
-  }, [campaignId, fetchExistingActivity]);
-
-  // ポーリング: runningなら10秒、それ以外は30秒
-  useEffect(() => {
-    const pollInterval = campaign?.status === "running" ? 10000 : 30000;
-    const interval = setInterval(() => {
-      fetchExistingActivity();
-    }, pollInterval);
-    return () => clearInterval(interval);
-  }, [campaign?.status, fetchExistingActivity]);
-
-  // リアルタイム + 既存ログを結合
-  const logs = [...realtimeLogs, ...initialLogs.filter((il) => !realtimeLogs.some((rl) => rl.text === il.text))].slice(0, 20);
+    return entries.slice(0, 20).map((e) => e.log);
+  }, []);
 
   const fetchData = useCallback(async () => {
     const supabase = createClient();
@@ -135,8 +102,25 @@ export default function CampaignDetailPage() {
     const { count: postedCount } = await supabase.from("comments").select("*", { count: "exact", head: true }).eq("campaign_id", campaignId).not("posted_at", "is", null);
     setKpi({ targets: targetsCount || 0, generated: commentsCount || 0, approved: approvedCount || 0, posted: postedCount || 0 });
 
+    // アクティビティログを更新
+    const { data: logTargets } = await supabase
+      .from("targets")
+      .select("id, platform, username, match_score, created_at")
+      .eq("campaign_id", campaignId)
+      .order("created_at", { ascending: false })
+      .limit(20);
+
+    const { data: logComments } = await supabase
+      .from("comments")
+      .select("id, platform, approved, posted_at, created_at")
+      .eq("campaign_id", campaignId)
+      .order("created_at", { ascending: false })
+      .limit(10);
+
+    setInitialLogs(buildLogsFromData(logTargets || [], logComments || []));
+
     setLoading(false);
-  }, [campaignId, router]);
+  }, [campaignId, router, buildLogsFromData]);
 
   // コメント取得
   const fetchComments = useCallback(async () => {
@@ -194,6 +178,9 @@ export default function CampaignDetailPage() {
     const interval = setInterval(() => { fetchData(); fetchComments(); }, 10000);
     return () => clearInterval(interval);
   }, [fetchData, fetchComments]);
+
+  // リアルタイム + DBログを結合
+  const logs = [...realtimeLogs, ...initialLogs.filter((il) => !realtimeLogs.some((rl) => rl.text === il.text))].slice(0, 20);
 
   const filteredTargets = targets.filter((t) => {
     if (tab === "pending") return t.comment && !t.comment.approved;
