@@ -130,17 +130,16 @@ function buildMultiPlatformQueries(keyword: string, language: string = ""): { qu
   queries.push({ query: `site:linkedin.com ${keyword}${isJa ? " 日本" : " professional"}`, targetPlatform: "linkedin" });
   queries.push({ query: `site:youtube.com ${keyword}${isJa ? " レビュー" : " review"}`, targetPlatform: "youtube" });
 
-  // Japanese platforms
-  if (isJa) {
-    queries.push({ query: `site:note.com ${keyword} 使ってみた OR 試してみた`, targetPlatform: "note" });
-    queries.push({ query: `site:zenn.dev OR site:qiita.com ${keyword}`, targetPlatform: "blog" });
-    queries.push({ query: `site:b.hatena.ne.jp OR site:hatenablog.com ${keyword}`, targetPlatform: "blog" });
-    queries.push({ query: `site:detail.chiebukuro.yahoo.co.jp ${keyword} おすすめ`, targetPlatform: "qa" });
-  }
+  // Japanese blog/community platforms
+  queries.push({ query: `site:note.com ${keyword}${isJa ? " 使ってみた OR 試してみた" : ""}`, targetPlatform: "note" });
+  queries.push({ query: `site:zenn.dev ${keyword}`, targetPlatform: "zenn" });
+  queries.push({ query: `site:qiita.com ${keyword}`, targetPlatform: "qiita" });
+  queries.push({ query: `site:hatenablog.com OR site:hatena.ne.jp ${keyword}`, targetPlatform: "hatena" });
+  queries.push({ query: `site:detail.chiebukuro.yahoo.co.jp ${keyword}${isJa ? " おすすめ" : ""}`, targetPlatform: "yahoo_qa" });
 
-  // General web / Q&A
+  // General web
   queries.push({ query: `${keyword}${isJa ? " ツール おすすめ ブログ" : " tool recommendation blog"}`, targetPlatform: "web" });
-  queries.push({ query: `site:quora.com OR site:stackoverflow.com ${keyword}`, targetPlatform: "qa" });
+  queries.push({ query: `site:quora.com OR site:stackoverflow.com ${keyword}`, targetPlatform: "web" });
 
   return queries;
 }
@@ -257,11 +256,12 @@ export const discoverTargets = inngest.createFunction(
     console.log("Personas count:", personas.length);
     console.log("Platforms:", platforms);
 
-    for (const persona of personas.slice(0, 1)) {
+    for (const persona of personas.slice(0, 2)) {
       if (limitReached) break;
-      for (const platform of platforms.slice(0, 2)) {
+      for (const platform of platforms.slice(0, 4)) {
         if (limitReached) break;
-        const keywords = persona.where_to_find?.[platform] || [];
+        // For SNS platforms, use where_to_find; for blogs/web, use persona keywords
+        const keywords = persona.where_to_find?.[platform] || persona.keywords || [];
 
         for (const keyword of keywords.slice(0, 2)) {
           try {

@@ -5,14 +5,40 @@ import { useRouter } from "next/navigation";
 import { CampaignSettings } from "@/types/campaign";
 import { createClient } from "@/lib/supabase/client";
 
-const PLATFORMS = [
-  { id: "twitter", name: "X", icon: "𝕏", color: "#1d9bf0", requiredPlan: "free" },
-  { id: "reddit", name: "Reddit", icon: "🤖", color: "#ff4500", requiredPlan: "free" },
-  { id: "linkedin", name: "LinkedIn", icon: "in", color: "#0a66c2", requiredPlan: "starter" },
-  { id: "tiktok", name: "TikTok", icon: "♪", color: "#ff0050", requiredPlan: "growth" },
-  { id: "instagram", name: "Instagram", icon: "◈", color: "#e1306c", requiredPlan: "growth" },
-  { id: "facebook", name: "Facebook", icon: "f", color: "#1877f2", requiredPlan: "growth" },
+type PlatformDef = { id: string; name: string; icon: string; color: string; requiredPlan: string };
+
+const PLATFORM_GROUPS: { label: string; platforms: PlatformDef[] }[] = [
+  {
+    label: "SNSプラットフォーム",
+    platforms: [
+      { id: "twitter", name: "X", icon: "𝕏", color: "#1d9bf0", requiredPlan: "free" },
+      { id: "reddit", name: "Reddit", icon: "🤖", color: "#ff4500", requiredPlan: "free" },
+      { id: "linkedin", name: "LinkedIn", icon: "in", color: "#0a66c2", requiredPlan: "starter" },
+      { id: "tiktok", name: "TikTok", icon: "♪", color: "#ff0050", requiredPlan: "growth" },
+      { id: "instagram", name: "Instagram", icon: "◈", color: "#e1306c", requiredPlan: "growth" },
+      { id: "facebook", name: "Facebook", icon: "f", color: "#1877f2", requiredPlan: "growth" },
+    ],
+  },
+  {
+    label: "ブログ・コミュニティ",
+    platforms: [
+      { id: "note", name: "note.com", icon: "📝", color: "#41c9b4", requiredPlan: "free" },
+      { id: "zenn", name: "Zenn", icon: "💻", color: "#3ea8ff", requiredPlan: "free" },
+      { id: "qiita", name: "Qiita", icon: "🟩", color: "#55c500", requiredPlan: "free" },
+      { id: "hatena", name: "はてなブログ", icon: "✏️", color: "#00a4de", requiredPlan: "free" },
+      { id: "yahoo_qa", name: "Yahoo知恵袋", icon: "🟡", color: "#ff0033", requiredPlan: "free" },
+    ],
+  },
+  {
+    label: "ウェブ全体",
+    platforms: [
+      { id: "web", name: "Web全体", icon: "🌐", color: "#2dd17a", requiredPlan: "free" },
+    ],
+  },
 ];
+
+// Flatten for lookup
+const ALL_PLATFORMS = PLATFORM_GROUPS.flatMap(g => g.platforms);
 
 const TONES = [
   { id: "casual" as const, label: "カジュアル", desc: "友達に話しかけるような自然なトーン" },
@@ -76,7 +102,7 @@ export default function Step3Settings({ recommendedPlatforms, onSubmit, loading 
 
   useEffect(() => {
     const allowed = recommendedPlatforms.filter((p) => {
-      const plat = PLATFORMS.find((pl) => pl.id === p);
+      const plat = ALL_PLATFORMS.find((pl) => pl.id === p);
       return plat && canUsePlatform(plat.requiredPlan, userPlan);
     });
     setPlatforms(allowed);
@@ -109,60 +135,54 @@ export default function Step3Settings({ recommendedPlatforms, onSubmit, loading 
 
       {/* Platform selection */}
       <div style={{ marginBottom: "36px" }}>
-        <h3 style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600, fontSize: "15px", color: "#f0efe8", marginBottom: "12px" }}>プラットフォーム選択</h3>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "10px" }}>
-          {PLATFORMS.map((p) => {
-            const allowed = canUsePlatform(p.requiredPlan, userPlan);
-            const selected = platforms.includes(p.id);
-            const recommended = recommendedPlatforms.includes(p.id);
-            return (
-              <button
-                key={p.id}
-                onClick={() => handlePlatformClick(p)}
-                style={{
-                  display: "flex", flexDirection: "column", gap: "6px",
-                  padding: "16px", textAlign: "left",
-                  background: !allowed ? "rgba(255,255,255,0.02)" : selected ? "rgba(255,107,53,0.1)" : "rgba(255,255,255,0.03)",
-                  border: `1px solid ${!allowed ? "rgba(255,255,255,0.05)" : selected ? "rgba(255,107,53,0.4)" : "rgba(255,255,255,0.07)"}`,
-                  borderRadius: "14px", cursor: "pointer", transition: "all 0.2s", position: "relative",
-                }}
-              >
-                {/* Row 1: icon + name */}
-                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                  <span style={{ fontSize: "18px", fontWeight: 700, color: allowed ? p.color : "rgba(240,239,232,0.25)" }}>
-                    {allowed ? p.icon : "🔒"}
-                  </span>
-                  <span style={{ fontSize: "15px", fontWeight: selected ? 700 : 500, color: allowed ? (selected ? "#f0efe8" : "rgba(240,239,232,0.6)") : "rgba(240,239,232,0.3)" }}>
-                    {p.name}
-                  </span>
-                </div>
-                {/* Row 2: badges */}
-                <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
-                  {recommended && (
-                    <span style={{ fontSize: "10px", fontWeight: 600, color: "#2dd17a", background: "rgba(45,209,122,0.1)", padding: "2px 8px", borderRadius: "6px" }}>
-                      ✨ AI推奨
-                    </span>
-                  )}
-                  {allowed ? (
-                    <span style={{ fontSize: "10px", fontWeight: 600, color: "rgba(240,239,232,0.4)", background: "rgba(255,255,255,0.05)", padding: "2px 8px", borderRadius: "6px" }}>
-                      ✓ 無料で使える
-                    </span>
-                  ) : (
-                    <span style={{ fontSize: "10px", fontWeight: 600, color: "#ff6b35", background: "rgba(255,107,53,0.1)", padding: "2px 8px", borderRadius: "6px" }}>
-                      🔒 {getPlanLabel(p.requiredPlan)}
-                    </span>
-                  )}
-                </div>
-                {/* Row 3: locked CTA */}
-                {!allowed && (
-                  <div style={{ fontSize: "11px", color: "rgba(255,107,53,0.7)", marginTop: "2px" }}>
-                    アップグレードして使う →
-                  </div>
-                )}
-              </button>
-            );
-          })}
-        </div>
+        <h3 style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600, fontSize: "15px", color: "#f0efe8", marginBottom: "16px" }}>プラットフォーム選択</h3>
+        {PLATFORM_GROUPS.map((group) => (
+          <div key={group.label} style={{ marginBottom: "18px" }}>
+            <div style={{ fontSize: "12px", fontWeight: 600, color: "rgba(240,239,232,0.35)", marginBottom: "8px", textTransform: "uppercase", letterSpacing: "0.5px" }}>{group.label}</div>
+            <div style={{ display: "grid", gridTemplateColumns: group.platforms.length === 1 ? "1fr" : "repeat(2, 1fr)", gap: "10px" }}>
+              {group.platforms.map((p) => {
+                const allowed = canUsePlatform(p.requiredPlan, userPlan);
+                const selected = platforms.includes(p.id);
+                const recommended = recommendedPlatforms.includes(p.id);
+                return (
+                  <button
+                    key={p.id}
+                    onClick={() => handlePlatformClick(p)}
+                    style={{
+                      display: "flex", flexDirection: "column", gap: "6px",
+                      padding: "14px 16px", textAlign: "left",
+                      background: !allowed ? "rgba(255,255,255,0.02)" : selected ? "rgba(255,107,53,0.1)" : "rgba(255,255,255,0.03)",
+                      border: `1px solid ${!allowed ? "rgba(255,255,255,0.05)" : selected ? "rgba(255,107,53,0.4)" : "rgba(255,255,255,0.07)"}`,
+                      borderRadius: "14px", cursor: "pointer", transition: "all 0.2s", position: "relative",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                      <span style={{ fontSize: "18px", fontWeight: 700, color: allowed ? p.color : "rgba(240,239,232,0.25)" }}>
+                        {allowed ? p.icon : "🔒"}
+                      </span>
+                      <span style={{ fontSize: "14px", fontWeight: selected ? 700 : 500, color: allowed ? (selected ? "#f0efe8" : "rgba(240,239,232,0.6)") : "rgba(240,239,232,0.3)" }}>
+                        {p.name}
+                      </span>
+                    </div>
+                    <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+                      {recommended && (
+                        <span style={{ fontSize: "10px", fontWeight: 600, color: "#2dd17a", background: "rgba(45,209,122,0.1)", padding: "2px 8px", borderRadius: "6px" }}>✨ AI推奨</span>
+                      )}
+                      {allowed ? (
+                        <span style={{ fontSize: "10px", fontWeight: 600, color: "rgba(240,239,232,0.4)", background: "rgba(255,255,255,0.05)", padding: "2px 8px", borderRadius: "6px" }}>✓ 無料</span>
+                      ) : (
+                        <span style={{ fontSize: "10px", fontWeight: 600, color: "#ff6b35", background: "rgba(255,107,53,0.1)", padding: "2px 8px", borderRadius: "6px" }}>🔒 {getPlanLabel(p.requiredPlan)}</span>
+                      )}
+                    </div>
+                    {!allowed && (
+                      <div style={{ fontSize: "11px", color: "rgba(255,107,53,0.7)", marginTop: "2px" }}>アップグレードして使う →</div>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </div>
 
       {/* Daily limit slider */}
