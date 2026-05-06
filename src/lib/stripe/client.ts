@@ -5,25 +5,29 @@ export const PLANS = {
     priceId: null,
     campaigns: 1,
     daily_limit: 10,
-    platforms: ["twitter", "reddit"],
+    platforms: ["reddit", "yahoo_qa", "note"],
     auto_comment: false,
   },
   starter: {
     name: "Starter",
-    price: 99,
+    price: 29,
     priceId: process.env.STRIPE_STARTER_PRICE_ID || null,
-    campaigns: 3,
-    daily_limit: 50,
-    platforms: ["twitter", "reddit"],
+    campaigns: 5,
+    daily_limit: 100,
+    platforms: ["reddit", "yahoo_qa", "note", "instagram", "quora", "twitter"],
     auto_comment: false,
   },
   growth: {
     name: "Growth",
-    price: 299,
+    price: 99,
     priceId: process.env.STRIPE_GROWTH_PRICE_ID || null,
-    campaigns: 10,
-    daily_limit: 200,
-    platforms: ["twitter", "reddit", "linkedin", "tiktok", "instagram", "facebook"],
+    campaigns: -1, // unlimited
+    daily_limit: 1000,
+    platforms: [
+      "twitter", "reddit", "linkedin", "tiktok", "instagram", "facebook",
+      "youtube", "note", "zenn", "qiita", "hatena", "yahoo_qa", "web",
+      "quora", "stackoverflow",
+    ],
     auto_comment: true,
   },
   agency: {
@@ -32,7 +36,11 @@ export const PLANS = {
     priceId: process.env.STRIPE_AGENCY_PRICE_ID || null,
     campaigns: -1, // unlimited
     daily_limit: -1, // unlimited
-    platforms: ["twitter", "reddit", "linkedin", "tiktok", "instagram", "facebook"],
+    platforms: [
+      "twitter", "reddit", "linkedin", "tiktok", "instagram", "facebook",
+      "youtube", "note", "zenn", "qiita", "hatena", "yahoo_qa", "web",
+      "quora", "stackoverflow",
+    ],
     auto_comment: true,
   },
 } as const;

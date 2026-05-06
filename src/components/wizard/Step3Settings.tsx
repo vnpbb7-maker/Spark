@@ -11,11 +11,11 @@ const PLATFORM_GROUPS: { label: string; platforms: PlatformDef[] }[] = [
   {
     label: "SNSプラットフォーム",
     platforms: [
-      { id: "twitter", name: "X", icon: "𝕏", color: "#1d9bf0", requiredPlan: "free" },
+      { id: "twitter", name: "X", icon: "𝕏", color: "#1d9bf0", requiredPlan: "starter" },
       { id: "reddit", name: "Reddit", icon: "🤖", color: "#ff4500", requiredPlan: "free" },
-      { id: "linkedin", name: "LinkedIn", icon: "in", color: "#0a66c2", requiredPlan: "starter" },
+      { id: "instagram", name: "Instagram", icon: "◈", color: "#e1306c", requiredPlan: "starter" },
+      { id: "linkedin", name: "LinkedIn", icon: "in", color: "#0a66c2", requiredPlan: "growth" },
       { id: "tiktok", name: "TikTok", icon: "♪", color: "#ff0050", requiredPlan: "growth" },
-      { id: "instagram", name: "Instagram", icon: "◈", color: "#e1306c", requiredPlan: "growth" },
       { id: "facebook", name: "Facebook", icon: "f", color: "#1877f2", requiredPlan: "growth" },
     ],
   },
@@ -23,16 +23,16 @@ const PLATFORM_GROUPS: { label: string; platforms: PlatformDef[] }[] = [
     label: "ブログ・コミュニティ",
     platforms: [
       { id: "note", name: "note.com", icon: "📝", color: "#41c9b4", requiredPlan: "free" },
-      { id: "zenn", name: "Zenn", icon: "💻", color: "#3ea8ff", requiredPlan: "free" },
-      { id: "qiita", name: "Qiita", icon: "🟩", color: "#55c500", requiredPlan: "free" },
-      { id: "hatena", name: "はてなブログ", icon: "✏️", color: "#00a4de", requiredPlan: "free" },
       { id: "yahoo_qa", name: "Yahoo知恵袋", icon: "🟡", color: "#ff0033", requiredPlan: "free" },
+      { id: "zenn", name: "Zenn", icon: "💻", color: "#3ea8ff", requiredPlan: "growth" },
+      { id: "qiita", name: "Qiita", icon: "🟩", color: "#55c500", requiredPlan: "growth" },
+      { id: "hatena", name: "はてなブログ", icon: "✏️", color: "#00a4de", requiredPlan: "growth" },
     ],
   },
   {
     label: "ウェブ全体",
     platforms: [
-      { id: "web", name: "Web全体", icon: "🌐", color: "#2dd17a", requiredPlan: "free" },
+      { id: "web", name: "Web全体", icon: "🌐", color: "#2dd17a", requiredPlan: "growth" },
     ],
   },
 ];
@@ -49,8 +49,8 @@ const TONES = [
 const PLAN_ORDER = ["free", "starter", "growth", "agency"];
 
 const PLAN_PRICE: Record<string, string> = {
-  starter: "Starterプラン（$99/月）",
-  growth: "Growthプラン（$299/月）",
+  starter: "Starterプラン（$29/月）",
+  growth: "Growthプラン（$99/月）",
 };
 
 function canUsePlatform(platformRequiredPlan: string, userPlan: string): boolean {
@@ -92,8 +92,8 @@ export default function Step3Settings({ recommendedPlatforms, onSubmit, loading 
           .maybeSingle();
         const plan = sub?.plan || "free";
         setUserPlan(plan);
-        if (plan === "growth" || plan === "agency") setDailyLimit(200);
-        else if (plan === "starter") setDailyLimit(50);
+        if (plan === "growth" || plan === "agency") setDailyLimit(1000);
+        else if (plan === "starter") setDailyLimit(100);
         else setDailyLimit(10);
       }
     };
