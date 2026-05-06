@@ -20,6 +20,8 @@ type Props = {
 export default function DashboardLiveLog({ logs, platforms, campaignCreatedAt, hasData }: Props) {
   const [elapsed, setElapsed] = useState(0);
 
+  console.log("[DashboardLiveLog] received logs:", logs.length, "hasData:", hasData, "showSpinner:", !hasData && logs.length === 0);
+
   // Only run timer if NO data and NO logs
   const showSpinner = !hasData && logs.length === 0;
 

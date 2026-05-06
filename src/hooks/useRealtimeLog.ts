@@ -58,6 +58,7 @@ export function useRealtimeLog(campaignId?: string) {
           ...(filter ? { filter } : {}),
         },
         (payload) => {
+          console.log("[Realtime] targets INSERT event:", payload);
           const t = payload.new as Record<string, string | number>;
           addLog(
             makeLogEntry({
@@ -78,6 +79,7 @@ export function useRealtimeLog(campaignId?: string) {
           ...(filter ? { filter } : {}),
         },
         (payload) => {
+          console.log("[Realtime] comments INSERT event:", payload);
           const c = payload.new as Record<string, string | boolean | null>;
           addLog(
             makeLogEntry({
@@ -98,6 +100,7 @@ export function useRealtimeLog(campaignId?: string) {
           ...(filter ? { filter } : {}),
         },
         (payload) => {
+          console.log("[Realtime] targets UPDATE event:", payload);
           const t = payload.new as Record<string, string | number | null>;
           if (t.priority && !payload.old?.priority) {
             addLog(
