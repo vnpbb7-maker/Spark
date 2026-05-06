@@ -211,7 +211,43 @@ export default function CampaignDetailPage() {
             </h1>
             <span style={{ fontSize: "12px", padding: "4px 10px", borderRadius: "8px", background: `${st.color}20`, color: st.color, fontWeight: 600 }}>{st.icon} {st.label}</span>
           </div>
-          <ModeToggle campaignId={campaignId} autoMode={campaign?.auto_mode as boolean || false} onToggle={(m) => setCampaign((p) => p ? { ...p, auto_mode: m } : p)} />
+          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            <button
+              onClick={async () => {
+                try {
+                  const res = await fetch(`/api/campaigns/${campaignId}/export`);
+                  if (!res.ok) { alert("エクスポートに失敗しました"); return; }
+                  const blob = await res.blob();
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = `spark_targets_${campaignId.slice(0, 8)}.xlsx`;
+                  a.click();
+                  URL.revokeObjectURL(url);
+                } catch { alert("エクスポートに失敗しました"); }
+              }}
+              style={{
+                background: "rgba(45,209,122,0.12)",
+                color: "#2dd17a",
+                border: "1px solid rgba(45,209,122,0.25)",
+                borderRadius: "10px",
+                padding: "8px 16px",
+                fontSize: "13px",
+                fontWeight: 600,
+                cursor: "pointer",
+                fontFamily: "DM Sans, sans-serif",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                transition: "all 0.2s",
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(45,209,122,0.22)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(45,209,122,0.12)"; }}
+            >
+              📊 Excelでエクスポート
+            </button>
+            <ModeToggle campaignId={campaignId} autoMode={campaign?.auto_mode as boolean || false} onToggle={(m) => setCampaign((p) => p ? { ...p, auto_mode: m } : p)} />
+          </div>
         </div>
       </div>
 
