@@ -63,6 +63,60 @@ async function searchTwitterTargets(keyword: string, language: string): Promise<
   });
 }
 
+// Extract publicly available contact info from a profile/page URL
+async function extractContactInfo(url: string): Promise<{ email?: string; phone?: string; website?: string; contact_url?: string }> {
+  try {
+    const jinaUrl = `https://r.jina.ai/${url}`;
+    const res = await fetch(jinaUrl, {
+      headers: { Accept: "text/plain" },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) return {};
+    const text = await res.text();
+    const content = text.slice(0, 5000); // Limit to avoid excess processing
+
+    const result: { email?: string; phone?: string; website?: string; contact_url?: string } = {};
+
+    // Extract email (public profile/bio only)
+    const emailMatch = content.match(/[\w.+-]+@[\w.-]+\.\w{2,}/);
+    if (emailMatch) {
+      const email = emailMatch[0].toLowerCase();
+      // Filter out common non-personal emails
+      if (!email.includes("example.com") && !email.includes("noreply") && !email.includes("support@")) {
+        result.email = email;
+      }
+    }
+
+    // Extract JP phone numbers
+    const phoneMatch = content.match(/0\d{1,4}[-\s]?\d{1,4}[-\s]?\d{3,4}/);
+    if (phoneMatch) {
+      result.phone = phoneMatch[0].replace(/\s/g, "");
+    }
+
+    // Extract website URLs from profile (look for personal/business sites)
+    const urlMatches = content.match(/https?:\/\/(?!(?:twitter|x|facebook|instagram|tiktok|linkedin|youtube|reddit|note|zenn|qiita)\.com)[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}[^\s")']*/g);
+    if (urlMatches && urlMatches.length > 0) {
+      result.website = urlMatches[0].slice(0, 200);
+    }
+
+    // Extract contact page URLs
+    const contactMatch = content.match(/https?:\/\/[^\s"')]+(?:contact|お問い合わせ|inquiry|about)[^\s"')]*|\/contact\/?/i);
+    if (contactMatch) {
+      let contactUrl = contactMatch[0];
+      if (contactUrl.startsWith("/")) {
+        try {
+          const base = new URL(url);
+          contactUrl = `${base.origin}${contactUrl}`;
+        } catch { /* ignore */ }
+      }
+      result.contact_url = contactUrl.slice(0, 200);
+    }
+
+    return result;
+  } catch {
+    return {};
+  }
+}
 function buildMultiPlatformQueries(keyword: string, language: string = ""): { query: string; targetPlatform: string }[] {
   const isJa = language === "ja";
   const queries: { query: string; targetPlatform: string }[] = [];
@@ -326,6 +380,35 @@ export const discoverTargets = inngest.createFunction(
           }
         }
       }
+    }
+
+    // 公開連絡先情報の抽出（バッチ処理、最大10件並列）
+    try {
+      const { data: newTargets } = await getSupabase()
+        .from("targets")
+        .select("id, profile_url, platform")
+        .eq("campaign_id", campaignId)
+        .is("email", null)
+        .order("created_at", { ascending: false })
+        .limit(10);
+
+      if (newTargets && newTargets.length > 0) {
+        console.log(`Extracting contact info for ${newTargets.length} targets...`);
+        const contactResults = await Promise.allSettled(
+          newTargets.map(async (t: { id: string; profile_url: string; platform: string }) => {
+            const info = await extractContactInfo(t.profile_url);
+            if (info.email || info.phone || info.website || info.contact_url) {
+              await getSupabase().from("targets").update(info).eq("id", t.id);
+              console.log(`Contact info found for ${t.id}:`, JSON.stringify(info));
+            }
+            return info;
+          })
+        );
+        const found = contactResults.filter(r => r.status === "fulfilled" && r.value && Object.keys(r.value).length > 0).length;
+        console.log(`Contact extraction complete: ${found}/${newTargets.length} targets had contact info`);
+      }
+    } catch (e) {
+      console.error("Contact extraction error:", e);
     }
 
     // コメント生成を発火

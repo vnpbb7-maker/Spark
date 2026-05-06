@@ -53,6 +53,10 @@ export async function GET(
           投稿URL: t.post_url as string,
           投稿内容: ((t.post_content as string) || "").slice(0, 300),
           マッチ理由: (t.match_reason as string) || "",
+          メール: (t.email as string) || "",
+          電話番号: (t.phone as string) || "",
+          ウェブサイト: (t.website as string) || "",
+          問い合わせURL: (t.contact_url as string) || "",
           生成コメント: comment
             ? ((comment.content as string) || "").slice(0, 300)
             : "",
@@ -89,6 +93,10 @@ export async function GET(
       { wch: 40 }, // 投稿URL
       { wch: 50 }, // 投稿内容
       { wch: 30 }, // マッチ理由
+      { wch: 25 }, // メール
+      { wch: 16 }, // 電話番号
+      { wch: 30 }, // ウェブサイト
+      { wch: 30 }, // 問い合わせURL
       { wch: 50 }, // 生成コメント
       { wch: 30 }, // アプローチ
       { wch: 12 }, // 承認状態
