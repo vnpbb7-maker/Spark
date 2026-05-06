@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 const PLATFORMS = [
-  { id: "twitter", name: "X (Twitter)", icon: "𝕏", color: "#1d9bf0", fields: [{ key: "username", label: "ユーザー名" }, { key: "password", label: "パスワード" }] },
+  { id: "twitter", name: "X (Twitter)", icon: "𝕏", color: "#1d9bf0", fields: [{ key: "username", label: "ユーザー名" }, { key: "email", label: "メールアドレス（セキュリティ認証用）" }, { key: "password", label: "パスワード" }] },
   { id: "reddit", name: "Reddit", icon: "🤖", color: "#ff4500", fields: [{ key: "username", label: "ユーザー名" }, { key: "password", label: "パスワード" }, { key: "session_cookie", label: "セッションクッキー（任意・推奨）" }] },
   { id: "linkedin", name: "LinkedIn", icon: "in", color: "#0a66c2", fields: [{ key: "email", label: "メールアドレス" }, { key: "password", label: "パスワード" }] },
   { id: "tiktok", name: "TikTok", icon: "♪", color: "#ff0050", fields: [{ key: "username", label: "ユーザー名" }, { key: "password", label: "パスワード" }] },
