@@ -63,7 +63,7 @@ async function callClaude(input: string, retryCount = 0): Promise<Record<string,
   try {
     const message = await client.messages.create(
       {
-        model: "claude-sonnet-4-5",
+        model: "claude-sonnet-4-5-20250929",
         max_tokens: 1000,
         system: SYSTEM_PROMPT,
         messages: [
@@ -142,7 +142,9 @@ export async function POST(request: Request) {
 
     return NextResponse.json(result);
   } catch (error) {
-    console.error("Campaign analysis error:", error);
+    const errMsg = error instanceof Error ? error.message : String(error);
+    const errStack = error instanceof Error ? error.stack : "";
+    console.error("Campaign analysis error:", errMsg, "\nStack:", errStack);
 
     if (error instanceof Error && error.name === "AbortError") {
       return NextResponse.json(
@@ -152,7 +154,7 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json(
-      { error: "分析中にエラーが発生しました。" },
+      { error: `分析中にエラーが発生しました: ${errMsg}` },
       { status: 500 }
     );
   }
