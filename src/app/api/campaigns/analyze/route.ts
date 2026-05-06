@@ -2,8 +2,9 @@ import { NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 
 const SYSTEM_PROMPT = `あなたはスタートアップのGrowth専門家です。
-以下のプロダクト情報を分析し、
-JSONのみで返してください。前置き不要。
+以下のプロダクト情報を分析し、結果をJSON形式で返してください。
+
+【重要】有効なJSONのみを返すこと。マークダウン、説明文、コードブロック（\`\`\`）は一切不要。生のJSONだけを返してください。
 
 重要：
 - URLが入力された場合、そのURLのサービス・プロダクトを分析する
@@ -82,16 +83,27 @@ async function callClaude(input: string, retryCount = 0): Promise<Record<string,
       throw new Error("No text response from Claude");
     }
 
-    // Extract JSON from response (handle markdown code blocks)
+    // Extract JSON from response
     let jsonStr = textBlock.text.trim();
-    const jsonMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
-    if (jsonMatch) {
-      jsonStr = jsonMatch[1].trim();
+    console.log("Raw Claude response:", jsonStr.substring(0, 500));
+
+    // Strip markdown code block wrappers
+    const codeBlockMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (codeBlockMatch) {
+      jsonStr = codeBlockMatch[1].trim();
+    }
+
+    // Strip leading/trailing non-JSON text (find first { and last })
+    const firstBrace = jsonStr.indexOf("{");
+    const lastBrace = jsonStr.lastIndexOf("}");
+    if (firstBrace !== -1 && lastBrace !== -1 && firstBrace < lastBrace) {
+      jsonStr = jsonStr.substring(firstBrace, lastBrace + 1);
     }
 
     try {
       return JSON.parse(jsonStr);
-    } catch {
+    } catch (parseErr) {
+      console.error("JSON parse error:", parseErr, "\nAttempted to parse:", jsonStr.substring(0, 300));
       // Retry on JSON parse failure (max 2 retries)
       if (retryCount < 2) {
         return callClaude(input, retryCount + 1);
