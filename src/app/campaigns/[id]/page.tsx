@@ -79,11 +79,13 @@ export default function CampaignDetailPage() {
 
   const fetchData = useCallback(async () => {
     const supabase = createClient();
+    console.log("[fetchData] campaignId:", campaignId);
     const { data: camp } = await supabase.from("campaigns").select("*").eq("id", campaignId).single();
     if (!camp) { router.push("/dashboard"); return; }
     setCampaign(camp);
 
     const { data: tgts } = await supabase.from("targets").select("*, comments(*)").eq("campaign_id", campaignId).order("match_score", { ascending: false });
+    console.log("[fetchData] raw tgts from DB:", tgts?.length);
 
     const enriched: TargetRow[] = (tgts || []).map((t: Record<string, unknown>) => {
       const comments = (t.comments as Array<Record<string, unknown>>) || [];
@@ -98,6 +100,7 @@ export default function CampaignDetailPage() {
         comment: comment ? { id: comment.id as string, content: comment.content as string, approach: comment.approach as string | null } : undefined,
       };
     });
+    console.log("[fetchData] enriched targets:", enriched.length, "with comments:", enriched.filter((t) => t.comment).length);
     setTargets(enriched);
 
     const discovered = enriched.length;
@@ -106,7 +109,10 @@ export default function CampaignDetailPage() {
 
     const { data: logTargets } = await supabase.from("targets").select("id, platform, username, match_score, created_at, priority").eq("campaign_id", campaignId).order("created_at", { ascending: false }).limit(20);
     const { data: logComments } = await supabase.from("comments").select("id, platform, created_at").eq("campaign_id", campaignId).order("created_at", { ascending: false }).limit(10);
-    setInitialLogs(buildLogsFromData(logTargets || [], logComments || []));
+    console.log("[fetchData] logTargets:", logTargets?.length, "logComments:", logComments?.length);
+    const builtLogs = buildLogsFromData(logTargets || [], logComments || []);
+    console.log("[fetchData] builtLogs:", builtLogs.length);
+    setInitialLogs([...builtLogs]);
     setLoading(false);
   }, [campaignId, router, buildLogsFromData]);
 
@@ -114,7 +120,8 @@ export default function CampaignDetailPage() {
   useEffect(() => { const i = setInterval(fetchData, 10000); return () => clearInterval(i); }, [fetchData]);
 
   const logs = [...realtimeLogs, ...initialLogs.filter((il) => !realtimeLogs.some((rl) => rl.text === il.text))].slice(0, 20);
-  const hasData = targets.length > 0;
+  const hasData = targets.length > 0 || initialLogs.length > 0;
+  console.log("[CampaignPage] render — targets:", targets.length, "initialLogs:", initialLogs.length, "realtimeLogs:", realtimeLogs.length, "merged logs:", logs.length, "hasData:", hasData);
 
   const handleExport = async () => {
     setExporting(true);
