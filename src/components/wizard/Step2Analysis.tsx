@@ -44,14 +44,14 @@ export default function Step2Analysis({ analysis, onContinue, onBack, userPlan =
         <p style={{ fontSize: "14px", color: "#f0efe8" }}>{analysis.positioning}</p>
       </div>
 
-      {/* Persona cards - horizontal scroll */}
+      {/* Persona cards - vertical stack */}
       <div style={{ marginBottom: "32px" }}>
         <h3 style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600, fontSize: "16px", color: "#f0efe8", marginBottom: "16px" }}>
           ターゲットペルソナ
         </h3>
-        <div style={{ display: "flex", gap: "16px", overflowX: "auto", paddingBottom: "8px" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
           {analysis.personas.map((persona, index) => (
-            <div key={index} style={{ minWidth: "280px", flex: "0 0 auto", background: "#13132a", border: "1px solid rgba(255,255,255,0.07)", borderRadius: "16px", padding: "24px" }}>
+            <div key={index} style={{ width: "100%", background: "#13132a", border: "1px solid rgba(255,255,255,0.07)", borderRadius: "16px", padding: "24px" }}>
               <h4 style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: "18px", color: "#f0efe8", marginBottom: "8px" }}>{persona.name}</h4>
               <p style={{ fontSize: "13px", color: "rgba(240,239,232,0.6)", lineHeight: 1.5, marginBottom: "16px" }}>{persona.description}</p>
               <p style={{ fontSize: "11px", color: "rgba(240,239,232,0.35)", textTransform: "uppercase", letterSpacing: "1px", marginBottom: "8px", fontWeight: 600 }}>悩み</p>
