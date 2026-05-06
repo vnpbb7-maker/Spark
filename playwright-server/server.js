@@ -50,41 +50,53 @@ app.post("/post-comment", authMiddleware, async (req, res) => {
     const campaign = comment.campaigns;
     const platform = comment.platform;
 
-    // ユーザーの認証情報を取得
-    const { data: creds } = await supabase
-      .from("platform_credentials")
-      .select("credentials")
-      .eq("user_id", campaign.user_id)
-      .eq("platform", platform)
-      .single();
+    console.log(`[post-comment] Platform: ${platform}, Target: @${target.username}, URL: ${target.post_url}`);
 
-    if (!creds) {
-      await updateCommentStatus(comment_id, "failed", "認証情報が見つかりません");
-      return res.status(400).json({ error: "No credentials found" });
-    }
-
-    const credentials = creds.credentials;
-    console.log(`Posting comment on ${platform} to ${target.post_url}`);
-
-    // プラットフォーム別にコメント投稿
     let result;
-    switch (platform) {
-      case "reddit":
-        result = await postRedditComment(credentials, target, comment);
-        break;
-      case "twitter": {
-        // Twitter API を先に試す
-        const apiResult = await postWithTwitterAPI(target.post_url, comment.content);
-        if (apiResult.success) {
-          result = apiResult;
-        } else {
-          console.log("Twitter API failed, falling back to Playwright:", apiResult.error);
-          result = await postTwitterComment(credentials, target, comment);
+
+    if (platform === "twitter") {
+      // Twitter: まずAPI（環境変数ベース）を試す → 失敗したらPlaywright
+      const apiResult = await postWithTwitterAPI(target.post_url, comment.content);
+      if (apiResult.success) {
+        result = apiResult;
+        console.log(`[post-comment] Twitter API success: tweetId=${result.tweetId}`);
+      } else {
+        console.log(`[post-comment] Twitter API failed: ${apiResult.error}, trying Playwright...`);
+        // Playwright fallback: 認証情報が必要
+        const { data: creds } = await supabase
+          .from("platform_credentials")
+          .select("credentials")
+          .eq("user_id", campaign.user_id)
+          .eq("platform", platform)
+          .single();
+
+        if (!creds) {
+          await updateCommentStatus(comment_id, "failed", `Twitter API: ${apiResult.error}. Playwright: 認証情報なし`);
+          return res.status(400).json({ error: `Twitter API failed: ${apiResult.error}. No Playwright credentials.` });
         }
-        break;
+        result = await postTwitterComment(creds.credentials, target, comment);
       }
-      default:
-        result = { success: false, error: `${platform} is not yet supported` };
+    } else {
+      // 他のプラットフォーム: 認証情報が必要
+      const { data: creds } = await supabase
+        .from("platform_credentials")
+        .select("credentials")
+        .eq("user_id", campaign.user_id)
+        .eq("platform", platform)
+        .single();
+
+      if (!creds) {
+        await updateCommentStatus(comment_id, "failed", "認証情報が見つかりません");
+        return res.status(400).json({ error: "No credentials found" });
+      }
+
+      switch (platform) {
+        case "reddit":
+          result = await postRedditComment(creds.credentials, target, comment);
+          break;
+        default:
+          result = { success: false, error: `${platform} is not yet supported` };
+      }
     }
 
     if (result.success) {

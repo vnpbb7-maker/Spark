@@ -52,6 +52,7 @@ export default function TargetList({ targets, tab, onTabChange, pendingCount, on
   };
 
   const approveComment = async (commentId: string, content?: string) => {
+    console.log("[TargetList] approveComment called:", commentId);
     const supabase = createClient();
     const update: Record<string, unknown> = { approved: true, approved_at: new Date().toISOString() };
     if (content) update.content = content;
@@ -64,10 +65,14 @@ export default function TargetList({ targets, tab, onTabChange, pendingCount, on
       body: JSON.stringify({ comment_id: commentId }),
     })
       .then((r) => r.json())
-      .then((d) => console.log("Post result:", d))
-      .catch((err) => console.error("Post error:", err));
-
-    onRefresh();
+      .then((d) => {
+        console.log("[TargetList] Post result:", JSON.stringify(d));
+        onRefresh();
+      })
+      .catch((err) => {
+        console.error("[TargetList] Post error:", err);
+        onRefresh();
+      });
   };
 
   const rejectTarget = async (targetId: string) => {
