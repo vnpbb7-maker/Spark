@@ -559,11 +559,65 @@ JSONのみ返してください：
             approved: false,
           });
 
-          // targetのstatusを更新
-          await supabase
-            .from("targets")
-            .update({ status: "contacted" })
-            .eq("id", target.id);
+          // AI scoring - prioritize target
+          try {
+            const scoreResponse = await fetch(
+              "https://api.anthropic.com/v1/messages",
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "x-api-key": process.env.ANTHROPIC_API_KEY!,
+                  "anthropic-version": "2023-06-01",
+                },
+                body: JSON.stringify({
+                  model: "claude-haiku-4-5-20251001",
+                  max_tokens: 200,
+                  system: "You must respond with valid JSON only. No markdown, no explanation.",
+                  messages: [
+                    {
+                      role: "user",
+                      content: `Score this person as a beta tester candidate for: "${campaign?.product_description || campaign?.product_url}"
+
+Their post: "${target.post_content?.slice(0, 300) || ""}"
+Platform: ${target.platform}
+Username: ${target.username}
+
+Return JSON:
+{"priority":"S or A or B or C","reason":"1 sentence why","estimated_age":"20代/30代/40代/不明","estimated_role":"role guess","match_score":0-100}
+
+S=perfect fit, A=good, B=possible, C=weak`,
+                    },
+                    { role: "assistant", content: "{" },
+                  ],
+                }),
+              }
+            );
+
+            const scoreData = await scoreResponse.json();
+            const scoreText = "{" + (scoreData.content?.[0]?.text || "");
+            const scoreMatch = scoreText.match(/\{[\s\S]*\}/);
+            if (scoreMatch) {
+              const score = JSON.parse(scoreMatch[0]);
+              const updateData: Record<string, unknown> = {
+                status: "contacted",
+                priority: score.priority || "B",
+                ai_reason: (score.reason || "").slice(0, 200),
+                estimated_age: score.estimated_age || "不明",
+                estimated_role: (score.estimated_role || "不明").slice(0, 50),
+              };
+              if (score.match_score && typeof score.match_score === "number") {
+                updateData.match_score = Math.min(100, Math.max(0, score.match_score));
+              }
+              await supabase.from("targets").update(updateData).eq("id", target.id);
+              console.log(`Scored ${target.username}: ${score.priority} (${score.match_score}%)`);
+            } else {
+              await supabase.from("targets").update({ status: "contacted", priority: "B" }).eq("id", target.id);
+            }
+          } catch (scoreErr) {
+            console.error("Scoring error:", scoreErr);
+            await supabase.from("targets").update({ status: "contacted", priority: "B" }).eq("id", target.id);
+          }
 
           console.log("Comment generated for:", target.username);
         }

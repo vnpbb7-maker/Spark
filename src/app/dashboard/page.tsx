@@ -7,12 +7,10 @@ import { useRealtimeLog, LogEntry } from "@/hooks/useRealtimeLog";
 import KpiCards from "@/components/dashboard/KpiCards";
 import CampaignList from "@/components/dashboard/CampaignList";
 import DashboardLiveLog from "@/components/dashboard/DashboardLiveLog";
-import PendingBanner from "@/components/dashboard/PendingBanner";
 
 const NAV_ITEMS = [
   { label: "ダッシュボード", href: "/dashboard", icon: "📊", active: true },
   { label: "キャンペーン", href: "/campaigns/new", icon: "🚀" },
-  { label: "承認待ち", href: "/approve", icon: "✍", badge: true },
   { label: "アナリティクス", href: "/analytics", icon: "📈" },
   { label: "設定", href: "/settings", icon: "⚙️" },
 ];
@@ -22,7 +20,7 @@ export default function DashboardPage() {
   const realtimeLogs = useRealtimeLog();
   const [user, setUser] = useState<{ email?: string } | null>(null);
   const [campaigns, setCampaigns] = useState<Array<Record<string, unknown>>>([]);
-  const [kpi, setKpi] = useState({ targetsFound: 0, pendingComments: 0, postedComments: 0, conversions: 0, prevTargets: 0, prevPending: 0, prevPosted: 0, prevConversions: 0 });
+  const [kpi, setKpi] = useState({ targetsFound: 0, analyzed: 0, exported: 0, conversions: 0, prevTargets: 0, prevAnalyzed: 0, prevExported: 0, prevConversions: 0 });
   const [loading, setLoading] = useState(true);
   const [initialLogs, setInitialLogs] = useState<LogEntry[]>([]);
 
@@ -64,12 +62,12 @@ export default function DashboardPage() {
       const totalTargets = enriched.reduce((s, c) => s + (c.targets_count as number), 0);
       const totalPosted = enriched.reduce((s, c) => s + (c.posted_count as number), 0);
       const totalConversions = enriched.reduce((s, c) => s + (c.conversion_count as number), 0);
-      let pendCount = 0;
+      let analyzedCount = 0;
       try {
-        const { count } = await supabase.from("comments").select("*", { count: "exact", head: true }).eq("approved", false);
-        pendCount = count || 0;
+        const { count } = await supabase.from("comments").select("*", { count: "exact", head: true });
+        analyzedCount = count || 0;
       } catch {}
-      setKpi({ targetsFound: totalTargets, pendingComments: pendCount, postedComments: totalPosted, conversions: totalConversions, prevTargets: Math.max(0, totalTargets - 5), prevPending: Math.max(0, pendCount - 2), prevPosted: Math.max(0, totalPosted - 3), prevConversions: Math.max(0, totalConversions - 1) });
+      setKpi({ targetsFound: totalTargets, analyzed: analyzedCount, exported: totalPosted, conversions: totalConversions, prevTargets: Math.max(0, totalTargets - 5), prevAnalyzed: Math.max(0, analyzedCount - 2), prevExported: Math.max(0, totalPosted - 3), prevConversions: Math.max(0, totalConversions - 1) });
 
       // 最近のアクティビティを取得
       const campIds = camps.map((c) => c.id);
@@ -151,9 +149,6 @@ export default function DashboardPage() {
             <a key={item.label} href={item.href} style={{ display: "flex", alignItems: "center", gap: "10px", padding: "12px 14px", borderRadius: "10px", marginBottom: "4px", textDecoration: "none", fontSize: "14px", fontWeight: item.active ? 600 : 400, color: item.active ? "#ff6b35" : "rgba(240,239,232,0.5)", background: item.active ? "rgba(255,107,53,0.1)" : "transparent", transition: "all 0.2s" }}>
               <span style={{ fontSize: "16px" }}>{item.icon}</span>
               {item.label}
-              {item.badge && kpi.pendingComments > 0 && (
-                <span style={{ marginLeft: "auto", background: "#ff6b35", color: "#fff", fontSize: "10px", fontWeight: 700, borderRadius: "10px", padding: "2px 8px", minWidth: "20px", textAlign: "center" }}>{kpi.pendingComments}</span>
-              )}
             </a>
           ))}
         </nav>
@@ -183,7 +178,6 @@ export default function DashboardPage() {
           </div>
 
           <KpiCards data={kpi} />
-          <PendingBanner count={kpi.pendingComments} onNavigate={() => router.push("/approve")} />
           <CampaignList campaigns={campaigns as never[]} onPause={handlePause} onDelete={handleDelete} />
         </main>
 
