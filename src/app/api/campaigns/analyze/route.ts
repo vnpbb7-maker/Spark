@@ -60,59 +60,64 @@ async function callClaude(input: string, retryCount = 0): Promise<Record<string,
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 30000);
 
+  let message;
   try {
-    const message = await client.messages.create(
+    message = await client.messages.create(
       {
         model: "claude-sonnet-4-5-20250929",
-        max_tokens: 1000,
+        max_tokens: 1500,
         system: SYSTEM_PROMPT,
         messages: [
           {
             role: "user",
             content: `以下のプロダクトを分析してください:\n\n${input}`,
           },
+          {
+            role: "assistant",
+            content: "{",
+          },
         ],
       },
       { signal: controller.signal }
     );
-
     clearTimeout(timeout);
-
-    const textBlock = message.content.find((b) => b.type === "text");
-    if (!textBlock || textBlock.type !== "text") {
-      throw new Error("No text response from Claude");
-    }
-
-    // Extract JSON from response
-    let jsonStr = textBlock.text.trim();
-    console.log("Raw Claude response:", jsonStr.substring(0, 500));
-
-    // Strip markdown code block wrappers
-    const codeBlockMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
-    if (codeBlockMatch) {
-      jsonStr = codeBlockMatch[1].trim();
-    }
-
-    // Strip leading/trailing non-JSON text (find first { and last })
-    const firstBrace = jsonStr.indexOf("{");
-    const lastBrace = jsonStr.lastIndexOf("}");
-    if (firstBrace !== -1 && lastBrace !== -1 && firstBrace < lastBrace) {
-      jsonStr = jsonStr.substring(firstBrace, lastBrace + 1);
-    }
-
-    try {
-      return JSON.parse(jsonStr);
-    } catch (parseErr) {
-      console.error("JSON parse error:", parseErr, "\nAttempted to parse:", jsonStr.substring(0, 300));
-      // Retry on JSON parse failure (max 2 retries)
-      if (retryCount < 2) {
-        return callClaude(input, retryCount + 1);
-      }
-      throw new Error("Failed to parse Claude response as JSON after retries");
-    }
-  } catch (error) {
+  } catch (apiError) {
     clearTimeout(timeout);
-    throw error;
+    const msg = apiError instanceof Error ? apiError.message : String(apiError);
+    console.error("Claude API call failed:", msg);
+    throw new Error(`Claude API error: ${msg}`);
+  }
+
+  const textBlock = message.content.find((b) => b.type === "text");
+  if (!textBlock || textBlock.type !== "text") {
+    throw new Error("No text response from Claude");
+  }
+
+  // Prepend the "{" we used as prefill
+  let jsonStr = "{" + textBlock.text.trim();
+  console.log("Raw Claude response (with prefill):", jsonStr.substring(0, 500));
+
+  // Strip markdown code block wrappers if model still adds them
+  const codeBlockMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (codeBlockMatch) {
+    jsonStr = codeBlockMatch[1].trim();
+  }
+
+  // Extract the JSON object
+  const firstBrace = jsonStr.indexOf("{");
+  const lastBrace = jsonStr.lastIndexOf("}");
+  if (firstBrace !== -1 && lastBrace !== -1 && firstBrace < lastBrace) {
+    jsonStr = jsonStr.substring(firstBrace, lastBrace + 1);
+  }
+
+  try {
+    return JSON.parse(jsonStr);
+  } catch (parseErr) {
+    console.error("JSON parse error (attempt", retryCount + 1, "):", parseErr, "\nRaw:", jsonStr.substring(0, 500));
+    if (retryCount < 2) {
+      return callClaude(input, retryCount + 1);
+    }
+    throw new Error("Failed to parse Claude response as JSON after retries");
   }
 }
 
