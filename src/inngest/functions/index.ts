@@ -63,84 +63,53 @@ async function searchTwitterTargets(keyword: string, language: string): Promise<
   });
 }
 
-function buildSearchQuery(platform: string, keyword: string, language: string = ""): string {
-  if (language === "ja") {
-    switch (platform) {
-      case "twitter":
-        return `site:twitter.com OR site:x.com ${keyword} 日本語 スタートアップ status`;
-      case "reddit":
-        return `${keyword} 日本語 スタートアップ`;
-      case "linkedin":
-        return `${keyword} 日本 LinkedIn`;
-      case "tiktok":
-        return `${keyword} 日本語 tiktok`;
-      case "instagram":
-        return `${keyword} 日本語 instagram`;
-      case "facebook":
-        return `${keyword} 日本語 facebook`;
-      default:
-        return `${keyword} 日本語`;
-    }
+function buildMultiPlatformQueries(keyword: string, language: string = ""): { query: string; targetPlatform: string }[] {
+  const isJa = language === "ja";
+  const queries: { query: string; targetPlatform: string }[] = [];
+
+  // Social platforms
+  queries.push({ query: `site:twitter.com OR site:x.com ${keyword}${isJa ? " 日本語" : ""} -is:retweet`, targetPlatform: "twitter" });
+  queries.push({ query: `site:reddit.com ${keyword}${isJa ? "" : " looking for"}`, targetPlatform: "reddit" });
+  queries.push({ query: `site:facebook.com ${keyword}${isJa ? " グループ" : " group"}`, targetPlatform: "facebook" });
+  queries.push({ query: `site:instagram.com ${keyword}${isJa ? "" : ""}`, targetPlatform: "instagram" });
+  queries.push({ query: `site:tiktok.com ${keyword}`, targetPlatform: "tiktok" });
+  queries.push({ query: `site:linkedin.com ${keyword}${isJa ? " 日本" : " professional"}`, targetPlatform: "linkedin" });
+  queries.push({ query: `site:youtube.com ${keyword}${isJa ? " レビュー" : " review"}`, targetPlatform: "youtube" });
+
+  // Japanese platforms
+  if (isJa) {
+    queries.push({ query: `site:note.com ${keyword} 使ってみた OR 試してみた`, targetPlatform: "note" });
+    queries.push({ query: `site:zenn.dev OR site:qiita.com ${keyword}`, targetPlatform: "blog" });
+    queries.push({ query: `site:b.hatena.ne.jp OR site:hatenablog.com ${keyword}`, targetPlatform: "blog" });
+    queries.push({ query: `site:detail.chiebukuro.yahoo.co.jp ${keyword} おすすめ`, targetPlatform: "qa" });
   }
 
-  if (language === "zh") {
-    switch (platform) {
-      case "twitter":
-        return `site:twitter.com OR site:x.com ${keyword} 中文 startup status`;
-      case "reddit":
-        return `${keyword} 中文 startup`;
-      default:
-        return `${keyword} 中文`;
-    }
-  }
+  // General web / Q&A
+  queries.push({ query: `${keyword}${isJa ? " ツール おすすめ ブログ" : " tool recommendation blog"}`, targetPlatform: "web" });
+  queries.push({ query: `site:quora.com OR site:stackoverflow.com ${keyword}`, targetPlatform: "qa" });
 
-  if (language === "ko") {
-    switch (platform) {
-      case "twitter":
-        return `site:twitter.com OR site:x.com ${keyword} 한국어 startup status`;
-      case "reddit":
-        return `${keyword} 한국어 startup`;
-      default:
-        return `${keyword} 한국어`;
-    }
-  }
-
-  // 英語 / any / その他
-  switch (platform) {
-    case "twitter":
-      return `site:twitter.com OR site:x.com ${keyword} startup founder status`;
-    case "reddit":
-      return `reddit ${keyword} startup`;
-    case "linkedin":
-      return `${keyword} linkedin professional`;
-    case "tiktok":
-      return `${keyword} tiktok`;
-    case "instagram":
-      return `${keyword} instagram`;
-    case "facebook":
-      return `${keyword} facebook group`;
-    default:
-      return keyword;
-  }
+  return queries;
 }
 
-function isValidPlatformUrl(url: string, platform: string): boolean {
-  if (!url) return false;
-  switch (platform) {
-    case "reddit":
-      return url.includes("reddit.com");
-    case "twitter":
-      return (url.includes("twitter.com") || url.includes("x.com")) &&
-             url.includes("/status/");
-    case "linkedin":
-      return url.includes("linkedin.com");
-    case "tiktok":
-      return url.includes("tiktok.com");
-    case "instagram":
-      return url.includes("instagram.com");
-    default:
-      return true;
-  }
+function detectPlatformFromUrl(url: string): string {
+  if (!url) return "web";
+  const u = url.toLowerCase();
+  if (u.includes("twitter.com") || u.includes("x.com")) return "twitter";
+  if (u.includes("reddit.com")) return "reddit";
+  if (u.includes("facebook.com") || u.includes("fb.com")) return "facebook";
+  if (u.includes("instagram.com")) return "instagram";
+  if (u.includes("tiktok.com")) return "tiktok";
+  if (u.includes("linkedin.com")) return "linkedin";
+  if (u.includes("youtube.com") || u.includes("youtu.be")) return "youtube";
+  if (u.includes("note.com")) return "note";
+  if (u.includes("zenn.dev")) return "zenn";
+  if (u.includes("qiita.com")) return "qiita";
+  if (u.includes("hatenablog") || u.includes("hatena.ne.jp")) return "hatena";
+  if (u.includes("chiebukuro.yahoo")) return "yahoo_qa";
+  if (u.includes("5ch.net") || u.includes("2ch.sc")) return "5ch";
+  if (u.includes("quora.com")) return "quora";
+  if (u.includes("stackoverflow.com")) return "stackoverflow";
+  return "web";
 }
 
 function extractUsername(url: string, platform: string): string {
@@ -150,36 +119,39 @@ function extractUsername(url: string, platform: string): string {
 
     switch (platform) {
       case "reddit":
-        // /r/subreddit/comments/id/title → r/subreddit
-        if (pathParts[0] === "r" && pathParts[1]) {
-          return `r/${pathParts[1]}`;
-        }
-        // /user/username → username
-        if (pathParts[0] === "user" && pathParts[1]) {
-          return pathParts[1];
-        }
+        if (pathParts[0] === "r" && pathParts[1]) return `r/${pathParts[1]}`;
+        if (pathParts[0] === "user" && pathParts[1]) return pathParts[1];
         return pathParts[0] || "reddit";
-
       case "twitter":
-        // /username/status/id → username
-        // /search?q=... → search
-        if (urlObj.pathname.includes("search")) {
-          return `search:${urlObj.searchParams.get("q")?.slice(0, 20) || "query"}`;
-        }
+        if (urlObj.pathname.includes("search")) return `search:${urlObj.searchParams.get("q")?.slice(0, 20) || "query"}`;
         return pathParts[0] || "twitter";
-
       case "linkedin":
-        // /in/username → username
-        if (pathParts[0] === "in" && pathParts[1]) {
-          return pathParts[1];
-        }
+        if (pathParts[0] === "in" && pathParts[1]) return pathParts[1];
+        if (pathParts[0] === "company" && pathParts[1]) return pathParts[1];
         return pathParts[0] || "linkedin";
-
+      case "instagram":
+        return pathParts[0]?.replace("@", "") || "instagram";
+      case "tiktok":
+        return pathParts[0]?.replace("@", "") || "tiktok";
+      case "youtube":
+        if (pathParts[0] === "watch") return urlObj.searchParams.get("v") || "youtube";
+        if (pathParts[0]?.startsWith("@")) return pathParts[0];
+        if (pathParts[0] === "channel" && pathParts[1]) return pathParts[1];
+        return pathParts[0] || "youtube";
+      case "facebook":
+        if (pathParts[0] === "groups" && pathParts[1]) return `group/${pathParts[1]}`;
+        return pathParts[0] || "facebook";
+      case "note":
+        return pathParts[0] || "note";
+      case "zenn":
+        return pathParts[0] || "zenn";
+      case "qiita":
+        return pathParts[0] || "qiita";
       default:
-        return pathParts[0] || platform;
+        return urlObj.hostname.replace("www.", "").split(".")[0] || "web";
     }
   } catch {
-    return platform;
+    return platform || "web";
   }
 }
 
@@ -268,70 +240,85 @@ export const discoverTargets = inngest.createFunction(
               }
               continue; // Tavilyの処理をスキップ
             }
-            const query = buildSearchQuery(platform, keyword, campaign.target_language || "");
-            console.log("Tavily query:", query);
-            console.log("TAVILY_API_KEY exists:", !!process.env.TAVILY_API_KEY);
-            console.log("TAVILY_API_KEY prefix:", process.env.TAVILY_API_KEY?.slice(0, 8));
+            // Multi-platform Tavily search
+            const allQueries = buildMultiPlatformQueries(keyword, campaign.target_language || "");
+            // Select queries matching the campaign's selected platforms + always include web/qa
+            const selectedQueries = allQueries.filter(q => {
+              if (q.targetPlatform === platform) return true;
+              if (q.targetPlatform === "web" || q.targetPlatform === "qa") return true;
+              return false;
+            }).slice(0, 3);
 
-            const tavilyResponse = await fetch(
-              "https://api.tavily.com/search",
-              {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  "Authorization": `Bearer ${process.env.TAVILY_API_KEY}`,
-                },
-                body: JSON.stringify({
-                  query: query,
-                  max_results: 5,
-                  search_depth: "basic",
-                }),
-              }
+            console.log(`Running ${selectedQueries.length} Tavily queries for platform=${platform}, keyword=${keyword}`);
+
+            // Run queries in parallel
+            const queryResults = await Promise.allSettled(
+              selectedQueries.map(async (sq) => {
+                const tavilyResponse = await fetch(
+                  "https://api.tavily.com/search",
+                  {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                      "Authorization": `Bearer ${process.env.TAVILY_API_KEY}`,
+                    },
+                    body: JSON.stringify({
+                      query: sq.query,
+                      max_results: 5,
+                      search_depth: "basic",
+                    }),
+                  }
+                );
+                if (!tavilyResponse.ok) {
+                  console.error(`Tavily error for "${sq.query}":`, tavilyResponse.status);
+                  return [];
+                }
+                const tavilyData = await tavilyResponse.json();
+                return (tavilyData.results || []).map((r: Record<string, unknown>) => ({ ...r, _targetPlatform: sq.targetPlatform }));
+              })
             );
 
-            console.log("Tavily status:", tavilyResponse.status);
-            const tavilyText = await tavilyResponse.text();
-            console.log("Tavily raw response:", tavilyText.slice(0, 500));
-
-            const tavilyData = JSON.parse(tavilyText);
-            const results = tavilyData.results || [];
-            console.log("Tavily results count:", results.length);
-
-            for (const result of results) {
-              // URLからユーザー名を抽出
-              const url = result.url || "";
-              const username = extractUsername(url, platform);
-              console.log("URL:", url, "→ username:", username);
-
-              if (!isValidPlatformUrl(url, platform)) {
-                console.log("Skipping invalid URL for platform:", platform, url);
-                continue;
+            // Flatten results from all queries
+            const results: Record<string, unknown>[] = [];
+            for (const qr of queryResults) {
+              if (qr.status === "fulfilled" && Array.isArray(qr.value)) {
+                results.push(...qr.value);
               }
+            }
+            console.log(`Total Tavily results for keyword "${keyword}":`, results.length);
+
+            // Deduplicate by URL
+            const seenUrls = new Set<string>();
+            for (const result of results) {
+              const url = (result.url as string) || "";
+              if (!url || seenUrls.has(url)) continue;
+              seenUrls.add(url);
+
+              // Auto-detect platform from URL
+              const detectedPlatform = detectPlatformFromUrl(url);
+              const username = extractUsername(url, detectedPlatform);
+              console.log(`URL: ${url} → platform: ${detectedPlatform}, username: ${username}`);
 
               if (insertedTargets.length >= remaining) {
-                console.log(`Daily limit reached during Tavily insert: ${usedToday + insertedTargets.length}/${dailyLimit}`);
+                console.log(`Daily limit reached: ${usedToday + insertedTargets.length}/${dailyLimit}`);
                 limitReached = true;
                 break;
               }
 
               if (username && username !== "unknown") {
-                console.log("Inserting target:", username, "on", platform);
-
                 await getSupabase().from("targets").insert({
                   campaign_id: campaignId,
-                  platform,
+                  platform: detectedPlatform,
                   username,
                   profile_url: url,
                   post_url: url,
-                  post_content: result.content?.slice(0, 500) || "",
+                  post_content: ((result.content as string) || "").slice(0, 500),
                   match_score: 50,
                   match_reason: "AI分析待ち",
                   status: "pending",
                 });
                 insertedTargets.push(username);
-                console.log(`Inserted target (${insertedTargets.length}/${remaining}):`, username);
-              } else {
-                console.log("Skipping - invalid username:", username, "from URL:", url);
+                console.log(`Inserted target (${insertedTargets.length}/${remaining}):`, detectedPlatform, username);
               }
             }
           } catch (err) {

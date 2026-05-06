@@ -28,6 +28,18 @@ const PLATFORM_ICONS: Record<string, { icon: string; color: string }> = {
   tiktok: { icon: "♪", color: "#ff0050" },
   instagram: { icon: "◈", color: "#e1306c" },
   facebook: { icon: "f", color: "#1877f2" },
+  youtube: { icon: "▶", color: "#ff0000" },
+  note: { icon: "📝", color: "#41c9b4" },
+  zenn: { icon: "Z", color: "#3ea8ff" },
+  qiita: { icon: "Q", color: "#55c500" },
+  hatena: { icon: "B!", color: "#00a4de" },
+  yahoo_qa: { icon: "Y!", color: "#ff0033" },
+  "5ch": { icon: "5", color: "#ff6600" },
+  quora: { icon: "Q", color: "#b92b27" },
+  stackoverflow: { icon: "SO", color: "#f48024" },
+  blog: { icon: "📰", color: "#7c5cfc" },
+  qa: { icon: "❓", color: "#ffd60a" },
+  web: { icon: "🌐", color: "#2dd17a" },
 };
 
 type Props = {
