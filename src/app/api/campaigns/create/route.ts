@@ -123,16 +123,15 @@ export async function POST(request: Request) {
     }
 
     // Inngest: ターゲット発見ジョブを発火（失敗してもキャンペーン作成は成功させる）
-    // Skip discovery if copied — targets already exist
-    if (!copied_from) {
-      try {
-        await inngest.send({
-          name: "campaign/discover",
-          data: { campaign_id: data.id },
-        });
-      } catch (inngestError) {
-        console.error("Inngest send error (non-blocking):", inngestError);
-      }
+    try {
+      console.log("[create] Sending inngest campaign/discover for:", data.id, "copied_from:", copied_from || "none");
+      await inngest.send({
+        name: "campaign/discover",
+        data: { campaign_id: data.id },
+      });
+      console.log("[create] Inngest send success");
+    } catch (inngestError) {
+      console.error("Inngest send error (non-blocking):", inngestError);
     }
 
     return NextResponse.json({ id: data.id, redirect: `/campaigns/${data.id}` });
