@@ -131,28 +131,73 @@ function filterFreshResults(results: Record<string, unknown>[], cutoffDate: Date
   });
 }
 
+// Filter out corporate/company results — keep individual users only
+const COMPANY_SIGNALS = [
+  '株式会社', '合同会社', '有限会社', 'inc.', 'corp', 'co.jp', 'co.,ltd', 'company', 'official',
+  'サービス紹介', 'プレスリリース', 'お知らせ', '会社概要', '採用情報', '企業',
+  '/press/', '/news/', '/company/', '/about/', '/service/', '/recruit/',
+];
+
+function isCompanyUrl(url: string, content: string = ""): boolean {
+  const lower = (url + " " + content.slice(0, 200)).toLowerCase();
+  return COMPANY_SIGNALS.some(s => lower.includes(s));
+}
+
+// Build author profile URL from article URL
+function buildProfileUrl(url: string, platform: string, username: string): string {
+  switch (platform) {
+    case "note": return `https://note.com/${username}`;
+    case "qiita": return `https://qiita.com/${username}`;
+    case "zenn": return `https://zenn.dev/${username}`;
+    case "twitter": return `https://x.com/${username}`;
+    case "hatena": {
+      // hatena blog: username.hatenablog.com or hatena.ne.jp/username
+      try {
+        const host = new URL(url).hostname;
+        const sub = host.split(".")[0];
+        return `https://profile.hatena.ne.jp/${sub}/`;
+      } catch { return url; }
+    }
+    default: return url;
+  }
+}
+
+// Extract Twitter handle and other contact info from post content
+function extractSocialFromContent(content: string): { twitter_handle?: string; found_email?: string } {
+  const result: { twitter_handle?: string; found_email?: string } = {};
+  // Twitter handle
+  const twitterMatch = content.match(/@([a-zA-Z0-9_]{1,15})(?:\s|$|\)|\]|,)/)
+    || content.match(/(?:twitter\.com|x\.com)\/([a-zA-Z0-9_]{1,15})/);
+  if (twitterMatch) result.twitter_handle = `@${twitterMatch[1]}`;
+  // Email
+  const emailMatch = content.match(/[\w.+-]+@[\w.-]+\.\w{2,}/);
+  if (emailMatch && !emailMatch[0].includes("example") && !emailMatch[0].includes("noreply")) {
+    result.found_email = emailMatch[0];
+  }
+  return result;
+}
+
 function buildMultiPlatformQueries(keyword: string, _language: string = ""): { query: string; targetPlatform: string }[] {
   const queries: { query: string; targetPlatform: string }[] = [];
 
-  // All queries are Japanese-only — prioritize Japanese platforms over English ones
+  // Personal experience keywords to append
+  const personal = "体験談 OR 困った OR 試した OR やってみた";
+  const exclude = "-プレスリリース -サービス紹介 -お知らせ";
+
   // Social platforms
   queries.push({ query: `site:twitter.com OR site:x.com ${keyword} 日本語 -is:retweet`, targetPlatform: "twitter" });
-  queries.push({ query: `site:facebook.com ${keyword} グループ 日本語`, targetPlatform: "facebook" });
-  queries.push({ query: `site:instagram.com ${keyword} 日本`, targetPlatform: "instagram" });
-  queries.push({ query: `site:linkedin.com ${keyword} 日本`, targetPlatform: "linkedin" });
-  queries.push({ query: `site:youtube.com ${keyword} レビュー 日本語`, targetPlatform: "youtube" });
 
-  // Japanese blog/community platforms (primary discovery sources)
-  queries.push({ query: `site:note.com ${keyword} 使ってみた OR 試してみた OR 困っている`, targetPlatform: "note" });
-  queries.push({ query: `site:zenn.dev ${keyword}`, targetPlatform: "zenn" });
-  queries.push({ query: `site:qiita.com ${keyword}`, targetPlatform: "qiita" });
-  queries.push({ query: `site:hatenablog.com OR site:hatena.ne.jp ${keyword}`, targetPlatform: "hatena" });
+  // Japanese individual-focused platforms (primary)
+  queries.push({ query: `site:note.com ${keyword} ${personal} ${exclude}`, targetPlatform: "note" });
+  queries.push({ query: `site:zenn.dev ${keyword} ${personal}`, targetPlatform: "zenn" });
+  queries.push({ query: `site:qiita.com ${keyword} ${personal}`, targetPlatform: "qiita" });
+  queries.push({ query: `site:hatenablog.com OR site:hatena.ne.jp ${keyword} ${personal}`, targetPlatform: "hatena" });
   queries.push({ query: `site:detail.chiebukuro.yahoo.co.jp ${keyword} おすすめ OR 困って`, targetPlatform: "yahoo_qa" });
 
-  // General web (Japanese)
-  queries.push({ query: `${keyword} ツール おすすめ ブログ 日本語`, targetPlatform: "web" });
+  // General web (Japanese, personal)
+  queries.push({ query: `${keyword} 個人ブログ 使ってみた 日本語 ${exclude}`, targetPlatform: "web" });
 
-  // Reddit — only Japanese subreddits
+  // Reddit — only Japanese
   queries.push({ query: `site:reddit.com ${keyword} 日本語 OR 日本`, targetPlatform: "reddit" });
 
   return queries;
@@ -329,18 +374,23 @@ export const discoverTargets = inngest.createFunction(
               const results = filterFreshResults((tavilyData.results || []) as Record<string, unknown>[], sixMonthsAgo);
               for (const result of results) {
                 const url = (result.url as string) || "";
+                const content = (result.content as string) || "";
                 if (!url) continue;
+                if (isCompanyUrl(url, content)) { console.log(`Skipped company: ${url.slice(0, 60)}`); continue; }
                 if (insertedTargets.length >= remaining) { limitReached = true; break; }
                 const detectedPlatform = detectPlatformFromUrl(url);
                 const username = extractUsername(url, detectedPlatform);
                 if (username && username !== "unknown") {
+                  const profileUrl = buildProfileUrl(url, detectedPlatform, username);
+                  const social = extractSocialFromContent(content);
                   await getSupabase().from("targets").insert({
-                    campaign_id: campaignId, platform: detectedPlatform, username, profile_url: url,
-                    post_url: url, post_content: ((result.content as string) || "").slice(0, 500),
+                    campaign_id: campaignId, platform: detectedPlatform, username, profile_url: profileUrl,
+                    post_url: url, post_content: content.slice(0, 500),
                     match_score: 55, match_reason: `日本語プラットフォーム: ${site}`, status: "pending",
+                    ...(social.found_email ? { email: social.found_email } : {}),
                   });
                   insertedTargets.push(username);
-                  console.log(`Inserted JP target: ${username} from ${site}`);
+                  console.log(`Inserted JP target: ${username} (profile: ${profileUrl.slice(0, 40)})`);
                 }
               }
             } catch (err) { console.error(`JP platform discovery error:`, err); }
@@ -384,8 +434,12 @@ export const discoverTargets = inngest.createFunction(
             const seenUrls = new Set<string>();
             for (const result of results) {
               const url = (result.url as string) || "";
+              const content = (result.content as string) || "";
               if (!url || seenUrls.has(url)) continue;
               seenUrls.add(url);
+
+              // Skip company/corporate pages
+              if (isCompanyUrl(url, content)) { console.log(`Skipped company: ${url.slice(0, 60)}`); continue; }
 
               const detectedPlatform = detectPlatformFromUrl(url);
               const username = extractUsername(url, detectedPlatform);
@@ -393,14 +447,17 @@ export const discoverTargets = inngest.createFunction(
               if (insertedTargets.length >= remaining) { limitReached = true; break; }
 
               if (username && username !== "unknown") {
+                const profileUrl = buildProfileUrl(url, detectedPlatform, username);
+                const social = extractSocialFromContent(content);
                 await getSupabase().from("targets").insert({
                   campaign_id: campaignId, platform: detectedPlatform, username,
-                  profile_url: url, post_url: url,
-                  post_content: ((result.content as string) || "").slice(0, 500),
+                  profile_url: profileUrl, post_url: url,
+                  post_content: content.slice(0, 500),
                   match_score: 50, match_reason: `シグナル: ${searchTerm}`, status: "pending",
+                  ...(social.found_email ? { email: social.found_email } : {}),
                 });
                 insertedTargets.push(username);
-                console.log(`Inserted target (${insertedTargets.length}/${remaining}):`, detectedPlatform, username);
+                console.log(`Inserted target (${insertedTargets.length}/${remaining}): ${detectedPlatform} ${username} (profile: ${profileUrl.slice(0, 40)})`);
               }
             }
           } catch (err) {
