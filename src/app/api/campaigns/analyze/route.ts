@@ -6,7 +6,32 @@ export const maxDuration = 60;
 
 // System prompt moved inline to callClaude for simplicity
 
+// SNS domains where Jina Reader returns login/auth pages instead of actual content
+const SNS_DOMAINS = [
+  "instagram.com", "twitter.com", "x.com", "facebook.com", "fb.com",
+  "tiktok.com", "linkedin.com", "threads.net", "mastodon",
+];
+
+function isSnsUrl(url: string): boolean {
+  try {
+    const hostname = new URL(url).hostname.toLowerCase();
+    return SNS_DOMAINS.some(d => hostname.includes(d));
+  } catch { return false; }
+}
+
+function isJunkContent(text: string): boolean {
+  const junkSignals = ["ログイン", "ログインして", "Sign up", "Log in", "Create an account",
+    "プライバシーポリシー", "Cookie", "利用規約", "Terms of Service", "パスワード"];
+  const matches = junkSignals.filter(s => text.includes(s));
+  return matches.length >= 3;
+}
+
 async function fetchPageContent(url: string): Promise<string> {
+  // Skip scraping for SNS URLs (they return login pages)
+  if (isSnsUrl(url)) {
+    console.log(`[analyze] Skipping Jina scrape for SNS URL: ${url}`);
+    return "";
+  }
   try {
     const jinaUrl = `https://r.jina.ai/${url}`;
     const res = await fetch(jinaUrl, {
@@ -15,7 +40,13 @@ async function fetchPageContent(url: string): Promise<string> {
     });
     if (!res.ok) return "";
     const text = await res.text();
-    return text.slice(0, 2000);
+    const content = text.slice(0, 2000);
+    // Validate content isn't a login/auth page
+    if (isJunkContent(content)) {
+      console.log(`[analyze] Junk content detected (login/auth page), ignoring scraped content`);
+      return "";
+    }
+    return content;
   } catch {
     return "";
   }
@@ -123,9 +154,15 @@ export async function POST(request: Request) {
     let userMessage: string;
     if (url) {
       const pageContent = await fetchPageContent(url);
-      userMessage = pageContent
-        ? `URL: ${url}\n\nページ内容:\n${pageContent}`
-        : `URL: ${url}\n\nこのURLのプロダクト・サービスを分析してください。`;
+      if (pageContent) {
+        userMessage = `URL: ${url}\n\nページ内容:\n${pageContent}`;
+      } else if (isSnsUrl(url)) {
+        // SNS URL: extract username/account info from URL pattern
+        const urlPath = new URL(url).pathname.replace(/\//g, " ").trim();
+        userMessage = `SNSアカウント URL: ${url}\nアカウント/ユーザー名: ${urlPath}\n\nこのSNSアカウントが提供しているプロダクト・サービスを、URLとアカウント名から推測して分析してください。SNSプラットフォーム自体（Instagram等）を分析しないでください。このアカウントが宣伝・運営しているプロダクトを分析対象にしてください。`;
+      } else {
+        userMessage = `URL: ${url}\n\nこのURLのプロダクト・サービスを分析してください。`;
+      }
     } else {
       userMessage = `プロダクト説明:\n${description}`;
     }
