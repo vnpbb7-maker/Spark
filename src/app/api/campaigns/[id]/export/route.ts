@@ -54,6 +54,10 @@ export async function GET(
           投稿URL: (t.post_url as string) || "",
           投稿内容: ((t.post_content as string) || "").slice(0, 300),
           AI分析理由: (t.ai_reason as string) || "",
+          課題一致度: (t.relevance_score as number) ?? "",
+          行動意欲: (t.intent_score as number) ?? "",
+          影響力: (t.influence_score as number) ?? "",
+          接触可能性: (t.accessibility_score as number) ?? "",
           推定年齢: (t.estimated_age as string) || "",
           推定役職: (t.estimated_role as string) || "",
           生成コメント: comment
@@ -87,6 +91,10 @@ export async function GET(
       { wch: 40 }, // 投稿URL
       { wch: 50 }, // 投稿内容
       { wch: 40 }, // AI分析理由
+      { wch: 10 }, // 課題一致度
+      { wch: 10 }, // 行動意欲
+      { wch: 8 }, // 影響力
+      { wch: 10 }, // 接触可能性
       { wch: 10 }, // 推定年齢
       { wch: 16 }, // 推定役職
       { wch: 50 }, // 生成コメント

@@ -424,6 +424,130 @@ export const discoverTargets = inngest.createFunction(
       console.error("Contact extraction error:", e);
     }
 
+    // Firecrawl deep extraction + Multi-factor AI scoring
+    try {
+      const { data: scoringTargets } = await getSupabase()
+        .from("targets")
+        .select("id, username, platform, post_url, post_content, profile_url")
+        .eq("campaign_id", campaignId)
+        .is("priority", null)
+        .order("created_at", { ascending: false })
+        .limit(15);
+
+      if (scoringTargets && scoringTargets.length > 0) {
+        console.log(`Multi-factor scoring for ${scoringTargets.length} targets...`);
+
+        // Optional: Firecrawl deep content extraction
+        let firecrawlAvailable = false;
+        let FirecrawlApp: any = null;
+        if (process.env.FIRECRAWL_API_KEY) {
+          try {
+            const firecrawlModule = await import("@mendable/firecrawl-js");
+            FirecrawlApp = firecrawlModule.default || firecrawlModule.FirecrawlApp;
+            firecrawlAvailable = true;
+            console.log("Firecrawl available for deep extraction");
+          } catch { console.log("Firecrawl module not available, using Tavily snippets only"); }
+        }
+
+        for (const t of scoringTargets) {
+          try {
+            let enrichedContent = t.post_content || "";
+
+            // Deep extraction with Firecrawl (if available and URL exists)
+            if (firecrawlAvailable && FirecrawlApp && t.post_url) {
+              try {
+                const fc = new FirecrawlApp({ apiKey: process.env.FIRECRAWL_API_KEY });
+                const scrapeResult = await fc.scrapeUrl(t.post_url, { formats: ["markdown"] });
+                if (scrapeResult?.success && scrapeResult.markdown) {
+                  enrichedContent = scrapeResult.markdown.slice(0, 1500);
+                  // Update post_content with richer data
+                  await getSupabase().from("targets").update({
+                    post_content: enrichedContent.slice(0, 500),
+                  }).eq("id", t.id);
+                  console.log(`Firecrawl enriched: ${t.username} (${enrichedContent.length} chars)`);
+                }
+              } catch (fcErr) {
+                console.log(`Firecrawl failed for ${t.username}, using existing content`);
+              }
+            }
+
+            // Multi-factor scoring with Claude
+            const scoreResponse = await fetch("https://api.anthropic.com/v1/messages", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "x-api-key": process.env.ANTHROPIC_API_KEY!,
+                "anthropic-version": "2023-06-01",
+              },
+              body: JSON.stringify({
+                model: "claude-haiku-4-5-20251001",
+                max_tokens: 300,
+                system: "You must respond with valid JSON only. No markdown, no explanation.",
+                messages: [
+                  {
+                    role: "user",
+                    content: `あなたはβテスターの適性を評価する専門家です。
+以下の投稿を読んで、このプロダクトのβテスターとして適切かを評価してください。
+
+プロダクト: ${campaign.product_description || campaign.product_url}
+投稿者: ${t.username}
+プラットフォーム: ${t.platform}
+投稿内容: ${enrichedContent.slice(0, 500)}
+
+以下の4軸で評価してください（各0-25点、合計100点）:
+1. 課題一致度 (relevance_score): プロダクトが解決する課題を抱えているか
+2. 行動意欲 (intent_score): 新しいツールを試す意欲を示しているか（「探してる」「困ってる」「試したい」等）
+3. 影響力 (influence_score): フォロワーやコミュニティへの影響力があるか
+4. 接触可能性 (accessibility_score): 返信・反応してくれそうか
+
+JSON形式で返してください:
+{"relevance_score":0,"intent_score":0,"influence_score":0,"accessibility_score":0,"total_score":0,"priority":"S","reason":"日本語で1文","estimated_age":"20代","estimated_role":"推定役職"}
+
+priority基準: S=80点以上, A=60-79, B=40-59, C=39以下`,
+                  },
+                  { role: "assistant", content: "{" },
+                ],
+              }),
+            });
+
+            const scoreData = await scoreResponse.json();
+            const scoreText = "{" + (scoreData.content?.[0]?.text || "");
+            const scoreMatch = scoreText.match(/\{[\s\S]*\}/);
+
+            if (scoreMatch) {
+              const score = JSON.parse(scoreMatch[0]);
+              const totalScore = Math.min(100, Math.max(0,
+                (score.total_score || 0) ||
+                ((score.relevance_score || 0) + (score.intent_score || 0) + (score.influence_score || 0) + (score.accessibility_score || 0))
+              ));
+
+              await getSupabase().from("targets").update({
+                match_score: totalScore,
+                relevance_score: Math.min(25, Math.max(0, score.relevance_score || 0)),
+                intent_score: Math.min(25, Math.max(0, score.intent_score || 0)),
+                influence_score: Math.min(25, Math.max(0, score.influence_score || 0)),
+                accessibility_score: Math.min(25, Math.max(0, score.accessibility_score || 0)),
+                priority: score.priority || (totalScore >= 80 ? "S" : totalScore >= 60 ? "A" : totalScore >= 40 ? "B" : "C"),
+                ai_reason: (score.reason || "").slice(0, 200),
+                estimated_age: score.estimated_age || "不明",
+                estimated_role: (score.estimated_role || "不明").slice(0, 50),
+                status: "scored",
+              }).eq("id", t.id);
+
+              console.log(`Scored ${t.username}: ${score.priority} (${totalScore}%) [R:${score.relevance_score} I:${score.intent_score} F:${score.influence_score} A:${score.accessibility_score}]`);
+            } else {
+              await getSupabase().from("targets").update({ priority: "C", status: "scored" }).eq("id", t.id);
+            }
+          } catch (scoreErr) {
+            console.error(`Scoring error for ${t.username}:`, scoreErr);
+            await getSupabase().from("targets").update({ priority: "C", status: "scored" }).eq("id", t.id);
+          }
+        }
+      }
+    } catch (e) {
+      console.error("Multi-factor scoring error:", e);
+    }
+
     // コメント生成は手動トリガーに変更（自動生成を停止）
     // ユーザーがキャンペーンページで個別or一括でコメント生成ボタンを押す
 
@@ -564,66 +688,8 @@ JSONのみ返してください：
             approved: false,
           });
 
-          // AI scoring - prioritize target
-          try {
-            const scoreResponse = await fetch(
-              "https://api.anthropic.com/v1/messages",
-              {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  "x-api-key": process.env.ANTHROPIC_API_KEY!,
-                  "anthropic-version": "2023-06-01",
-                },
-                body: JSON.stringify({
-                  model: "claude-haiku-4-5-20251001",
-                  max_tokens: 200,
-                  system: "You must respond with valid JSON only. No markdown, no explanation.",
-                  messages: [
-                    {
-                      role: "user",
-                      content: `Score this person as a beta tester candidate for: "${campaign?.product_description || campaign?.product_url}"
-
-Their post: "${target.post_content?.slice(0, 300) || ""}"
-Platform: ${target.platform}
-Username: ${target.username}
-
-Return JSON:
-{"priority":"S or A or B or C","reason":"1 sentence why","estimated_age":"20代/30代/40代/不明","estimated_role":"role guess","match_score":0-100}
-
-S=perfect fit, A=good, B=possible, C=weak`,
-                    },
-                    { role: "assistant", content: "{" },
-                  ],
-                }),
-              }
-            );
-
-            const scoreData = await scoreResponse.json();
-            const scoreText = "{" + (scoreData.content?.[0]?.text || "");
-            const scoreMatch = scoreText.match(/\{[\s\S]*\}/);
-            if (scoreMatch) {
-              const score = JSON.parse(scoreMatch[0]);
-              const updateData: Record<string, unknown> = {
-                status: "contacted",
-                priority: score.priority || "B",
-                ai_reason: (score.reason || "").slice(0, 200),
-                estimated_age: score.estimated_age || "不明",
-                estimated_role: (score.estimated_role || "不明").slice(0, 50),
-              };
-              if (score.match_score && typeof score.match_score === "number") {
-                updateData.match_score = Math.min(100, Math.max(0, score.match_score));
-              }
-              await supabase.from("targets").update(updateData).eq("id", target.id);
-              console.log(`Scored ${target.username}: ${score.priority} (${score.match_score}%)`);
-            } else {
-              await supabase.from("targets").update({ status: "contacted", priority: "B" }).eq("id", target.id);
-            }
-          } catch (scoreErr) {
-            console.error("Scoring error:", scoreErr);
-            await supabase.from("targets").update({ status: "contacted", priority: "B" }).eq("id", target.id);
-          }
-
+          // Update status (scoring already done in discovery)
+          await supabase.from("targets").update({ status: "commented" }).eq("id", target.id);
           console.log("Comment generated for:", target.username);
         }
       } catch (err) {

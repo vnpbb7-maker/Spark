@@ -36,6 +36,8 @@ type TargetRow = {
   post_content: string | null; match_score: number; match_reason: string | null;
   email: string | null; priority: string | null; ai_reason: string | null;
   estimated_age: string | null; estimated_role: string | null;
+  relevance_score: number | null; intent_score: number | null;
+  influence_score: number | null; accessibility_score: number | null;
   comment?: { id: string; content: string; approach: string | null };
 };
 
@@ -371,6 +373,25 @@ export default function CampaignDetailPage() {
                           {t.post_content && (
                             <div style={{ fontSize: "12px", color: "rgba(240,239,232,0.35)", fontStyle: "italic", lineHeight: 1.5, background: "rgba(255,255,255,0.02)", borderRadius: "8px", padding: "10px" }}>
                               &quot;{t.post_content.slice(0, 200)}{t.post_content.length > 200 ? "..." : ""}&quot;
+                            </div>
+                          )}
+                          {/* Sub-scores */}
+                          {t.relevance_score != null && (
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px", background: "rgba(255,255,255,0.02)", borderRadius: "8px", padding: "10px" }}>
+                              {[
+                                { label: "課題一致", score: t.relevance_score, color: "#ff6b35" },
+                                { label: "行動意欲", score: t.intent_score, color: "#2dd17a" },
+                                { label: "影響力", score: t.influence_score, color: "#1d9bf0" },
+                                { label: "接触性", score: t.accessibility_score, color: "#ffd60a" },
+                              ].map((s) => (
+                                <div key={s.label} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                                  <span style={{ fontSize: "10px", color: "rgba(240,239,232,0.35)", width: "48px", flexShrink: 0 }}>{s.label}</span>
+                                  <div style={{ flex: 1, height: "4px", background: "rgba(255,255,255,0.05)", borderRadius: "2px", overflow: "hidden" }}>
+                                    <div style={{ width: `${((s.score || 0) / 25) * 100}%`, height: "100%", background: s.color, borderRadius: "2px" }} />
+                                  </div>
+                                  <span style={{ fontSize: "10px", color: s.color, fontWeight: 700, width: "20px", textAlign: "right" }}>{s.score || 0}</span>
+                                </div>
+                              ))}
                             </div>
                           )}
                           {t.post_url && (
