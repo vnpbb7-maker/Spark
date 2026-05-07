@@ -4,34 +4,7 @@ import Anthropic from "@anthropic-ai/sdk";
 // Extend Vercel timeout (Pro: 300s, Hobby: 60s)
 export const maxDuration = 60;
 
-const SYSTEM_PROMPT = `あなたはプロダクトのグロース専門家です。
-プロダクトの説明から、今まさに困っている日本人ユーザーを3パターン特定し、
-各パターンについて以下をJSON形式で出力してください。
-
-【重要】
-- 有効なJSONのみを返すこと。マークダウン、説明文、コードブロック（\`\`\`）は一切不要。
-- 全てのキーワード、シグナル、ツイート例は必ず日本語で書くこと。英語キーワードは使わない。
-- 日本のSNS（X/Twitter日本語圏、note、はてブ等）で実際に検索できるフレーズにすること。
-- discovery_signalsは日本語で、実際にSNSで検索して見つかるような具体的なフレーズにすること。
-
-出力形式:
-{
-  "personas": [
-    {
-      "label": "ペルソナ名（例：0→1に詰まってる個人開発者）",
-      "pain_scene": "今まさにどんな状況で困っているか（具体的な場面で1文）",
-      "current_workaround": "今どうやって乗り越えようとしているか、その不満",
-      "reddit_communities": ["r/XXX", "r/YYY", "r/ZZZ"],
-      "twitter_keywords": ["日本語キーワード1", "日本語キーワード2", "日本語キーワード3", "日本語キーワード4", "日本語キーワード5"],
-      "real_tweet_example": "この人が実際に投稿しそうな愚痴ツイートの例文（必ず日本語で）",
-      "message_angle": "このペルソナに刺さるアプローチの角度（何を解決できると言えば反応するか）",
-      "avoid_phrases": ["警戒されるフレーズ1", "警戒されるフレーズ2"],
-      "discovery_signals": ["日本語の発見シグナル1", "日本語の発見シグナル2", "日本語の発見シグナル3"]
-    }
-  ],
-  "recommended_platforms": ["reddit", "twitter"],
-  "positioning": "競合との差別化（1文）"
-}`;
+// System prompt moved inline to callClaude for simplicity
 
 async function fetchPageContent(url: string): Promise<string> {
   try {
@@ -49,164 +22,90 @@ async function fetchPageContent(url: string): Promise<string> {
 }
 
 async function callClaude(input: string, retryCount = 0): Promise<Record<string, unknown>> {
-  const client = new Anthropic({
-    apiKey: process.env.ANTHROPIC_API_KEY,
-  });
+  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-  const isRetry = retryCount > 0;
-  const model = "claude-haiku-4-5-20251001";
-  const timeoutMs = isRetry ? 20000 : 45000;
+  const userPrompt = `以下のプロダクトを分析して、困っている日本人ユーザーを3パターン特定してください。
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+${input.slice(0, 2000)}
 
-  // Explicit JSON-only instruction appended to system prompt
-  const jsonSystemPrompt = SYSTEM_PROMPT + `\n\n【最重要ルール】\nあなたの返答はJSONオブジェクトのみです。\n最初の文字は { で、最後の文字は } でなければなりません。\nマークダウン、コードブロック（\`\`\`）、説明文は一切含めないでください。`;
+以下のJSON形式で返してください。JSONのみ、他のテキストは不要です:
+{"personas":[{"label":"ペルソナ名","pain_scene":"困っている場面","current_workaround":"今の対処法","reddit_communities":["r/xxx"],"twitter_keywords":["キーワード1","キーワード2","キーワード3"],"real_tweet_example":"投稿例","message_angle":"アプローチ角度","avoid_phrases":["避ける表現"],"discovery_signals":["発見シグナル1","発見シグナル2"]}],"recommended_platforms":["twitter","note"],"positioning":"差別化ポイント"}`;
 
-  let message;
   try {
-    message = await client.messages.create(
-      {
-        model,
-        max_tokens: 1200,
-        temperature: 0,
-        system: jsonSystemPrompt,
-        messages: [
-          {
-            role: "user",
-            content: isRetry
-              ? `簡潔に分析してください（各項目は短く）:\n\n${input.slice(0, 1000)}`
-              : `以下のプロダクトを分析してください:\n\n${input}`,
-          },
-        ],
-      },
-      { signal: controller.signal }
-    );
-    clearTimeout(timeout);
-  } catch (apiError) {
-    clearTimeout(timeout);
-    const msg = apiError instanceof Error ? apiError.message : String(apiError);
-    console.error(`[analyze] Claude API call failed (attempt ${retryCount + 1}):`, msg);
+    console.log(`[analyze] Calling Claude (attempt ${retryCount + 1})...`);
+    const message = await client.messages.create({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 2000,
+      temperature: 0,
+      system: "You are a JSON generator. Respond with ONLY valid JSON. No markdown, no code blocks, no explanation. Start with { and end with }. All content must be in Japanese.",
+      messages: [{ role: "user", content: userPrompt }],
+    });
+
+    const rawText = (message.content[0]?.type === "text" ? message.content[0].text : "").trim();
+    console.log(`[analyze] Raw response (${rawText.length} chars):`, rawText.substring(0, 500));
+
+    if (!rawText) {
+      if (retryCount < 2) return callClaude(input, retryCount + 1);
+      throw new Error("Empty response from Claude");
+    }
+
+    // Try direct parse
+    try {
+      const obj = JSON.parse(rawText);
+      console.log("[analyze] Direct parse OK");
+      return obj;
+    } catch { /* continue */ }
+
+    // Extract between first { and last }
+    const start = rawText.indexOf("{");
+    const end = rawText.lastIndexOf("}");
+    if (start !== -1 && end > start) {
+      let jsonStr = rawText.substring(start, end + 1);
+      // Fix trailing commas
+      jsonStr = jsonStr.replace(/,\s*([}\]])/g, "$1");
+
+      try {
+        const obj = JSON.parse(jsonStr);
+        console.log("[analyze] Brace extraction parse OK");
+        return obj;
+      } catch {
+        // Fix unescaped newlines in strings
+        jsonStr = jsonStr.replace(/[\r\n]+/g, " ");
+        try {
+          const obj = JSON.parse(jsonStr);
+          console.log("[analyze] Newline-fixed parse OK");
+          return obj;
+        } catch (e) {
+          console.error("[analyze] Parse error after fixes:", (e as Error).message);
+          console.error("[analyze] JSON substring (first 300):", jsonStr.substring(0, 300));
+        }
+      }
+    }
+
+    // Code block extraction
+    const cbMatch = rawText.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (cbMatch) {
+      try {
+        const obj = JSON.parse(cbMatch[1].trim());
+        console.log("[analyze] Code block parse OK");
+        return obj;
+      } catch { /* continue */ }
+    }
 
     if (retryCount < 2) {
-      console.log("[analyze] Retrying...");
+      console.log("[analyze] All parse failed, retrying...");
       return callClaude(input, retryCount + 1);
     }
+
+    console.error("[analyze] FULL DUMP:", rawText);
+    throw new Error("Failed to parse Claude response as JSON after retries");
+  } catch (err) {
+    if (err instanceof Error && err.message.includes("Failed to parse")) throw err;
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(`[analyze] API error (attempt ${retryCount + 1}):`, msg);
+    if (retryCount < 2) return callClaude(input, retryCount + 1);
     throw new Error(`Claude API error: ${msg}`);
   }
-
-  const textBlock = message.content.find((b) => b.type === "text");
-  if (!textBlock || textBlock.type !== "text") {
-    if (retryCount < 2) return callClaude(input, retryCount + 1);
-    throw new Error("No text response from Claude");
-  }
-
-  const rawText = textBlock.text.trim();
-  console.log(`[analyze] Raw response (attempt ${retryCount + 1}, ${rawText.length} chars):`, rawText.substring(0, 500));
-
-  // Try parsing
-  const parsed = tryParseJSON(rawText);
-  if (parsed) return parsed;
-
-  // All parse strategies failed — retry
-  if (retryCount < 2) {
-    console.log(`[analyze] Parse failed, retrying (attempt ${retryCount + 2})...`);
-    return callClaude(input, retryCount + 1);
-  }
-
-  console.error("[analyze] FULL raw response dump:", rawText);
-  throw new Error("Failed to parse Claude response as JSON after retries");
-}
-
-function tryParseJSON(rawText: string): Record<string, unknown> | null {
-  // Strategy 1: Direct parse
-  try {
-    const obj = JSON.parse(rawText);
-    if (typeof obj === "object" && obj !== null && !Array.isArray(obj)) {
-      console.log("[analyze] Parse OK: Strategy 1 (direct)");
-      return obj;
-    }
-  } catch { /* continue */ }
-
-  // Strategy 2: Extract between first { and last }
-  const result = extractAndParse(rawText);
-  if (result) {
-    console.log("[analyze] Parse OK: Strategy 2 (brace extraction)");
-    return result;
-  }
-
-  // Strategy 3: Code block extraction
-  const codeBlockMatch = rawText.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (codeBlockMatch) {
-    const cbResult = extractAndParse(codeBlockMatch[1].trim());
-    if (cbResult) {
-      console.log("[analyze] Parse OK: Strategy 3 (code block)");
-      return cbResult;
-    }
-  }
-
-  // Strategy 4: Line-by-line strip (remove lines before first { and after last })
-  const lines = rawText.split("\n");
-  const startLine = lines.findIndex(l => l.trim().startsWith("{"));
-  const endLine = lines.length - 1 - [...lines].reverse().findIndex(l => l.trim().endsWith("}"));
-  if (startLine >= 0 && endLine >= startLine) {
-    const stripped = lines.slice(startLine, endLine + 1).join("\n");
-    const s4 = extractAndParse(stripped);
-    if (s4) {
-      console.log("[analyze] Parse OK: Strategy 4 (line strip)");
-      return s4;
-    }
-  }
-
-  console.error("[analyze] All 4 parse strategies failed for:", rawText.substring(0, 300));
-  return null;
-}
-
-function extractAndParse(text: string): Record<string, unknown> | null {
-  const firstBrace = text.indexOf("{");
-  const lastBrace = text.lastIndexOf("}");
-  if (firstBrace === -1 || lastBrace === -1 || firstBrace >= lastBrace) return null;
-
-  let jsonStr = text.substring(firstBrace, lastBrace + 1);
-
-  // Fix common issues
-  // 1. Remove trailing commas before } or ]
-  jsonStr = jsonStr.replace(/,\s*([}\]])/g, "$1");
-  // 2. Fix unescaped newlines inside strings (conservative approach)
-  jsonStr = fixUnescapedNewlines(jsonStr);
-
-  try {
-    const obj = JSON.parse(jsonStr);
-    if (typeof obj === "object" && obj !== null) return obj;
-  } catch {
-    // Try removing control characters
-    try {
-      const cleaned = jsonStr.replace(/[\x00-\x1F\x7F]/g, (ch) => {
-        if (ch === "\n" || ch === "\r" || ch === "\t") return " ";
-        return "";
-      });
-      const obj = JSON.parse(cleaned);
-      if (typeof obj === "object" && obj !== null) return obj;
-    } catch { /* give up */ }
-  }
-  return null;
-}
-
-function fixUnescapedNewlines(json: string): string {
-  // Replace newlines that appear inside string values
-  let inString = false;
-  let escaped = false;
-  let result = "";
-  for (let i = 0; i < json.length; i++) {
-    const ch = json[i];
-    if (escaped) { result += ch; escaped = false; continue; }
-    if (ch === "\\") { result += ch; escaped = true; continue; }
-    if (ch === '"') { inString = !inString; result += ch; continue; }
-    if (inString && ch === "\n") { result += "\\n"; continue; }
-    if (inString && ch === "\r") { continue; }
-    result += ch;
-  }
-  return result;
 }
 
 export async function POST(request: Request) {
