@@ -1,37 +1,28 @@
 import { NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 
-const SYSTEM_PROMPT = `あなたはスタートアップのGrowth専門家です。
-以下のプロダクト情報を分析し、結果をJSON形式で返してください。
+const SYSTEM_PROMPT = `あなたはプロダクトのグロース専門家です。
+プロダクトの説明から、今まさに困っている人を3パターン特定し、
+各パターンについて以下をJSON形式で出力してください。
 
 【重要】有効なJSONのみを返すこと。マークダウン、説明文、コードブロック（\`\`\`）は一切不要。生のJSONだけを返してください。
 
-重要：
-- URLが入力された場合、そのURLのサービス・プロダクトを分析する
-- 個人のSNSアカウント（instagram.com/@xxx等）の場合は
-  そのアカウントのブランド・コンテンツを分析する
-- 分析対象はURLまたは説明文に記載されたプロダクト・サービスそのもの
-
+出力形式:
 {
-  "core_value": "プロダクトの本質的価値（1文・40字以内）",
-  "problem_solved": "解決している問題（1文）",
   "personas": [
     {
-      "name": "ペルソナ名",
-      "description": "どんな人か（2文）",
-      "pain_points": ["悩み1","悩み2","悩み3"],
-      "where_to_find": {
-        "twitter": ["キーワード1","キーワード2"],
-        "reddit": ["r/sub1","r/sub2"],
-        "linkedin": ["職種1","業界1"],
-        "tiktok": ["#tag1","#tag2"],
-        "instagram": ["#tag1","#tag2"],
-        "facebook": ["グループ名1","グループ名2"]
-      },
-      "keywords": ["kw1","kw2","kw3"]
+      "label": "ペルソナ名（例：0→1に詰まってる個人開発者）",
+      "pain_scene": "今まさにどんな状況で困っているか（具体的な場面で1文）",
+      "current_workaround": "今どうやって乗り越えようとしているか、その不満",
+      "reddit_communities": ["r/XXX", "r/YYY", "r/ZZZ"],
+      "twitter_keywords": ["キーワード1", "キーワード2", "キーワード3", "キーワード4", "キーワード5"],
+      "real_tweet_example": "この人が実際に投稿しそうな愚痴ツイートの例文（日本語または英語）",
+      "message_angle": "このペルソナに刺さるアプローチの角度（何を解決できると言えば反応するか）",
+      "avoid_phrases": ["警戒されるフレーズ1", "警戒されるフレーズ2"],
+      "discovery_signals": ["発見シグナルフレーズ1", "発見シグナルフレーズ2", "発見シグナルフレーズ3"]
     }
   ],
-  "recommended_platforms": ["reddit","twitter"],
+  "recommended_platforms": ["reddit", "twitter"],
   "positioning": "競合との差別化（1文）"
 }`;
 

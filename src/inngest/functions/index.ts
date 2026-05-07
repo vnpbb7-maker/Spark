@@ -256,120 +256,134 @@ export const discoverTargets = inngest.createFunction(
     console.log("Personas count:", personas.length);
     console.log("Platforms:", platforms);
 
-    for (const persona of personas.slice(0, 2)) {
+    for (const persona of personas.slice(0, 3)) {
       if (limitReached) break;
+
+      // Build search queries from new persona format (discovery_signals + twitter_keywords)
+      // Fall back to legacy format (where_to_find / keywords) for old cached data
+      const discoverySignals = persona.discovery_signals || [];
+      const twitterKeywords = persona.twitter_keywords || [];
+      const redditCommunities = persona.reddit_communities || [];
+      const legacyKeywords = persona.keywords || [];
+
+      // Combine signals: discovery_signals first, then twitter_keywords
+      const searchTerms = [
+        ...discoverySignals,
+        ...twitterKeywords.slice(0, 2),
+        ...legacyKeywords.slice(0, 2),
+      ].filter(Boolean).slice(0, 5);
+
+      console.log(`Persona "${persona.label || persona.name}": ${searchTerms.length} search terms, ${redditCommunities.length} reddit communities`);
+
       for (const platform of platforms.slice(0, 4)) {
         if (limitReached) break;
-        // For SNS platforms, use where_to_find; for blogs/web, use persona keywords
-        const keywords = persona.where_to_find?.[platform] || persona.keywords || [];
 
-        for (const keyword of keywords.slice(0, 2)) {
-          try {
-            // TwitterはAPIで検索
-            if (platform === "twitter") {
-              const tweets = await searchTwitterTargets(keyword, campaign.target_language || "ja");
-              console.log(`Twitter API results for "${keyword}":`, tweets.length);
+        // For Twitter, search using twitter_keywords directly
+        if (platform === "twitter") {
+          const twKeywords = twitterKeywords.length > 0 ? twitterKeywords : searchTerms;
+          for (const keyword of twKeywords.slice(0, 3)) {
+            const tweets = await searchTwitterTargets(keyword, campaign.target_language || "ja");
+            console.log(`Twitter API results for "${keyword}":`, tweets.length);
 
-              for (const tweet of tweets) {
-                if (insertedTargets.length >= remaining) {
-                  console.log(`Daily limit reached during Twitter insert: ${usedToday + insertedTargets.length}/${dailyLimit}`);
-                  limitReached = true;
-                  break;
-                }
-                if (tweet.username && tweet.username !== "unknown") {
+            for (const tweet of tweets) {
+              if (insertedTargets.length >= remaining) { limitReached = true; break; }
+              if (tweet.username && tweet.username !== "unknown") {
+                await getSupabase().from("targets").insert({
+                  campaign_id: campaignId, platform: "twitter", username: tweet.username,
+                  profile_url: `https://x.com/${tweet.username}`, post_url: tweet.url,
+                  post_content: tweet.content?.slice(0, 500) || "", match_score: 60,
+                  match_reason: `キーワード: ${keyword}`, status: "pending",
+                });
+                insertedTargets.push(tweet.username);
+              }
+            }
+          }
+          continue;
+        }
+
+        // For Reddit, use reddit_communities if available
+        if (platform === "reddit" && redditCommunities.length > 0) {
+          for (const community of redditCommunities.slice(0, 3)) {
+            if (limitReached) break;
+            const query = `site:reddit.com ${community} ${searchTerms[0] || ""}`;
+            try {
+              const tavilyResponse = await fetch("https://api.tavily.com/search", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "Authorization": `Bearer ${process.env.TAVILY_API_KEY}` },
+                body: JSON.stringify({ query, max_results: 5, search_depth: "basic" }),
+              });
+              if (!tavilyResponse.ok) { console.error(`Tavily error for reddit "${community}":`, tavilyResponse.status); continue; }
+              const tavilyData = await tavilyResponse.json();
+              const results = (tavilyData.results || []) as Record<string, unknown>[];
+              for (const result of results) {
+                const url = (result.url as string) || "";
+                if (!url) continue;
+                if (insertedTargets.length >= remaining) { limitReached = true; break; }
+                const username = extractUsername(url, "reddit");
+                if (username && username !== "unknown") {
                   await getSupabase().from("targets").insert({
-                    campaign_id: campaignId,
-                    platform: "twitter",
-                    username: tweet.username,
-                    profile_url: `https://x.com/${tweet.username}`,
-                    post_url: tweet.url,
-                    post_content: tweet.content?.slice(0, 500) || "",
-                    match_score: 60,
-                    match_reason: "Twitter API検索",
-                    status: "pending",
+                    campaign_id: campaignId, platform: "reddit", username, profile_url: url,
+                    post_url: url, post_content: ((result.content as string) || "").slice(0, 500),
+                    match_score: 55, match_reason: `Reddit: ${community}`, status: "pending",
                   });
-                  insertedTargets.push(tweet.username);
-                  console.log(`Inserted Twitter target (${insertedTargets.length}/${remaining}):`, tweet.username);
+                  insertedTargets.push(username);
+                  console.log(`Inserted Reddit target: ${username} from ${community}`);
                 }
               }
-              continue; // Tavilyの処理をスキップ
-            }
-            // Multi-platform Tavily search
-            const allQueries = buildMultiPlatformQueries(keyword, campaign.target_language || "");
-            // Select queries matching the campaign's selected platforms + always include web/qa
+            } catch (err) { console.error(`Reddit discovery error for ${community}:`, err); }
+          }
+          continue;
+        }
+
+        // For other platforms, use discovery_signals with buildMultiPlatformQueries
+        for (const searchTerm of searchTerms.slice(0, 3)) {
+          if (limitReached) break;
+          try {
+            const allQueries = buildMultiPlatformQueries(searchTerm, campaign.target_language || "");
             const selectedQueries = allQueries.filter(q => {
               if (q.targetPlatform === platform) return true;
-              if (q.targetPlatform === "web" || q.targetPlatform === "qa") return true;
+              if (q.targetPlatform === "web") return true;
               return false;
-            }).slice(0, 3);
+            }).slice(0, 2);
 
-            console.log(`Running ${selectedQueries.length} Tavily queries for platform=${platform}, keyword=${keyword}`);
+            console.log(`Running ${selectedQueries.length} Tavily queries for platform=${platform}, signal="${searchTerm}"`);
 
-            // Run queries in parallel
             const queryResults = await Promise.allSettled(
               selectedQueries.map(async (sq) => {
-                const tavilyResponse = await fetch(
-                  "https://api.tavily.com/search",
-                  {
-                    method: "POST",
-                    headers: {
-                      "Content-Type": "application/json",
-                      "Authorization": `Bearer ${process.env.TAVILY_API_KEY}`,
-                    },
-                    body: JSON.stringify({
-                      query: sq.query,
-                      max_results: 5,
-                      search_depth: "basic",
-                    }),
-                  }
-                );
-                if (!tavilyResponse.ok) {
-                  console.error(`Tavily error for "${sq.query}":`, tavilyResponse.status);
-                  return [];
-                }
+                const tavilyResponse = await fetch("https://api.tavily.com/search", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json", "Authorization": `Bearer ${process.env.TAVILY_API_KEY}` },
+                  body: JSON.stringify({ query: sq.query, max_results: 5, search_depth: "basic" }),
+                });
+                if (!tavilyResponse.ok) { console.error(`Tavily error for "${sq.query}":`, tavilyResponse.status); return []; }
                 const tavilyData = await tavilyResponse.json();
                 return (tavilyData.results || []).map((r: Record<string, unknown>) => ({ ...r, _targetPlatform: sq.targetPlatform }));
               })
             );
 
-            // Flatten results from all queries
             const results: Record<string, unknown>[] = [];
             for (const qr of queryResults) {
-              if (qr.status === "fulfilled" && Array.isArray(qr.value)) {
-                results.push(...qr.value);
-              }
+              if (qr.status === "fulfilled" && Array.isArray(qr.value)) results.push(...qr.value);
             }
-            console.log(`Total Tavily results for keyword "${keyword}":`, results.length);
+            console.log(`Tavily results for signal "${searchTerm}":`, results.length);
 
-            // Deduplicate by URL
             const seenUrls = new Set<string>();
             for (const result of results) {
               const url = (result.url as string) || "";
               if (!url || seenUrls.has(url)) continue;
               seenUrls.add(url);
 
-              // Auto-detect platform from URL
               const detectedPlatform = detectPlatformFromUrl(url);
               const username = extractUsername(url, detectedPlatform);
-              console.log(`URL: ${url} → platform: ${detectedPlatform}, username: ${username}`);
 
-              if (insertedTargets.length >= remaining) {
-                console.log(`Daily limit reached: ${usedToday + insertedTargets.length}/${dailyLimit}`);
-                limitReached = true;
-                break;
-              }
+              if (insertedTargets.length >= remaining) { limitReached = true; break; }
 
               if (username && username !== "unknown") {
                 await getSupabase().from("targets").insert({
-                  campaign_id: campaignId,
-                  platform: detectedPlatform,
-                  username,
-                  profile_url: url,
-                  post_url: url,
+                  campaign_id: campaignId, platform: detectedPlatform, username,
+                  profile_url: url, post_url: url,
                   post_content: ((result.content as string) || "").slice(0, 500),
-                  match_score: 50,
-                  match_reason: "AI分析待ち",
-                  status: "pending",
+                  match_score: 50, match_reason: `シグナル: ${searchTerm}`, status: "pending",
                 });
                 insertedTargets.push(username);
                 console.log(`Inserted target (${insertedTargets.length}/${remaining}):`, detectedPlatform, username);
