@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useRealtimeLog, LogEntry } from "@/hooks/useRealtimeLog";
@@ -95,6 +95,10 @@ export default function CampaignDetailPage() {
     return entries.slice(0, 20).map((e) => e.log);
   }, []);
 
+  // Stable ref for router (prevents fetchData from changing on every render)
+  const routerRef = useRef(router);
+  routerRef.current = router;
+
   const fetchData = useCallback(async () => {
     const supabase = createClient();
 
@@ -104,7 +108,7 @@ export default function CampaignDetailPage() {
       supabase.from("targets").select("*, comments(*)").eq("campaign_id", campaignId).order("match_score", { ascending: false }).limit(50),
     ]);
 
-    if (!campResult.data) { router.push("/dashboard"); return; }
+    if (!campResult.data) { routerRef.current.push("/dashboard"); return; }
     setCampaign(campResult.data);
 
     const enriched: TargetRow[] = (tgtsResult.data || []).map((t: Record<string, unknown>) => {
@@ -136,10 +140,14 @@ export default function CampaignDetailPage() {
     const builtLogs = buildLogsFromData(logTargets, logComments);
     setInitialLogs([...builtLogs]);
     setLoading(false);
-  }, [campaignId, router, buildLogsFromData]);
+  }, [campaignId, buildLogsFromData]);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
-  useEffect(() => { const i = setInterval(fetchData, 10000); return () => clearInterval(i); }, [fetchData]);
+  // Single effect: initial fetch + polling interval
+  useEffect(() => {
+    fetchData();
+    const interval = setInterval(fetchData, 10000);
+    return () => clearInterval(interval);
+  }, [fetchData]);
 
   const logs = [...realtimeLogs, ...initialLogs.filter((il) => !realtimeLogs.some((rl) => rl.text === il.text))].slice(0, 20);
   const hasData = targets.length > 0 || initialLogs.length > 0;
