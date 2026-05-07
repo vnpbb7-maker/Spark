@@ -44,7 +44,8 @@ export async function POST(request: Request) {
         product_url: product_url || null,
         product_description,
         target_personas,
-        analysis_cache: analysis_cache || target_personas || null,
+        // Only store analysis_cache if explicitly provided (e.g. from copy flow)
+        analysis_cache: copied_from ? (analysis_cache || null) : null,
         copied_from: copied_from || null,
         platforms: platforms || [],
         daily_limit: daily_limit || 10,
@@ -66,7 +67,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // If copied from an existing campaign, copy targets and comments
+    // If copied from an existing campaign, copy targets and comments (skip discovery)
     if (copied_from) {
       try {
         const { data: srcTargets } = await supabase
@@ -96,6 +97,10 @@ export async function POST(request: Request) {
                 phone: t.phone,
                 website: t.website,
                 contact_url: t.contact_url,
+                relevance_score: t.relevance_score,
+                intent_score: t.intent_score,
+                influence_score: t.influence_score,
+                accessibility_score: t.accessibility_score,
                 status: t.status || "pending",
               })
               .select()
@@ -115,23 +120,26 @@ export async function POST(request: Request) {
               }
             }
           }
-          console.log(`Copied ${srcTargets.length} targets from campaign ${copied_from}`);
+          console.log(`[create] Copied ${srcTargets.length} targets from campaign ${copied_from} — skipping discovery`);
         }
       } catch (copyErr) {
         console.error("Copy targets error (non-blocking):", copyErr);
       }
-    }
 
-    // Inngest: ターゲット発見ジョブを発火（失敗してもキャンペーン作成は成功させる）
-    try {
-      console.log("[create] Sending inngest campaign/discover for:", data.id, "copied_from:", copied_from || "none");
-      await inngest.send({
-        name: "campaign/discover",
-        data: { campaign_id: data.id },
-      });
-      console.log("[create] Inngest send success");
-    } catch (inngestError) {
-      console.error("Inngest send error (non-blocking):", inngestError);
+      // Update status to completed since targets are already copied
+      await supabase.from("campaigns").update({ status: "completed" }).eq("id", data.id);
+    } else {
+      // Fresh campaign — always trigger discovery
+      try {
+        console.log("[create] Sending inngest campaign/discover for:", data.id);
+        await inngest.send({
+          name: "campaign/discover",
+          data: { campaign_id: data.id },
+        });
+        console.log("[create] Inngest send success");
+      } catch (inngestError) {
+        console.error("Inngest send error (non-blocking):", inngestError);
+      }
     }
 
     return NextResponse.json({ id: data.id, redirect: `/campaigns/${data.id}` });
