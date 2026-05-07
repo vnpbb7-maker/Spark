@@ -83,15 +83,17 @@ export default function CampaignDetailPage() {
 
   const fetchData = useCallback(async () => {
     const supabase = createClient();
-    console.log("[fetchData] campaignId:", campaignId);
-    const { data: camp } = await supabase.from("campaigns").select("*").eq("id", campaignId).single();
-    if (!camp) { router.push("/dashboard"); return; }
-    setCampaign(camp);
 
-    const { data: tgts } = await supabase.from("targets").select("*, comments(*)").eq("campaign_id", campaignId).order("match_score", { ascending: false });
-    console.log("[fetchData] raw tgts from DB:", tgts?.length);
+    // Parallel DB queries
+    const [campResult, tgtsResult] = await Promise.all([
+      supabase.from("campaigns").select("*").eq("id", campaignId).single(),
+      supabase.from("targets").select("*, comments(*)").eq("campaign_id", campaignId).order("match_score", { ascending: false }).limit(50),
+    ]);
 
-    const enriched: TargetRow[] = (tgts || []).map((t: Record<string, unknown>) => {
+    if (!campResult.data) { router.push("/dashboard"); return; }
+    setCampaign(campResult.data);
+
+    const enriched: TargetRow[] = (tgtsResult.data || []).map((t: Record<string, unknown>) => {
       const comments = (t.comments as Array<Record<string, unknown>>) || [];
       const comment = comments[0];
       return {
@@ -101,21 +103,23 @@ export default function CampaignDetailPage() {
         email: t.email as string | null, priority: t.priority as string | null,
         ai_reason: t.ai_reason as string | null, estimated_age: t.estimated_age as string | null,
         estimated_role: t.estimated_role as string | null,
+        relevance_score: t.relevance_score as number | null,
+        intent_score: t.intent_score as number | null,
+        influence_score: t.influence_score as number | null,
+        accessibility_score: t.accessibility_score as number | null,
         comment: comment ? { id: comment.id as string, content: comment.content as string, approach: comment.approach as string | null } : undefined,
       };
     });
-    console.log("[fetchData] enriched targets:", enriched.length, "with comments:", enriched.filter((t) => t.comment).length);
     setTargets(enriched);
 
     const discovered = enriched.length;
     const generated = enriched.filter((t) => t.comment).length;
     setFunnel({ discovered, generated, exported: 0 });
 
-    const { data: logTargets } = await supabase.from("targets").select("id, platform, username, match_score, created_at, priority").eq("campaign_id", campaignId).order("created_at", { ascending: false }).limit(20);
-    const { data: logComments } = await supabase.from("comments").select("id, platform, created_at").eq("campaign_id", campaignId).order("created_at", { ascending: false }).limit(10);
-    console.log("[fetchData] logTargets:", logTargets?.length, "logComments:", logComments?.length);
-    const builtLogs = buildLogsFromData(logTargets || [], logComments || []);
-    console.log("[fetchData] builtLogs:", builtLogs.length);
+    // Build logs from same data (no extra queries)
+    const logTargets = enriched.map(t => ({ id: t.id, platform: t.platform, username: t.username, match_score: t.match_score, created_at: (tgtsResult.data?.find((d: any) => d.id === t.id) as any)?.created_at || "", priority: t.priority || undefined }));
+    const logComments = enriched.filter(t => t.comment).map(t => ({ id: t.comment!.id, platform: t.platform, created_at: (tgtsResult.data?.find((d: any) => d.id === t.id)?.comments as any)?.[0]?.created_at || "" }));
+    const builtLogs = buildLogsFromData(logTargets, logComments);
     setInitialLogs([...builtLogs]);
     setLoading(false);
   }, [campaignId, router, buildLogsFromData]);
@@ -125,7 +129,6 @@ export default function CampaignDetailPage() {
 
   const logs = [...realtimeLogs, ...initialLogs.filter((il) => !realtimeLogs.some((rl) => rl.text === il.text))].slice(0, 20);
   const hasData = targets.length > 0 || initialLogs.length > 0;
-  console.log("[CampaignPage] render — targets:", targets.length, "initialLogs:", initialLogs.length, "realtimeLogs:", realtimeLogs.length, "merged logs:", logs.length, "hasData:", hasData);
 
   const handleExport = async () => {
     setExporting(true);
@@ -329,12 +332,10 @@ export default function CampaignDetailPage() {
                         <span style={{ marginLeft: "auto", fontSize: "10px", color: "rgba(240,239,232,0.2)", transition: "transform 0.2s", transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)" }}>▼</span>
                       </div>
 
-                      {/* Row 2: AI reason / match reason */}
-                      {(t.ai_reason || t.comment?.approach || t.match_reason) && (
-                        <div style={{ fontSize: "12px", color: "rgba(240,239,232,0.4)", marginTop: "6px", marginLeft: "52px" }}>
-                          💡 {t.ai_reason || t.comment?.approach || t.match_reason}
-                        </div>
-                      )}
+                      {/* Row 2: AI reason / match reason — always show */}
+                      <div style={{ fontSize: "12px", color: "rgba(240,239,232,0.4)", marginTop: "6px", marginLeft: "52px" }}>
+                        💡 {t.ai_reason || t.match_reason || t.comment?.approach || "分析中..."}
+                      </div>
 
                       {/* Comment generation / display */}
                       {!t.comment ? (
@@ -375,8 +376,8 @@ export default function CampaignDetailPage() {
                               &quot;{t.post_content.slice(0, 200)}{t.post_content.length > 200 ? "..." : ""}&quot;
                             </div>
                           )}
-                          {/* Sub-scores */}
-                          {t.relevance_score != null && (
+                          {/* Sub-scores — always show */}
+                          {t.relevance_score != null ? (
                             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px", background: "rgba(255,255,255,0.02)", borderRadius: "8px", padding: "10px" }}>
                               {[
                                 { label: "課題一致", score: t.relevance_score, color: "#ff6b35" },
@@ -392,6 +393,10 @@ export default function CampaignDetailPage() {
                                   <span style={{ fontSize: "10px", color: s.color, fontWeight: 700, width: "20px", textAlign: "right" }}>{s.score || 0}</span>
                                 </div>
                               ))}
+                            </div>
+                          ) : (
+                            <div style={{ fontSize: "11px", color: "rgba(240,239,232,0.25)", fontStyle: "italic", padding: "8px 10px", background: "rgba(255,255,255,0.02)", borderRadius: "8px" }}>
+                              🧠 スコア計算中...
                             </div>
                           )}
                           {t.post_url && (

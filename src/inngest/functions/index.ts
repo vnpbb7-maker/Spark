@@ -304,12 +304,12 @@ export const discoverTargets = inngest.createFunction(
         if (platform === "reddit" && redditCommunities.length > 0) {
           for (const community of redditCommunities.slice(0, 3)) {
             if (limitReached) break;
-            const query = `site:reddit.com ${community} ${searchTerms[0] || ""}`;
+            const query = `site:reddit.com ${community} ${searchTerms[0] || ""} 日本語`;
             try {
               const tavilyResponse = await fetch("https://api.tavily.com/search", {
                 method: "POST",
                 headers: { "Content-Type": "application/json", "Authorization": `Bearer ${process.env.TAVILY_API_KEY}` },
-                body: JSON.stringify({ query, max_results: 5, search_depth: "basic" }),
+                body: JSON.stringify({ query, max_results: 5, search_depth: "basic", topic: "general", include_raw_content: false }),
               });
               if (!tavilyResponse.ok) { console.error(`Tavily error for reddit "${community}":`, tavilyResponse.status); continue; }
               const tavilyData = await tavilyResponse.json();
@@ -352,7 +352,7 @@ export const discoverTargets = inngest.createFunction(
                 const tavilyResponse = await fetch("https://api.tavily.com/search", {
                   method: "POST",
                   headers: { "Content-Type": "application/json", "Authorization": `Bearer ${process.env.TAVILY_API_KEY}` },
-                  body: JSON.stringify({ query: sq.query, max_results: 5, search_depth: "basic" }),
+                  body: JSON.stringify({ query: sq.query, max_results: 5, search_depth: "basic", topic: "general", include_raw_content: false }),
                 });
                 if (!tavilyResponse.ok) { console.error(`Tavily error for "${sq.query}":`, tavilyResponse.status); return []; }
                 const tavilyData = await tavilyResponse.json();
