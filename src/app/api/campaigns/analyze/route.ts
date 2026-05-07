@@ -53,31 +53,30 @@ async function callClaude(input: string, retryCount = 0): Promise<Record<string,
     apiKey: process.env.ANTHROPIC_API_KEY,
   });
 
-  // Use Haiku for speed (retries use even simpler prompt)
   const isRetry = retryCount > 0;
   const model = "claude-haiku-4-5-20251001";
-  const timeoutMs = isRetry ? 20000 : 40000;
+  const timeoutMs = isRetry ? 20000 : 45000;
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  // Explicit JSON-only instruction appended to system prompt
+  const jsonSystemPrompt = SYSTEM_PROMPT + `\n\n【最重要ルール】\nあなたの返答はJSONオブジェクトのみです。\n最初の文字は { で、最後の文字は } でなければなりません。\nマークダウン、コードブロック（\`\`\`）、説明文は一切含めないでください。`;
 
   let message;
   try {
     message = await client.messages.create(
       {
         model,
-        max_tokens: 1000,
-        system: SYSTEM_PROMPT,
+        max_tokens: 1200,
+        temperature: 0,
+        system: jsonSystemPrompt,
         messages: [
           {
             role: "user",
             content: isRetry
               ? `簡潔に分析してください（各項目は短く）:\n\n${input.slice(0, 1000)}`
               : `以下のプロダクトを分析してください:\n\n${input}`,
-          },
-          {
-            role: "assistant",
-            content: "{",
           },
         ],
       },
@@ -87,11 +86,10 @@ async function callClaude(input: string, retryCount = 0): Promise<Record<string,
   } catch (apiError) {
     clearTimeout(timeout);
     const msg = apiError instanceof Error ? apiError.message : String(apiError);
-    console.error(`Claude API call failed (attempt ${retryCount + 1}):`, msg);
+    console.error(`[analyze] Claude API call failed (attempt ${retryCount + 1}):`, msg);
 
-    // Retry once on timeout/abort
-    if (retryCount < 1) {
-      console.log("Retrying with simpler prompt...");
+    if (retryCount < 2) {
+      console.log("[analyze] Retrying...");
       return callClaude(input, retryCount + 1);
     }
     throw new Error(`Claude API error: ${msg}`);
@@ -104,13 +102,13 @@ async function callClaude(input: string, retryCount = 0): Promise<Record<string,
   }
 
   const rawText = textBlock.text.trim();
-  console.log(`[analyze] Raw response (attempt ${retryCount + 1}, ${rawText.length} chars):`, rawText.substring(0, 400));
+  console.log(`[analyze] Raw response (attempt ${retryCount + 1}, ${rawText.length} chars):`, rawText.substring(0, 500));
 
-  // Try multiple parsing strategies
-  const parsed = tryParseJSON(rawText, retryCount);
+  // Try parsing
+  const parsed = tryParseJSON(rawText);
   if (parsed) return parsed;
 
-  // All parse strategies failed — retry with fresh API call
+  // All parse strategies failed — retry
   if (retryCount < 2) {
     console.log(`[analyze] Parse failed, retrying (attempt ${retryCount + 2})...`);
     return callClaude(input, retryCount + 1);
@@ -120,28 +118,51 @@ async function callClaude(input: string, retryCount = 0): Promise<Record<string,
   throw new Error("Failed to parse Claude response as JSON after retries");
 }
 
-function tryParseJSON(rawText: string, _attempt: number): Record<string, unknown> | null {
-  // Strategy 1: Prepend "{" (prefill) and parse directly
-  const withPrefill = "{" + rawText;
-  const s1 = extractAndParse(withPrefill);
-  if (s1) return s1;
+function tryParseJSON(rawText: string): Record<string, unknown> | null {
+  // Strategy 1: Direct parse
+  try {
+    const obj = JSON.parse(rawText);
+    if (typeof obj === "object" && obj !== null && !Array.isArray(obj)) {
+      console.log("[analyze] Parse OK: Strategy 1 (direct)");
+      return obj;
+    }
+  } catch { /* continue */ }
 
-  // Strategy 2: Parse raw text as-is (model may have included the "{")
-  const s2 = extractAndParse(rawText);
-  if (s2) return s2;
-
-  // Strategy 3: Find JSON in code block
-  const codeBlockMatch = rawText.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (codeBlockMatch) {
-    const s3 = extractAndParse(codeBlockMatch[1].trim());
-    if (s3) return s3;
+  // Strategy 2: Extract between first { and last }
+  const result = extractAndParse(rawText);
+  if (result) {
+    console.log("[analyze] Parse OK: Strategy 2 (brace extraction)");
+    return result;
   }
 
+  // Strategy 3: Code block extraction
+  const codeBlockMatch = rawText.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (codeBlockMatch) {
+    const cbResult = extractAndParse(codeBlockMatch[1].trim());
+    if (cbResult) {
+      console.log("[analyze] Parse OK: Strategy 3 (code block)");
+      return cbResult;
+    }
+  }
+
+  // Strategy 4: Line-by-line strip (remove lines before first { and after last })
+  const lines = rawText.split("\n");
+  const startLine = lines.findIndex(l => l.trim().startsWith("{"));
+  const endLine = lines.length - 1 - [...lines].reverse().findIndex(l => l.trim().endsWith("}"));
+  if (startLine >= 0 && endLine >= startLine) {
+    const stripped = lines.slice(startLine, endLine + 1).join("\n");
+    const s4 = extractAndParse(stripped);
+    if (s4) {
+      console.log("[analyze] Parse OK: Strategy 4 (line strip)");
+      return s4;
+    }
+  }
+
+  console.error("[analyze] All 4 parse strategies failed for:", rawText.substring(0, 300));
   return null;
 }
 
 function extractAndParse(text: string): Record<string, unknown> | null {
-  // Find the outermost { ... }
   const firstBrace = text.indexOf("{");
   const lastBrace = text.lastIndexOf("}");
   if (firstBrace === -1 || lastBrace === -1 || firstBrace >= lastBrace) return null;
@@ -151,23 +172,41 @@ function extractAndParse(text: string): Record<string, unknown> | null {
   // Fix common issues
   // 1. Remove trailing commas before } or ]
   jsonStr = jsonStr.replace(/,\s*([}\]])/g, "$1");
-  // 2. Fix unescaped newlines inside string values
-  jsonStr = jsonStr.replace(/(?<=":[ ]*"[^"]*)\n/g, "\\n");
+  // 2. Fix unescaped newlines inside strings (conservative approach)
+  jsonStr = fixUnescapedNewlines(jsonStr);
 
   try {
     const obj = JSON.parse(jsonStr);
     if (typeof obj === "object" && obj !== null) return obj;
   } catch {
-    // Try one more fix: replace single quotes with double quotes
+    // Try removing control characters
     try {
-      const fixed = jsonStr.replace(/'/g, '"');
-      const obj = JSON.parse(fixed);
+      const cleaned = jsonStr.replace(/[\x00-\x1F\x7F]/g, (ch) => {
+        if (ch === "\n" || ch === "\r" || ch === "\t") return " ";
+        return "";
+      });
+      const obj = JSON.parse(cleaned);
       if (typeof obj === "object" && obj !== null) return obj;
-    } catch {
-      // Failed
-    }
+    } catch { /* give up */ }
   }
   return null;
+}
+
+function fixUnescapedNewlines(json: string): string {
+  // Replace newlines that appear inside string values
+  let inString = false;
+  let escaped = false;
+  let result = "";
+  for (let i = 0; i < json.length; i++) {
+    const ch = json[i];
+    if (escaped) { result += ch; escaped = false; continue; }
+    if (ch === "\\") { result += ch; escaped = true; continue; }
+    if (ch === '"') { inString = !inString; result += ch; continue; }
+    if (inString && ch === "\n") { result += "\\n"; continue; }
+    if (inString && ch === "\r") { continue; }
+    result += ch;
+  }
+  return result;
 }
 
 export async function POST(request: Request) {
