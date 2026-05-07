@@ -117,6 +117,20 @@ async function extractContactInfo(url: string): Promise<{ email?: string; phone?
     return {};
   }
 }
+
+// Filter Tavily results to only include content from the last 6 months
+function filterFreshResults(results: Record<string, unknown>[], cutoffDate: Date): Record<string, unknown>[] {
+  return results.filter(r => {
+    const pubDate = r.published_date as string | undefined;
+    if (!pubDate) return true; // keep if no date info
+    try {
+      return new Date(pubDate) > cutoffDate;
+    } catch {
+      return true; // keep if date can't be parsed
+    }
+  });
+}
+
 function buildMultiPlatformQueries(keyword: string, _language: string = ""): { query: string; targetPlatform: string }[] {
   const queries: { query: string; targetPlatform: string }[] = [];
 
@@ -293,9 +307,12 @@ export const discoverTargets = inngest.createFunction(
           continue;
         }
 
+        // 6-month freshness: calculate start_date for all Tavily searches
+        const sixMonthsAgo = new Date();
+        sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+        const startDate = sixMonthsAgo.toISOString().split("T")[0]; // YYYY-MM-DD
+
         // For Reddit, skip English subreddits — use Japanese platforms instead
-        // Reddit communities from Claude are usually English (r/startupideas etc)
-        // Instead redirect reddit platform searches to Japanese sites
         if (platform === "reddit") {
           const jpSites = ["site:note.com", "site:zenn.dev", "site:qiita.com"];
           for (const site of jpSites) {
@@ -305,11 +322,11 @@ export const discoverTargets = inngest.createFunction(
               const tavilyResponse = await fetch("https://api.tavily.com/search", {
                 method: "POST",
                 headers: { "Content-Type": "application/json", "Authorization": `Bearer ${process.env.TAVILY_API_KEY}` },
-                body: JSON.stringify({ query, max_results: 5, search_depth: "basic", topic: "general", include_raw_content: false }),
+                body: JSON.stringify({ query, max_results: 5, search_depth: "basic", topic: "general", include_raw_content: false, start_date: startDate }),
               });
               if (!tavilyResponse.ok) continue;
               const tavilyData = await tavilyResponse.json();
-              const results = (tavilyData.results || []) as Record<string, unknown>[];
+              const results = filterFreshResults((tavilyData.results || []) as Record<string, unknown>[], sixMonthsAgo);
               for (const result of results) {
                 const url = (result.url as string) || "";
                 if (!url) continue;
@@ -349,7 +366,7 @@ export const discoverTargets = inngest.createFunction(
                 const tavilyResponse = await fetch("https://api.tavily.com/search", {
                   method: "POST",
                   headers: { "Content-Type": "application/json", "Authorization": `Bearer ${process.env.TAVILY_API_KEY}` },
-                  body: JSON.stringify({ query: sq.query, max_results: 5, search_depth: "basic", topic: "general", include_raw_content: false }),
+                  body: JSON.stringify({ query: sq.query, max_results: 5, search_depth: "basic", topic: "general", include_raw_content: false, start_date: startDate }),
                 });
                 if (!tavilyResponse.ok) { console.error(`Tavily error for "${sq.query}":`, tavilyResponse.status); return []; }
                 const tavilyData = await tavilyResponse.json();
@@ -357,11 +374,12 @@ export const discoverTargets = inngest.createFunction(
               })
             );
 
-            const results: Record<string, unknown>[] = [];
+            const rawResults: Record<string, unknown>[] = [];
             for (const qr of queryResults) {
-              if (qr.status === "fulfilled" && Array.isArray(qr.value)) results.push(...qr.value);
+              if (qr.status === "fulfilled" && Array.isArray(qr.value)) rawResults.push(...qr.value);
             }
-            console.log(`Tavily results for signal "${searchTerm}":`, results.length);
+            const results = filterFreshResults(rawResults, sixMonthsAgo);
+            console.log(`Tavily results for signal "${searchTerm}": ${results.length} fresh (${rawResults.length} total)`);
 
             const seenUrls = new Set<string>();
             for (const result of results) {
