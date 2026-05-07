@@ -294,8 +294,28 @@ export default function CampaignDetailPage() {
             {/* Target rows */}
             {visibleTargets.length === 0 ? (
               <div style={{ background: "#13132a", border: "1px solid rgba(255,255,255,0.07)", borderRadius: "16px", padding: "40px 20px", textAlign: "center" }}>
-                <div style={{ fontSize: "32px", marginBottom: "12px" }}>{targets.length === 0 ? "🔍" : "✍️"}</div>
-                <div style={{ fontSize: "14px", color: "rgba(240,239,232,0.5)" }}>{targets.length === 0 ? "ターゲットを発見中..." : "AI分析中..."}</div>
+                {targets.length === 0 ? (
+                  <>
+                    <div style={{ fontSize: "32px", marginBottom: "12px" }}>
+                      {(campaign?.status === "completed" || campaign?.status === "paused") ? "📭" : "🔍"}
+                    </div>
+                    <div style={{ fontSize: "14px", color: "rgba(240,239,232,0.5)", marginBottom: "8px" }}>
+                      {(campaign?.status === "completed" || campaign?.status === "paused")
+                        ? "ターゲットが見つかりませんでした"
+                        : "ターゲットを発見中..."}
+                    </div>
+                    {(campaign?.status === "completed" || campaign?.status === "paused") && (
+                      <div style={{ fontSize: "12px", color: "rgba(240,239,232,0.3)" }}>
+                        検索キーワードを変えて新しいキャンペーンを作成してください
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <div style={{ fontSize: "32px", marginBottom: "12px" }}>✍️</div>
+                    <div style={{ fontSize: "14px", color: "rgba(240,239,232,0.5)" }}>フィルターに一致するターゲットがありません</div>
+                  </>
+                )}
               </div>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>

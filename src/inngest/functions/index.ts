@@ -223,30 +223,22 @@ export const discoverTargets = inngest.createFunction(
 
     if (!campaign) return { error: "Campaign not found" };
 
-    // 2. 本日の接触数確認（ユーザー全体）
-    const today = new Date().toISOString().split("T")[0];
-
-    const { data: userCampaigns } = await getSupabase()
-      .from("campaigns")
-      .select("id")
-      .eq("user_id", campaign.user_id);
-
-    const campaignIds = userCampaigns?.map((c: { id: string }) => c.id) || [campaignId];
+    // 2. Per-campaign target limit
+    // TODO: change back to 10 before production release
+    const campaignLimit = campaign.daily_limit || 20;
 
     const { count } = await getSupabase()
       .from("targets")
       .select("*", { count: "exact", head: true })
-      .in("campaign_id", campaignIds)
-      .gte("created_at", today);
+      .eq("campaign_id", campaignId);
 
-    const dailyLimit = campaign.daily_limit || 10;
-    const usedToday = count || 0;
-    if (usedToday >= dailyLimit) {
-      console.log(`Daily limit already reached: ${usedToday}/${dailyLimit}`);
-      return { error: "Daily limit reached" };
+    const existingCount = count || 0;
+    if (existingCount >= campaignLimit) {
+      console.log(`Campaign limit reached: ${existingCount}/${campaignLimit}`);
+      return { error: "Campaign limit reached" };
     }
-    const remaining = dailyLimit - usedToday;
-    console.log(`Daily limit: ${usedToday}/${dailyLimit}, remaining: ${remaining}`);
+    const remaining = campaignLimit - existingCount;
+    console.log(`Campaign ${campaignId}: ${existingCount}/${campaignLimit} targets, remaining: ${remaining}`);
 
     // 3. Tavily APIでターゲット発見
     const personas = campaign.target_personas?.personas || [];
