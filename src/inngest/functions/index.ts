@@ -120,25 +120,26 @@ async function extractContactInfo(url: string): Promise<{ email?: string; phone?
 function buildMultiPlatformQueries(keyword: string, _language: string = ""): { query: string; targetPlatform: string }[] {
   const queries: { query: string; targetPlatform: string }[] = [];
 
-  // All queries are Japanese-only
+  // All queries are Japanese-only — prioritize Japanese platforms over English ones
   // Social platforms
   queries.push({ query: `site:twitter.com OR site:x.com ${keyword} 日本語 -is:retweet`, targetPlatform: "twitter" });
-  queries.push({ query: `site:reddit.com ${keyword} 日本`, targetPlatform: "reddit" });
   queries.push({ query: `site:facebook.com ${keyword} グループ 日本語`, targetPlatform: "facebook" });
   queries.push({ query: `site:instagram.com ${keyword} 日本`, targetPlatform: "instagram" });
-  queries.push({ query: `site:tiktok.com ${keyword} 日本語`, targetPlatform: "tiktok" });
   queries.push({ query: `site:linkedin.com ${keyword} 日本`, targetPlatform: "linkedin" });
   queries.push({ query: `site:youtube.com ${keyword} レビュー 日本語`, targetPlatform: "youtube" });
 
-  // Japanese blog/community platforms (always Japanese)
-  queries.push({ query: `site:note.com ${keyword} 使ってみた OR 試してみた`, targetPlatform: "note" });
+  // Japanese blog/community platforms (primary discovery sources)
+  queries.push({ query: `site:note.com ${keyword} 使ってみた OR 試してみた OR 困っている`, targetPlatform: "note" });
   queries.push({ query: `site:zenn.dev ${keyword}`, targetPlatform: "zenn" });
   queries.push({ query: `site:qiita.com ${keyword}`, targetPlatform: "qiita" });
   queries.push({ query: `site:hatenablog.com OR site:hatena.ne.jp ${keyword}`, targetPlatform: "hatena" });
-  queries.push({ query: `site:detail.chiebukuro.yahoo.co.jp ${keyword} おすすめ`, targetPlatform: "yahoo_qa" });
+  queries.push({ query: `site:detail.chiebukuro.yahoo.co.jp ${keyword} おすすめ OR 困って`, targetPlatform: "yahoo_qa" });
 
   // General web (Japanese)
   queries.push({ query: `${keyword} ツール おすすめ ブログ 日本語`, targetPlatform: "web" });
+
+  // Reddit — only Japanese subreddits
+  queries.push({ query: `site:reddit.com ${keyword} 日本語 OR 日本`, targetPlatform: "reddit" });
 
   return queries;
 }
@@ -300,36 +301,40 @@ export const discoverTargets = inngest.createFunction(
           continue;
         }
 
-        // For Reddit, use reddit_communities if available
-        if (platform === "reddit" && redditCommunities.length > 0) {
-          for (const community of redditCommunities.slice(0, 3)) {
+        // For Reddit, skip English subreddits — use Japanese platforms instead
+        // Reddit communities from Claude are usually English (r/startupideas etc)
+        // Instead redirect reddit platform searches to Japanese sites
+        if (platform === "reddit") {
+          const jpSites = ["site:note.com", "site:zenn.dev", "site:qiita.com"];
+          for (const site of jpSites) {
             if (limitReached) break;
-            const query = `site:reddit.com ${community} ${searchTerms[0] || ""} 日本語`;
+            const query = `${site} ${searchTerms[0] || keyword} 困っている OR 探している`;
             try {
               const tavilyResponse = await fetch("https://api.tavily.com/search", {
                 method: "POST",
                 headers: { "Content-Type": "application/json", "Authorization": `Bearer ${process.env.TAVILY_API_KEY}` },
                 body: JSON.stringify({ query, max_results: 5, search_depth: "basic", topic: "general", include_raw_content: false }),
               });
-              if (!tavilyResponse.ok) { console.error(`Tavily error for reddit "${community}":`, tavilyResponse.status); continue; }
+              if (!tavilyResponse.ok) continue;
               const tavilyData = await tavilyResponse.json();
               const results = (tavilyData.results || []) as Record<string, unknown>[];
               for (const result of results) {
                 const url = (result.url as string) || "";
                 if (!url) continue;
                 if (insertedTargets.length >= remaining) { limitReached = true; break; }
-                const username = extractUsername(url, "reddit");
+                const detectedPlatform = detectPlatformFromUrl(url);
+                const username = extractUsername(url, detectedPlatform);
                 if (username && username !== "unknown") {
                   await getSupabase().from("targets").insert({
-                    campaign_id: campaignId, platform: "reddit", username, profile_url: url,
+                    campaign_id: campaignId, platform: detectedPlatform, username, profile_url: url,
                     post_url: url, post_content: ((result.content as string) || "").slice(0, 500),
-                    match_score: 55, match_reason: `Reddit: ${community}`, status: "pending",
+                    match_score: 55, match_reason: `日本語プラットフォーム: ${site}`, status: "pending",
                   });
                   insertedTargets.push(username);
-                  console.log(`Inserted Reddit target: ${username} from ${community}`);
+                  console.log(`Inserted JP target: ${username} from ${site}`);
                 }
               }
-            } catch (err) { console.error(`Reddit discovery error for ${community}:`, err); }
+            } catch (err) { console.error(`JP platform discovery error:`, err); }
           }
           continue;
         }
@@ -426,16 +431,19 @@ export const discoverTargets = inngest.createFunction(
 
     // Firecrawl deep extraction + Multi-factor AI scoring
     try {
-      const { data: scoringTargets } = await getSupabase()
+      // Find targets that haven't been scored yet (no relevance_score)
+      const { data: scoringTargets, error: scoringQueryErr } = await getSupabase()
         .from("targets")
         .select("id, username, platform, post_url, post_content, profile_url")
         .eq("campaign_id", campaignId)
-        .is("priority", null)
+        .is("relevance_score", null)
         .order("created_at", { ascending: false })
         .limit(15);
 
+      console.log(`[scoring] query result: ${scoringTargets?.length || 0} unscored targets, error:`, scoringQueryErr || "none");
+
       if (scoringTargets && scoringTargets.length > 0) {
-        console.log(`Multi-factor scoring for ${scoringTargets.length} targets...`);
+        console.log(`[scoring] Starting multi-factor scoring for ${scoringTargets.length} targets...`);
 
         // Optional: Firecrawl deep content extraction
         let firecrawlAvailable = false;
@@ -514,33 +522,43 @@ priority基準: S=80点以上, A=60-79, B=40-59, C=39以下`,
             const scoreText = "{" + (scoreData.content?.[0]?.text || "");
             const scoreMatch = scoreText.match(/\{[\s\S]*\}/);
 
+            console.log(`[scoring] Raw API response for ${t.username}:`, scoreText.slice(0, 200));
+
             if (scoreMatch) {
               const score = JSON.parse(scoreMatch[0]);
-              const totalScore = Math.min(100, Math.max(0,
-                (score.total_score || 0) ||
-                ((score.relevance_score || 0) + (score.intent_score || 0) + (score.influence_score || 0) + (score.accessibility_score || 0))
-              ));
+              const r = Math.min(25, Math.max(0, score.relevance_score || 0));
+              const i = Math.min(25, Math.max(0, score.intent_score || 0));
+              const f = Math.min(25, Math.max(0, score.influence_score || 0));
+              const a = Math.min(25, Math.max(0, score.accessibility_score || 0));
+              const totalScore = Math.min(100, Math.max(0, r + i + f + a));
 
-              await getSupabase().from("targets").update({
+              const updateData = {
                 match_score: totalScore,
-                relevance_score: Math.min(25, Math.max(0, score.relevance_score || 0)),
-                intent_score: Math.min(25, Math.max(0, score.intent_score || 0)),
-                influence_score: Math.min(25, Math.max(0, score.influence_score || 0)),
-                accessibility_score: Math.min(25, Math.max(0, score.accessibility_score || 0)),
+                relevance_score: r,
+                intent_score: i,
+                influence_score: f,
+                accessibility_score: a,
                 priority: score.priority || (totalScore >= 80 ? "S" : totalScore >= 60 ? "A" : totalScore >= 40 ? "B" : "C"),
                 ai_reason: (score.reason || "").slice(0, 200),
                 estimated_age: score.estimated_age || "不明",
                 estimated_role: (score.estimated_role || "不明").slice(0, 50),
                 status: "scored",
-              }).eq("id", t.id);
+              };
 
-              console.log(`Scored ${t.username}: ${score.priority} (${totalScore}%) [R:${score.relevance_score} I:${score.intent_score} F:${score.influence_score} A:${score.accessibility_score}]`);
+              console.log(`[scoring] Saving scores for ${t.username}:`, JSON.stringify(updateData));
+              const { error: updateErr } = await getSupabase().from("targets").update(updateData).eq("id", t.id);
+              if (updateErr) {
+                console.error(`[scoring] DB update error for ${t.username}:`, updateErr);
+              } else {
+                console.log(`[scoring] ✅ ${t.username}: ${updateData.priority} (${totalScore}%) [R:${r} I:${i} F:${f} A:${a}]`);
+              }
             } else {
-              await getSupabase().from("targets").update({ priority: "C", status: "scored" }).eq("id", t.id);
+              console.log(`[scoring] No valid JSON in response for ${t.username}, setting C`);
+              await getSupabase().from("targets").update({ priority: "C", status: "scored", relevance_score: 0, intent_score: 0, influence_score: 0, accessibility_score: 0 }).eq("id", t.id);
             }
           } catch (scoreErr) {
-            console.error(`Scoring error for ${t.username}:`, scoreErr);
-            await getSupabase().from("targets").update({ priority: "C", status: "scored" }).eq("id", t.id);
+            console.error(`[scoring] Error for ${t.username}:`, scoreErr);
+            await getSupabase().from("targets").update({ priority: "C", status: "scored", relevance_score: 0, intent_score: 0, influence_score: 0, accessibility_score: 0 }).eq("id", t.id);
           }
         }
       }
