@@ -106,6 +106,7 @@ function CampaignNewContent() {
     setInputData(data);
     setLoading(true);
     setError("");
+    setAnalysis(null);
 
     try {
       const res = await fetch("/api/campaigns/analyze", {
@@ -115,14 +116,26 @@ function CampaignNewContent() {
       });
 
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || "分析に失敗しました");
+        let errMsg = "分析に失敗しました";
+        try {
+          const err = await res.json();
+          errMsg = err.error || errMsg;
+        } catch { /* non-JSON error body */ }
+        throw new Error(errMsg);
       }
 
       const result = await res.json();
+
+      // Validate response structure
+      if (!result || !Array.isArray(result.personas) || result.personas.length === 0) {
+        console.error("[analyze] Invalid response structure:", JSON.stringify(result).slice(0, 500));
+        throw new Error("分析結果のフォーマットが不正です。もう一度お試しください。");
+      }
+
       setAnalysis(result);
       setStep(2);
     } catch (e) {
+      console.error("[analyze] Error:", e);
       setError(e instanceof Error ? e.message : "エラーが発生しました");
     } finally {
       setLoading(false);

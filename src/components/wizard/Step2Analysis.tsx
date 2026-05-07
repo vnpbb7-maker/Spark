@@ -10,6 +10,20 @@ type Props = {
 };
 
 export default function Step2Analysis({ analysis, onContinue, onBack }: Props) {
+  const personas = analysis?.personas || [];
+
+  if (personas.length === 0) {
+    return (
+      <div style={{ maxWidth: "600px", margin: "0 auto", textAlign: "center", padding: "40px 20px" }}>
+        <p style={{ fontSize: "16px", color: "#ff3b30", marginBottom: "16px" }}>分析結果の取得に失敗しました</p>
+        <p style={{ fontSize: "13px", color: "rgba(240,239,232,0.5)", marginBottom: "24px" }}>ペルソナが生成されませんでした。もう一度お試しください。</p>
+        <button onClick={onBack} style={{ padding: "12px 24px", background: "#ff6b35", color: "#fff", border: "none", borderRadius: "12px", fontSize: "14px", fontWeight: 700, cursor: "pointer" }}>
+          ← やり直す
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div style={{ maxWidth: "800px", margin: "0 auto" }}>
       {/* Positioning */}
@@ -26,7 +40,7 @@ export default function Step2Analysis({ analysis, onContinue, onBack }: Props) {
           🎯 ターゲットペルソナ
         </h3>
         <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-          {analysis.personas.map((persona, index) => {
+          {personas.map((persona, index) => {
             // Support both new and legacy persona formats
             const title = persona.label || persona.name || `ペルソナ ${index + 1}`;
             const isNew = !!persona.pain_scene;

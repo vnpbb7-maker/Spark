@@ -194,6 +194,15 @@ export async function POST(request: Request) {
 
     const result = await callClaude(userMessage);
 
+    // Validate response has required structure
+    if (!result.personas || !Array.isArray(result.personas) || result.personas.length === 0) {
+      console.error("[analyze] Invalid result structure:", JSON.stringify(result).slice(0, 500));
+      return NextResponse.json(
+        { error: "分析結果の形式が不正です。もう一度お試しください。" },
+        { status: 422 }
+      );
+    }
+
     return NextResponse.json(result);
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
