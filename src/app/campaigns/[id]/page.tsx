@@ -44,7 +44,8 @@ type TargetRow = {
 export default function CampaignDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const campaignId = params.id as string;
+  // Normalize: params.id can be string | string[] in Next.js
+  const campaignId = Array.isArray(params.id) ? params.id[0] : (params.id as string);
   const realtimeLogs = useRealtimeLog(campaignId);
   const [initialLogs, setInitialLogs] = useState<LogEntry[]>([]);
 
@@ -60,6 +61,19 @@ export default function CampaignDetailPage() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [generatingIds, setGeneratingIds] = useState<Set<string>>(new Set());
   const [bulkGenerating, setBulkGenerating] = useState(false);
+
+  // Reset ALL state when campaignId changes (prevents stale data from previous campaign)
+  useEffect(() => {
+    setCampaign(null);
+    setTargets([]);
+    setInitialLogs([]);
+    setFunnel({ discovered: 0, generated: 0, exported: 0 });
+    setLoading(true);
+    setSelected(new Set());
+    setExpanded(new Set());
+    setPlatformFilter("all");
+    setPriorityFilter("all");
+  }, [campaignId]);
 
   const buildLogsFromData = useCallback((
     existingTargets: { platform: string; username: string; match_score: number; created_at: string; id: string; priority?: string }[],
