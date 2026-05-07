@@ -37,6 +37,16 @@ function CampaignNewContent() {
   const [existingCampaigns, setExistingCampaigns] = useState<ExistingCampaign[]>([]);
   const [copyFromId, setCopyFromId] = useState<string | null>(null);
 
+  // Reset analysis state on fresh mount (prevents SPA stale data)
+  useEffect(() => {
+    setAnalysis(null);
+    setCopyFromId(null);
+    setStep(1);
+    setError("");
+    setInputData({ url: initialUrl });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     const fetchData = async () => {
       const supabase = createClient();
@@ -80,13 +90,14 @@ function CampaignNewContent() {
       description: camp.product_description,
     });
 
-    // Use cached analysis or target_personas
+    // Use cached analysis or target_personas (ONLY for explicit copy)
     const cachedAnalysis = camp.analysis_cache || camp.target_personas;
     if (cachedAnalysis) {
       setAnalysis(cachedAnalysis);
       setStep(3); // Skip directly to settings
     } else {
       // No cached analysis — go to step 1 with pre-filled data
+      setAnalysis(null);
       setStep(1);
     }
   };
@@ -131,7 +142,8 @@ function CampaignNewContent() {
           product_url: inputData.url || null,
           product_description: inputData.description || inputData.url || "",
           target_personas: analysis,
-          analysis_cache: analysis,
+          // Only cache analysis for copy flows
+          analysis_cache: copyFromId ? analysis : null,
           copied_from: copyFromId || null,
           ...settings,
         }),
@@ -244,7 +256,7 @@ function CampaignNewContent() {
             <Step1Input onAnalyze={handleAnalyze} initialUrl={initialUrl} />
           </div>
         ) : step === 2 && analysis ? (
-          <Step2Analysis analysis={analysis} onContinue={() => setStep(3)} onBack={() => { setStep(1); setCopyFromId(null); }} userPlan={userPlan} />
+          <Step2Analysis analysis={analysis} onContinue={() => setStep(3)} onBack={() => { setStep(1); setCopyFromId(null); setAnalysis(null); }} userPlan={userPlan} />
         ) : step === 3 && analysis ? (
           <div>
             {copyFromId && (
