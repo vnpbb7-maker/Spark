@@ -56,6 +56,8 @@ export default function CampaignDetailPage() {
   const [platformFilter, setPlatformFilter] = useState("all");
   const [priorityFilter, setPriorityFilter] = useState("all");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [generatingIds, setGeneratingIds] = useState<Set<string>>(new Set());
+  const [bulkGenerating, setBulkGenerating] = useState(false);
 
   const buildLogsFromData = useCallback((
     existingTargets: { platform: string; username: string; match_score: number; created_at: string; id: string; priority?: string }[],
@@ -137,12 +139,34 @@ export default function CampaignDetailPage() {
     } catch { alert("エクスポートに失敗しました"); }
     setExporting(false);
   };
+  const handleGenerateComment = async (targetId: string) => {
+    setGeneratingIds((prev) => { const n = new Set(prev); n.add(targetId); return n; });
+    try {
+      const res = await fetch(`/api/targets/${targetId}/generate-comment`, { method: "POST" });
+      if (!res.ok) { setToast("❌ コメント生成に失敗"); setTimeout(() => setToast(""), 3000); return; }
+      const data = await res.json();
+      setTargets((prev) => prev.map((t) => t.id === targetId ? { ...t, comment: { id: data.comment.id, content: data.comment.content, approach: data.comment.approach } } : t));
+      setExpanded((prev) => { const n = new Set(prev); n.add(targetId); return n; });
+    } catch { setToast("❌ エラーが発生しました"); setTimeout(() => setToast(""), 3000); }
+    setGeneratingIds((prev) => { const n = new Set(prev); n.delete(targetId); return n; });
+  };
+
+  const handleBulkGenerate = async () => {
+    const withoutComment = visibleTargets.filter((t) => !t.comment);
+    if (withoutComment.length === 0) { setToast("全ターゲットにコメント済み"); setTimeout(() => setToast(""), 2000); return; }
+    setBulkGenerating(true);
+    for (const t of withoutComment.slice(0, 20)) {
+      await handleGenerateComment(t.id);
+    }
+    setBulkGenerating(false);
+    setToast(`✅ ${Math.min(withoutComment.length, 20)}件のコメントを生成しました`);
+    setTimeout(() => setToast(""), 3000);
+  };
 
   const st = STATUS_MAP[campaign?.status as string] || STATUS_MAP.running;
   const uniquePlatforms = [...new Set(targets.map((t) => t.platform))];
 
   const visibleTargets = targets
-    .filter((t) => t.comment)
     .filter((t) => platformFilter === "all" || t.platform === platformFilter)
     .filter((t) => priorityFilter === "all" || t.priority === priorityFilter);
 
@@ -190,7 +214,7 @@ export default function CampaignDetailPage() {
             <div style={{ display: "flex", gap: "8px", marginBottom: "12px", flexWrap: "wrap", alignItems: "center" }}>
               {/* Priority filter */}
               {["all", "S", "A", "B", "C"].map((p) => {
-                const count = p === "all" ? visibleTargets.length : targets.filter((t) => t.comment && t.priority === p).length;
+                const count = p === "all" ? visibleTargets.length : targets.filter((t) => t.priority === p).length;
                 const ps = p !== "all" ? PRIORITY_STYLE[p] : null;
                 return (
                   <button key={p} onClick={() => setPriorityFilter(p)} style={{
@@ -231,6 +255,9 @@ export default function CampaignDetailPage() {
               </button>
               <button onClick={() => setSelected(new Set())} style={{ background: "transparent", border: "1px solid rgba(255,255,255,0.07)", borderRadius: "8px", padding: "6px 14px", fontSize: "12px", fontWeight: 600, color: "rgba(240,239,232,0.3)", cursor: "pointer" }}>
                 選択解除
+              </button>
+              <button onClick={handleBulkGenerate} disabled={bulkGenerating} style={{ background: "rgba(124,92,252,0.1)", border: "1px solid rgba(124,92,252,0.25)", borderRadius: "8px", padding: "6px 14px", fontSize: "12px", fontWeight: 600, color: "#7c5cfc", cursor: bulkGenerating ? "wait" : "pointer", opacity: bulkGenerating ? 0.6 : 1 }}>
+                {bulkGenerating ? "⏳ 生成中..." : "💬 一括コメント生成"}
               </button>
               <span style={{ marginLeft: "auto", fontSize: "12px", color: "rgba(240,239,232,0.4)" }}>
                 {selectedCount > 0 ? `${selectedCount}件選択中` : `${visibleTargets.length}件表示`}
@@ -300,10 +327,41 @@ export default function CampaignDetailPage() {
                         <span style={{ marginLeft: "auto", fontSize: "10px", color: "rgba(240,239,232,0.2)", transition: "transform 0.2s", transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)" }}>▼</span>
                       </div>
 
-                      {/* Row 2: AI reason */}
-                      {t.ai_reason && (
+                      {/* Row 2: AI reason / match reason */}
+                      {(t.ai_reason || t.comment?.approach || t.match_reason) && (
                         <div style={{ fontSize: "12px", color: "rgba(240,239,232,0.4)", marginTop: "6px", marginLeft: "52px" }}>
-                          {t.ai_reason}
+                          💡 {t.ai_reason || t.comment?.approach || t.match_reason}
+                        </div>
+                      )}
+
+                      {/* Comment generation / display */}
+                      {!t.comment ? (
+                        <div style={{ marginTop: "8px", marginLeft: "52px" }}>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleGenerateComment(t.id); }}
+                            disabled={generatingIds.has(t.id)}
+                            style={{
+                              background: generatingIds.has(t.id) ? "rgba(124,92,252,0.05)" : "rgba(124,92,252,0.1)",
+                              border: "1px solid rgba(124,92,252,0.2)", borderRadius: "8px",
+                              padding: "5px 12px", fontSize: "11px", fontWeight: 600,
+                              color: "#7c5cfc", cursor: generatingIds.has(t.id) ? "wait" : "pointer",
+                              transition: "all 0.15s",
+                            }}
+                          >
+                            {generatingIds.has(t.id) ? "⏳ 生成中..." : "💬 参考コメント生成"}
+                          </button>
+                        </div>
+                      ) : (
+                        <div style={{ marginTop: "8px", marginLeft: "52px" }}>
+                          <div style={{ display: "flex", alignItems: "flex-start", gap: "8px", fontSize: "12px", color: "rgba(240,239,232,0.7)", lineHeight: 1.6, background: "rgba(255,214,10,0.04)", border: "1px solid rgba(255,214,10,0.08)", borderRadius: "8px", padding: "10px" }}>
+                            <span style={{ flex: 1 }}>💬 {t.comment.content}</span>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(t.comment!.content); setToast("📋 コピーしました"); setTimeout(() => setToast(""), 2000); }}
+                              style={{ flexShrink: 0, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "6px", padding: "3px 8px", fontSize: "10px", fontWeight: 600, color: "rgba(240,239,232,0.5)", cursor: "pointer" }}
+                            >
+                              📋 コピー
+                            </button>
+                          </div>
                         </div>
                       )}
 
@@ -313,11 +371,6 @@ export default function CampaignDetailPage() {
                           {t.post_content && (
                             <div style={{ fontSize: "12px", color: "rgba(240,239,232,0.35)", fontStyle: "italic", lineHeight: 1.5, background: "rgba(255,255,255,0.02)", borderRadius: "8px", padding: "10px" }}>
                               &quot;{t.post_content.slice(0, 200)}{t.post_content.length > 200 ? "..." : ""}&quot;
-                            </div>
-                          )}
-                          {t.comment && (
-                            <div style={{ fontSize: "12px", color: "rgba(240,239,232,0.7)", lineHeight: 1.6, background: "rgba(255,214,10,0.04)", border: "1px solid rgba(255,214,10,0.08)", borderRadius: "8px", padding: "10px" }}>
-                              💬 {t.comment.content}
                             </div>
                           )}
                           {t.post_url && (

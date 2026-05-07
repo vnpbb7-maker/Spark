@@ -48,18 +48,14 @@ export async function GET(
         return {
           "#": i + 1,
           優先度: (t.priority as string) || "—",
-          ユーザー名: t.username as string,
-          プラットフォーム: t.platform as string,
           マッチ度: `${t.match_score}%`,
+          プラットフォーム: t.platform as string,
+          ユーザー名: t.username as string,
+          投稿URL: (t.post_url as string) || "",
+          投稿内容: ((t.post_content as string) || "").slice(0, 300),
           AI分析理由: (t.ai_reason as string) || "",
           推定年齢: (t.estimated_age as string) || "",
           推定役職: (t.estimated_role as string) || "",
-          投稿URL: t.post_url as string,
-          投稿内容: ((t.post_content as string) || "").slice(0, 300),
-          メール: (t.email as string) || "",
-          電話番号: (t.phone as string) || "",
-          ウェブサイト: (t.website as string) || "",
-          問い合わせURL: (t.contact_url as string) || "",
           生成コメント: comment
             ? ((comment.content as string) || "").slice(0, 300)
             : "",
@@ -69,6 +65,10 @@ export async function GET(
                 timeZone: "Asia/Tokyo",
               })
             : "",
+          メール: (t.email as string) || "",
+          電話番号: (t.phone as string) || "",
+          ウェブサイト: (t.website as string) || "",
+          問い合わせURL: (t.contact_url as string) || "",
         };
       }
     );
@@ -81,21 +81,21 @@ export async function GET(
     ws["!cols"] = [
       { wch: 4 }, // #
       { wch: 6 }, // 優先度
-      { wch: 20 }, // ユーザー名
-      { wch: 12 }, // プラットフォーム
       { wch: 8 }, // マッチ度
+      { wch: 12 }, // プラットフォーム
+      { wch: 20 }, // ユーザー名
+      { wch: 40 }, // 投稿URL
+      { wch: 50 }, // 投稿内容
       { wch: 40 }, // AI分析理由
       { wch: 10 }, // 推定年齢
       { wch: 16 }, // 推定役職
-      { wch: 40 }, // 投稿URL
-      { wch: 50 }, // 投稿内容
+      { wch: 50 }, // 生成コメント
+      { wch: 30 }, // アプローチ
+      { wch: 18 }, // 発見日時
       { wch: 25 }, // メール
       { wch: 16 }, // 電話番号
       { wch: 30 }, // ウェブサイト
       { wch: 30 }, // 問い合わせURL
-      { wch: 50 }, // 生成コメント
-      { wch: 30 }, // アプローチ
-      { wch: 18 }, // 発見日時
     ];
 
     XLSX.utils.book_append_sheet(wb, ws, "ターゲット一覧");

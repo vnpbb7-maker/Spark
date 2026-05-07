@@ -117,29 +117,28 @@ async function extractContactInfo(url: string): Promise<{ email?: string; phone?
     return {};
   }
 }
-function buildMultiPlatformQueries(keyword: string, language: string = ""): { query: string; targetPlatform: string }[] {
-  const isJa = language === "ja";
+function buildMultiPlatformQueries(keyword: string, _language: string = ""): { query: string; targetPlatform: string }[] {
   const queries: { query: string; targetPlatform: string }[] = [];
 
+  // All queries are Japanese-only
   // Social platforms
-  queries.push({ query: `site:twitter.com OR site:x.com ${keyword}${isJa ? " 日本語" : ""} -is:retweet`, targetPlatform: "twitter" });
-  queries.push({ query: `site:reddit.com ${keyword}${isJa ? "" : " looking for"}`, targetPlatform: "reddit" });
-  queries.push({ query: `site:facebook.com ${keyword}${isJa ? " グループ" : " group"}`, targetPlatform: "facebook" });
-  queries.push({ query: `site:instagram.com ${keyword}${isJa ? "" : ""}`, targetPlatform: "instagram" });
-  queries.push({ query: `site:tiktok.com ${keyword}`, targetPlatform: "tiktok" });
-  queries.push({ query: `site:linkedin.com ${keyword}${isJa ? " 日本" : " professional"}`, targetPlatform: "linkedin" });
-  queries.push({ query: `site:youtube.com ${keyword}${isJa ? " レビュー" : " review"}`, targetPlatform: "youtube" });
+  queries.push({ query: `site:twitter.com OR site:x.com ${keyword} 日本語 -is:retweet`, targetPlatform: "twitter" });
+  queries.push({ query: `site:reddit.com ${keyword} 日本`, targetPlatform: "reddit" });
+  queries.push({ query: `site:facebook.com ${keyword} グループ 日本語`, targetPlatform: "facebook" });
+  queries.push({ query: `site:instagram.com ${keyword} 日本`, targetPlatform: "instagram" });
+  queries.push({ query: `site:tiktok.com ${keyword} 日本語`, targetPlatform: "tiktok" });
+  queries.push({ query: `site:linkedin.com ${keyword} 日本`, targetPlatform: "linkedin" });
+  queries.push({ query: `site:youtube.com ${keyword} レビュー 日本語`, targetPlatform: "youtube" });
 
-  // Japanese blog/community platforms
-  queries.push({ query: `site:note.com ${keyword}${isJa ? " 使ってみた OR 試してみた" : ""}`, targetPlatform: "note" });
+  // Japanese blog/community platforms (always Japanese)
+  queries.push({ query: `site:note.com ${keyword} 使ってみた OR 試してみた`, targetPlatform: "note" });
   queries.push({ query: `site:zenn.dev ${keyword}`, targetPlatform: "zenn" });
   queries.push({ query: `site:qiita.com ${keyword}`, targetPlatform: "qiita" });
   queries.push({ query: `site:hatenablog.com OR site:hatena.ne.jp ${keyword}`, targetPlatform: "hatena" });
-  queries.push({ query: `site:detail.chiebukuro.yahoo.co.jp ${keyword}${isJa ? " おすすめ" : ""}`, targetPlatform: "yahoo_qa" });
+  queries.push({ query: `site:detail.chiebukuro.yahoo.co.jp ${keyword} おすすめ`, targetPlatform: "yahoo_qa" });
 
-  // General web
-  queries.push({ query: `${keyword}${isJa ? " ツール おすすめ ブログ" : " tool recommendation blog"}`, targetPlatform: "web" });
-  queries.push({ query: `site:quora.com OR site:stackoverflow.com ${keyword}`, targetPlatform: "web" });
+  // General web (Japanese)
+  queries.push({ query: `${keyword} ツール おすすめ ブログ 日本語`, targetPlatform: "web" });
 
   return queries;
 }
@@ -425,16 +424,8 @@ export const discoverTargets = inngest.createFunction(
       console.error("Contact extraction error:", e);
     }
 
-    // コメント生成を発火
-    try {
-      await inngest.send({
-        name: "campaign/generate",
-        data: { campaign_id: campaignId },
-      });
-      console.log("Triggered generate-comments for campaign:", campaignId);
-    } catch (e) {
-      console.error("Failed to fire generate:", e);
-    }
+    // コメント生成は手動トリガーに変更（自動生成を停止）
+    // ユーザーがキャンペーンページで個別or一括でコメント生成ボタンを押す
 
     return { success: true, campaignId, targetsFound: insertedTargets.length };
   }
