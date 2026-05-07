@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 
+// Extend Vercel timeout (Pro: 300s, Hobby: 60s)
+export const maxDuration = 60;
+
 const SYSTEM_PROMPT = `あなたはプロダクトのグロース専門家です。
 プロダクトの説明から、今まさに困っている日本人ユーザーを3パターン特定し、
 各パターンについて以下をJSON形式で出力してください。
@@ -34,14 +37,12 @@ async function fetchPageContent(url: string): Promise<string> {
   try {
     const jinaUrl = `https://r.jina.ai/${url}`;
     const res = await fetch(jinaUrl, {
-      headers: {
-        Accept: "text/plain",
-      },
-      signal: AbortSignal.timeout(10000),
+      headers: { Accept: "text/plain" },
+      signal: AbortSignal.timeout(8000),
     });
     if (!res.ok) return "";
     const text = await res.text();
-    return text.slice(0, 3000);
+    return text.slice(0, 2000);
   } catch {
     return "";
   }
@@ -52,20 +53,27 @@ async function callClaude(input: string, retryCount = 0): Promise<Record<string,
     apiKey: process.env.ANTHROPIC_API_KEY,
   });
 
+  // Use Haiku for speed (retries use even simpler prompt)
+  const isRetry = retryCount > 0;
+  const model = "claude-haiku-4-5-20251001";
+  const timeoutMs = isRetry ? 20000 : 40000;
+
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30000);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   let message;
   try {
     message = await client.messages.create(
       {
-        model: "claude-sonnet-4-5-20250929",
-        max_tokens: 1500,
+        model,
+        max_tokens: 1000,
         system: SYSTEM_PROMPT,
         messages: [
           {
             role: "user",
-            content: `以下のプロダクトを分析してください:\n\n${input}`,
+            content: isRetry
+              ? `簡潔に分析してください（各項目は短く）:\n\n${input.slice(0, 1000)}`
+              : `以下のプロダクトを分析してください:\n\n${input}`,
           },
           {
             role: "assistant",
@@ -79,7 +87,13 @@ async function callClaude(input: string, retryCount = 0): Promise<Record<string,
   } catch (apiError) {
     clearTimeout(timeout);
     const msg = apiError instanceof Error ? apiError.message : String(apiError);
-    console.error("Claude API call failed:", msg);
+    console.error(`Claude API call failed (attempt ${retryCount + 1}):`, msg);
+
+    // Retry once on timeout/abort
+    if (retryCount < 1) {
+      console.log("Retrying with simpler prompt...");
+      return callClaude(input, retryCount + 1);
+    }
     throw new Error(`Claude API error: ${msg}`);
   }
 
@@ -90,7 +104,7 @@ async function callClaude(input: string, retryCount = 0): Promise<Record<string,
 
   // Prepend the "{" we used as prefill
   let jsonStr = "{" + textBlock.text.trim();
-  console.log("Raw Claude response (with prefill):", jsonStr.substring(0, 500));
+  console.log("Raw Claude response (with prefill):", jsonStr.substring(0, 300));
 
   // Strip markdown code block wrappers if model still adds them
   const codeBlockMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
@@ -108,7 +122,7 @@ async function callClaude(input: string, retryCount = 0): Promise<Record<string,
   try {
     return JSON.parse(jsonStr);
   } catch (parseErr) {
-    console.error("JSON parse error (attempt", retryCount + 1, "):", parseErr, "\nRaw:", jsonStr.substring(0, 500));
+    console.error("JSON parse error (attempt", retryCount + 1, "):", parseErr, "\nRaw:", jsonStr.substring(0, 300));
     if (retryCount < 2) {
       return callClaude(input, retryCount + 1);
     }
@@ -146,7 +160,7 @@ export async function POST(request: Request) {
     const errStack = error instanceof Error ? error.stack : "";
     console.error("Campaign analysis error:", errMsg, "\nStack:", errStack);
 
-    if (error instanceof Error && error.name === "AbortError") {
+    if (error instanceof Error && (error.name === "AbortError" || errMsg.includes("aborted"))) {
       return NextResponse.json(
         { error: "分析がタイムアウトしました。もう一度お試しください。" },
         { status: 504 }
