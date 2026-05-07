@@ -99,35 +99,75 @@ async function callClaude(input: string, retryCount = 0): Promise<Record<string,
 
   const textBlock = message.content.find((b) => b.type === "text");
   if (!textBlock || textBlock.type !== "text") {
+    if (retryCount < 2) return callClaude(input, retryCount + 1);
     throw new Error("No text response from Claude");
   }
 
-  // Prepend the "{" we used as prefill
-  let jsonStr = "{" + textBlock.text.trim();
-  console.log("Raw Claude response (with prefill):", jsonStr.substring(0, 300));
+  const rawText = textBlock.text.trim();
+  console.log(`[analyze] Raw response (attempt ${retryCount + 1}, ${rawText.length} chars):`, rawText.substring(0, 400));
 
-  // Strip markdown code block wrappers if model still adds them
-  const codeBlockMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
+  // Try multiple parsing strategies
+  const parsed = tryParseJSON(rawText, retryCount);
+  if (parsed) return parsed;
+
+  // All parse strategies failed — retry with fresh API call
+  if (retryCount < 2) {
+    console.log(`[analyze] Parse failed, retrying (attempt ${retryCount + 2})...`);
+    return callClaude(input, retryCount + 1);
+  }
+
+  console.error("[analyze] FULL raw response dump:", rawText);
+  throw new Error("Failed to parse Claude response as JSON after retries");
+}
+
+function tryParseJSON(rawText: string, _attempt: number): Record<string, unknown> | null {
+  // Strategy 1: Prepend "{" (prefill) and parse directly
+  const withPrefill = "{" + rawText;
+  const s1 = extractAndParse(withPrefill);
+  if (s1) return s1;
+
+  // Strategy 2: Parse raw text as-is (model may have included the "{")
+  const s2 = extractAndParse(rawText);
+  if (s2) return s2;
+
+  // Strategy 3: Find JSON in code block
+  const codeBlockMatch = rawText.match(/```(?:json)?\s*([\s\S]*?)```/);
   if (codeBlockMatch) {
-    jsonStr = codeBlockMatch[1].trim();
+    const s3 = extractAndParse(codeBlockMatch[1].trim());
+    if (s3) return s3;
   }
 
-  // Extract the JSON object
-  const firstBrace = jsonStr.indexOf("{");
-  const lastBrace = jsonStr.lastIndexOf("}");
-  if (firstBrace !== -1 && lastBrace !== -1 && firstBrace < lastBrace) {
-    jsonStr = jsonStr.substring(firstBrace, lastBrace + 1);
-  }
+  return null;
+}
+
+function extractAndParse(text: string): Record<string, unknown> | null {
+  // Find the outermost { ... }
+  const firstBrace = text.indexOf("{");
+  const lastBrace = text.lastIndexOf("}");
+  if (firstBrace === -1 || lastBrace === -1 || firstBrace >= lastBrace) return null;
+
+  let jsonStr = text.substring(firstBrace, lastBrace + 1);
+
+  // Fix common issues
+  // 1. Remove trailing commas before } or ]
+  jsonStr = jsonStr.replace(/,\s*([}\]])/g, "$1");
+  // 2. Fix unescaped newlines inside string values
+  jsonStr = jsonStr.replace(/(?<=":[ ]*"[^"]*)\n/g, "\\n");
 
   try {
-    return JSON.parse(jsonStr);
-  } catch (parseErr) {
-    console.error("JSON parse error (attempt", retryCount + 1, "):", parseErr, "\nRaw:", jsonStr.substring(0, 300));
-    if (retryCount < 2) {
-      return callClaude(input, retryCount + 1);
+    const obj = JSON.parse(jsonStr);
+    if (typeof obj === "object" && obj !== null) return obj;
+  } catch {
+    // Try one more fix: replace single quotes with double quotes
+    try {
+      const fixed = jsonStr.replace(/'/g, '"');
+      const obj = JSON.parse(fixed);
+      if (typeof obj === "object" && obj !== null) return obj;
+    } catch {
+      // Failed
     }
-    throw new Error("Failed to parse Claude response as JSON after retries");
   }
+  return null;
 }
 
 export async function POST(request: Request) {
