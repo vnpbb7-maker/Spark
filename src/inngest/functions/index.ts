@@ -434,7 +434,7 @@ export const discoverTargets = inngest.createFunction(
               const results = filterFreshResults((tavilyData.results || []) as Record<string, unknown>[], sixMonthsAgo);
               for (const result of results) {
                 const url = (result.url as string) || "";
-                const content = (result.content as string) || "";
+                const content = String((result.content as string) || (result.snippet as string) || "").slice(0, 500);
                 if (!url) continue;
                 if (isCompanyUrl(url, content)) { console.log(`Skipped company: ${url.slice(0, 60)}`); continue; }
                 if (insertedTargets.length >= remaining) { limitReached = true; break; }
@@ -448,7 +448,7 @@ export const discoverTargets = inngest.createFunction(
                   const social = extractSocialFromContent(content);
                   await getSupabase().from("targets").insert({
                     campaign_id: campaignId, platform: detectedPlatform, username, profile_url: profileUrl,
-                    post_url: url, post_content: content.slice(0, 500),
+                    post_url: url, post_content: content,
                     match_score: 55, match_reason: `日本語プラットフォーム: ${site}`, status: "pending",
                     ...(social.found_email ? { email: social.found_email } : {}),
                   });
@@ -497,7 +497,7 @@ export const discoverTargets = inngest.createFunction(
             const seenUrls = new Set<string>();
             for (const result of results) {
               const url = (result.url as string) || "";
-              const content = (result.content as string) || "";
+              const content = String((result.content as string) || (result.snippet as string) || "").slice(0, 500);
               if (!url || seenUrls.has(url)) continue;
               seenUrls.add(url);
 
@@ -518,7 +518,7 @@ export const discoverTargets = inngest.createFunction(
                 await getSupabase().from("targets").insert({
                   campaign_id: campaignId, platform: detectedPlatform, username,
                   profile_url: profileUrl, post_url: url,
-                  post_content: content.slice(0, 500),
+                  post_content: content,
                   match_score: 50, match_reason: `シグナル: ${searchTerm}`, status: "pending",
                   ...(social.found_email ? { email: social.found_email } : {}),
                 });
@@ -671,8 +671,9 @@ JSON形式で返してください:
               const a = Math.min(25, Math.max(0, score.accessibility_score || 0));
               const totalScore = Math.min(100, Math.max(0, r + i + f + a));
 
-              // Always compute priority from total_score (ignore Claude's suggestion)
-              const priority = totalScore >= 80 ? "S" : totalScore >= 60 ? "A" : totalScore >= 40 ? "B" : "C";
+              // Always compute priority from total_score
+              // Lowered thresholds for better distribution
+              const priority = totalScore >= 70 ? "S" : totalScore >= 50 ? "A" : totalScore >= 30 ? "B" : "C";
 
               const updateData = {
                 match_score: totalScore,
