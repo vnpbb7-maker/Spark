@@ -178,27 +178,43 @@ function extractSocialFromContent(content: string): { twitter_handle?: string; f
 }
 
 function buildMultiPlatformQueries(keyword: string, _language: string = ""): { query: string; targetPlatform: string }[] {
-  const queries: { query: string; targetPlatform: string }[] = [];
-
-  // Personal experience keywords to append
-  const personal = "体験談 OR 困った OR 試した OR やってみた";
+  // Multiple query templates — shuffled each run for variety
+  const personal = [
+    "体験談 OR 困った OR 試した OR やってみた",
+    "使ってみた OR 探してる OR 乗り換え OR 比較",
+    "解決した OR 導入した OR やめた OR 失敗した",
+    "おすすめ OR レビュー OR 感想 OR 実体験",
+  ];
   const exclude = "-プレスリリース -サービス紹介 -お知らせ";
 
-  // Social platforms
+  // Pick a random personal keyword set for variety across runs
+  const personalIdx = Math.floor(Math.random() * personal.length);
+  const p1 = personal[personalIdx];
+  const p2 = personal[(personalIdx + 1) % personal.length];
+
+  const queries: { query: string; targetPlatform: string }[] = [];
+
+  // Social
   queries.push({ query: `site:twitter.com OR site:x.com ${keyword} 日本語 -is:retweet`, targetPlatform: "twitter" });
 
-  // Japanese individual-focused platforms (primary)
-  queries.push({ query: `site:note.com ${keyword} ${personal} ${exclude}`, targetPlatform: "note" });
-  queries.push({ query: `site:zenn.dev ${keyword} ${personal}`, targetPlatform: "zenn" });
-  queries.push({ query: `site:qiita.com ${keyword} ${personal}`, targetPlatform: "qiita" });
-  queries.push({ query: `site:hatenablog.com OR site:hatena.ne.jp ${keyword} ${personal}`, targetPlatform: "hatena" });
+  // Japanese individual-focused platforms (primary) — use alternating personal phrases
+  queries.push({ query: `site:note.com ${keyword} ${p1} ${exclude}`, targetPlatform: "note" });
+  queries.push({ query: `site:zenn.dev ${keyword} ${p2}`, targetPlatform: "zenn" });
+  queries.push({ query: `site:qiita.com ${keyword} ${p1}`, targetPlatform: "qiita" });
+  queries.push({ query: `site:hatenablog.com OR site:hatena.ne.jp ${keyword} ${p2}`, targetPlatform: "hatena" });
   queries.push({ query: `site:detail.chiebukuro.yahoo.co.jp ${keyword} おすすめ OR 困って`, targetPlatform: "yahoo_qa" });
 
   // General web (Japanese, personal)
-  queries.push({ query: `${keyword} 個人ブログ 使ってみた 日本語 ${exclude}`, targetPlatform: "web" });
+  queries.push({ query: `${keyword} 個人ブログ ${p2} 日本語 ${exclude}`, targetPlatform: "web" });
 
   // Reddit — only Japanese
   queries.push({ query: `site:reddit.com ${keyword} 日本語 OR 日本`, targetPlatform: "reddit" });
+
+  // Shuffle array for variety
+  for (let i = queries.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [queries[i], queries[j]] = [queries[j], queries[i]];
+  }
 
   return queries;
 }
@@ -299,6 +315,25 @@ export const discoverTargets = inngest.createFunction(
     const remaining = campaignLimit - existingCount;
     console.log(`Campaign ${campaignId}: ${existingCount}/${campaignLimit} targets, remaining: ${remaining}`);
 
+    // 2b. Cross-campaign deduplication: load all existing targets for this user
+    const userId = campaign.user_id;
+    const { data: userCampaigns } = await getSupabase()
+      .from("campaigns")
+      .select("id")
+      .eq("user_id", userId);
+    const userCampaignIds = (userCampaigns || []).map((c: { id: string }) => c.id);
+
+    const { data: existingTargetRows } = await getSupabase()
+      .from("targets")
+      .select("username, platform")
+      .in("campaign_id", userCampaignIds);
+
+    const dedupSet = new Set<string>();
+    (existingTargetRows || []).forEach((t: { username: string; platform: string }) => {
+      dedupSet.add(`${t.platform}::${t.username.toLowerCase()}`);
+    });
+    console.log(`[dedup] Loaded ${dedupSet.size} existing targets across ${userCampaignIds.length} campaigns`);
+
     // 3. Tavily APIでターゲット発見
     const personas = campaign.target_personas?.personas || [];
     const platforms = campaign.platforms || [];
@@ -318,11 +353,18 @@ export const discoverTargets = inngest.createFunction(
       const legacyKeywords = persona.keywords || [];
 
       // Combine signals: discovery_signals first, then twitter_keywords
-      const searchTerms = [
+      const allSignals = [
         ...discoverySignals,
-        ...twitterKeywords.slice(0, 2),
-        ...legacyKeywords.slice(0, 2),
-      ].filter(Boolean).slice(0, 5);
+        ...twitterKeywords,
+        ...legacyKeywords,
+      ].filter(Boolean);
+
+      // Shuffle signals for variety across runs
+      for (let i = allSignals.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [allSignals[i], allSignals[j]] = [allSignals[j], allSignals[i]];
+      }
+      const searchTerms = allSignals.slice(0, 5);
 
       console.log(`Persona "${persona.label || persona.name}": ${searchTerms.length} search terms, ${redditCommunities.length} reddit communities`);
 
@@ -339,6 +381,9 @@ export const discoverTargets = inngest.createFunction(
             for (const tweet of tweets) {
               if (insertedTargets.length >= remaining) { limitReached = true; break; }
               if (tweet.username && tweet.username !== "unknown") {
+                const dedupKey = `twitter::${tweet.username.toLowerCase()}`;
+                if (dedupSet.has(dedupKey)) { console.log(`[dedup] Skipped duplicate: @${tweet.username} (twitter)`); continue; }
+                dedupSet.add(dedupKey);
                 await getSupabase().from("targets").insert({
                   campaign_id: campaignId, platform: "twitter", username: tweet.username,
                   profile_url: `https://x.com/${tweet.username}`, post_url: tweet.url,
@@ -381,6 +426,9 @@ export const discoverTargets = inngest.createFunction(
                 const detectedPlatform = detectPlatformFromUrl(url);
                 const username = extractUsername(url, detectedPlatform);
                 if (username && username !== "unknown") {
+                  const dedupKey = `${detectedPlatform}::${username.toLowerCase()}`;
+                  if (dedupSet.has(dedupKey)) { console.log(`[dedup] Skipped duplicate: ${username} (${detectedPlatform})`); continue; }
+                  dedupSet.add(dedupKey);
                   const profileUrl = buildProfileUrl(url, detectedPlatform, username);
                   const social = extractSocialFromContent(content);
                   await getSupabase().from("targets").insert({
@@ -447,6 +495,9 @@ export const discoverTargets = inngest.createFunction(
               if (insertedTargets.length >= remaining) { limitReached = true; break; }
 
               if (username && username !== "unknown") {
+                const dedupKey = `${detectedPlatform}::${username.toLowerCase()}`;
+                if (dedupSet.has(dedupKey)) { console.log(`[dedup] Skipped duplicate: ${username} (${detectedPlatform})`); continue; }
+                dedupSet.add(dedupKey);
                 const profileUrl = buildProfileUrl(url, detectedPlatform, username);
                 const social = extractSocialFromContent(content);
                 await getSupabase().from("targets").insert({
