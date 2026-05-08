@@ -51,6 +51,8 @@ export async function GET(
           マッチ度: `${t.match_score}%`,
           プラットフォーム: t.platform as string,
           ユーザー名: t.username as string,
+          "Twitter連絡先": (t.twitter_handle as string) || "",
+          プロフィールURL: (t.contact_url as string) || (t.profile_url as string) || "",
           投稿URL: (t.post_url as string) || "",
           投稿内容: ((t.post_content as string) || "").slice(0, 300),
           AI分析理由: (t.ai_reason as string) || "",
@@ -72,7 +74,6 @@ export async function GET(
           メール: (t.email as string) || "",
           電話番号: (t.phone as string) || "",
           ウェブサイト: (t.website as string) || "",
-          問い合わせURL: (t.contact_url as string) || "",
         };
       }
     );

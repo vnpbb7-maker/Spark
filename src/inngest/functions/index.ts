@@ -64,25 +64,40 @@ async function searchTwitterTargets(keyword: string, language: string): Promise<
 }
 
 // Extract publicly available contact info from a profile/page URL
-async function extractContactInfo(url: string): Promise<{ email?: string; phone?: string; website?: string; contact_url?: string }> {
+type ContactInfo = { email?: string; phone?: string; website?: string; contact_url?: string; twitter_handle?: string };
+
+async function extractContactInfo(profileUrl: string, platform: string): Promise<ContactInfo> {
   try {
-    const jinaUrl = `https://r.jina.ai/${url}`;
+    // Use Jina Reader to fetch profile page content
+    const jinaUrl = `https://r.jina.ai/${profileUrl}`;
     const res = await fetch(jinaUrl, {
       headers: { Accept: "text/plain" },
-      signal: AbortSignal.timeout(8000),
+      signal: AbortSignal.timeout(5000),
     });
     if (!res.ok) return {};
     const text = await res.text();
-    const content = text.slice(0, 5000); // Limit to avoid excess processing
+    const content = text.slice(0, 5000);
 
-    const result: { email?: string; phone?: string; website?: string; contact_url?: string } = {};
+    const result: ContactInfo = {};
+
+    // Extract Twitter/X handle
+    const twitterPatterns = [
+      /(?:twitter\.com|x\.com)\/([a-zA-Z0-9_]{1,15})(?:[?\s/"]|$)/,
+      /@([a-zA-Z0-9_]{2,15})(?:\s|$|\)|,|\|)/,
+    ];
+    for (const pattern of twitterPatterns) {
+      const match = content.match(pattern);
+      if (match && match[1] && !['home','search','explore','settings','i','intent'].includes(match[1].toLowerCase())) {
+        result.twitter_handle = `@${match[1]}`;
+        break;
+      }
+    }
 
     // Extract email (public profile/bio only)
     const emailMatch = content.match(/[\w.+-]+@[\w.-]+\.\w{2,}/);
     if (emailMatch) {
       const email = emailMatch[0].toLowerCase();
-      // Filter out common non-personal emails
-      if (!email.includes("example.com") && !email.includes("noreply") && !email.includes("support@")) {
+      if (!email.includes("example") && !email.includes("noreply") && !email.includes("support@") && !email.includes("info@")) {
         result.email = email;
       }
     }
@@ -93,23 +108,23 @@ async function extractContactInfo(url: string): Promise<{ email?: string; phone?
       result.phone = phoneMatch[0].replace(/\s/g, "");
     }
 
-    // Extract website URLs from profile (look for personal/business sites)
-    const urlMatches = content.match(/https?:\/\/(?!(?:twitter|x|facebook|instagram|tiktok|linkedin|youtube|reddit|note|zenn|qiita)\.com)[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}[^\s")']*/g);
-    if (urlMatches && urlMatches.length > 0) {
-      result.website = urlMatches[0].slice(0, 200);
+    // Extract website URLs (exclude major platforms)
+    const excludedDomains = ['twitter','x','facebook','instagram','tiktok','linkedin','youtube','reddit','note','zenn','qiita','hatena','amazon','google','apple','github'];
+    const urlPattern = /https?:\/\/([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})[^\s")'\]\|]*/g;
+    let urlMatch;
+    while ((urlMatch = urlPattern.exec(content)) !== null) {
+      const domain = urlMatch[1].toLowerCase();
+      if (!excludedDomains.some(d => domain.includes(d))) {
+        result.website = urlMatch[0].slice(0, 200);
+        break;
+      }
     }
 
-    // Extract contact page URLs
-    const contactMatch = content.match(/https?:\/\/[^\s"')]+(?:contact|お問い合わせ|inquiry|about)[^\s"')]*|\/contact\/?/i);
-    if (contactMatch) {
-      let contactUrl = contactMatch[0];
-      if (contactUrl.startsWith("/")) {
-        try {
-          const base = new URL(url);
-          contactUrl = `${base.origin}${contactUrl}`;
-        } catch { /* ignore */ }
-      }
-      result.contact_url = contactUrl.slice(0, 200);
+    result.contact_url = profileUrl;
+
+    const foundCount = Object.keys(result).filter(k => k !== 'contact_url').length;
+    if (foundCount > 0) {
+      console.log(`[contact] ${platform} ${profileUrl.slice(0, 40)}: found ${Object.keys(result).join(', ')}`);
     }
 
     return result;
@@ -518,30 +533,39 @@ export const discoverTargets = inngest.createFunction(
       }
     }
 
-    // 公開連絡先情報の抽出（バッチ処理、最大10件並列）
+    // 公開連絡先情報の抽出（プロフィールページから）
     try {
       const { data: newTargets } = await getSupabase()
         .from("targets")
-        .select("id, profile_url, platform")
+        .select("id, profile_url, platform, username")
         .eq("campaign_id", campaignId)
-        .is("email", null)
-        .order("created_at", { ascending: false })
-        .limit(10);
+        .is("contact_url", null)
+        .order("match_score", { ascending: false })
+        .limit(15);
 
       if (newTargets && newTargets.length > 0) {
-        console.log(`Extracting contact info for ${newTargets.length} targets...`);
+        console.log(`[contact] Extracting contact info for ${newTargets.length} targets...`);
         const contactResults = await Promise.allSettled(
-          newTargets.map(async (t: { id: string; profile_url: string; platform: string }) => {
-            const info = await extractContactInfo(t.profile_url);
-            if (info.email || info.phone || info.website || info.contact_url) {
-              await getSupabase().from("targets").update(info).eq("id", t.id);
-              console.log(`Contact info found for ${t.id}:`, JSON.stringify(info));
+          newTargets.map(async (t: { id: string; profile_url: string; platform: string; username: string }) => {
+            // Use proper profile URL for the platform
+            const profileUrl = buildProfileUrl(t.profile_url, t.platform, t.username);
+            const info = await extractContactInfo(profileUrl, t.platform);
+            if (Object.keys(info).length > 0) {
+              // If no email found but twitter_handle exists, note it
+              const updateData: Record<string, unknown> = { ...info };
+              if (!info.email && info.twitter_handle) {
+                updateData.email = `Twitter: ${info.twitter_handle}`;
+              }
+              await getSupabase().from("targets").update(updateData).eq("id", t.id);
+            } else {
+              // Mark as checked so we don't retry
+              await getSupabase().from("targets").update({ contact_url: profileUrl }).eq("id", t.id);
             }
             return info;
           })
         );
-        const found = contactResults.filter(r => r.status === "fulfilled" && r.value && Object.keys(r.value).length > 0).length;
-        console.log(`Contact extraction complete: ${found}/${newTargets.length} targets had contact info`);
+        const found = contactResults.filter(r => r.status === "fulfilled" && r.value && Object.keys(r.value).length > 1).length;
+        console.log(`[contact] Complete: ${found}/${newTargets.length} targets had contact info`);
       }
     } catch (e) {
       console.error("Contact extraction error:", e);
