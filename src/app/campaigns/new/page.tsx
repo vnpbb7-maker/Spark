@@ -13,15 +13,7 @@ import SparkLoader from "@/components/ui/SparkLoader";
 
 const STEPS = ["プロダクト入力", "分析結果", "キャンペーン設定"];
 
-type ExistingCampaign = {
-  id: string;
-  product_description: string;
-  product_url: string | null;
-  target_personas: AnalysisResult | null;
-  analysis_cache: AnalysisResult | null;
-  platforms: string[];
-  created_at: string;
-};
+
 
 function CampaignNewContent() {
   const router = useRouter();
@@ -34,13 +26,9 @@ function CampaignNewContent() {
   const [inputData, setInputData] = useState<{ url?: string; description?: string }>({ url: initialUrl });
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
   const [userPlan, setUserPlan] = useState("free");
-  const [existingCampaigns, setExistingCampaigns] = useState<ExistingCampaign[]>([]);
-  const [copyFromId, setCopyFromId] = useState<string | null>(null);
-
   // Reset analysis state on fresh mount (prevents SPA stale data)
   useEffect(() => {
     setAnalysis(null);
-    setCopyFromId(null);
     setStep(1);
     setError("");
     setInputData({ url: initialUrl });
@@ -58,15 +46,6 @@ function CampaignNewContent() {
           .eq("user_id", user.id)
           .maybeSingle();
         setUserPlan(sub?.plan || "free");
-
-        // Fetch existing campaigns for copy
-        const { data: camps } = await supabase
-          .from("campaigns")
-          .select("id, product_description, product_url, target_personas, analysis_cache, platforms, created_at")
-          .eq("user_id", user.id)
-          .order("created_at", { ascending: false })
-          .limit(10);
-        if (camps) setExistingCampaigns(camps as ExistingCampaign[]);
       }
     };
     fetchData();
@@ -80,27 +59,6 @@ function CampaignNewContent() {
     }
   }, [searchParams]);
 
-  const handleCopyCampaign = (campId: string) => {
-    const camp = existingCampaigns.find((c) => c.id === campId);
-    if (!camp) return;
-
-    setCopyFromId(campId);
-    setInputData({
-      url: camp.product_url || undefined,
-      description: camp.product_description,
-    });
-
-    // Use cached analysis or target_personas (ONLY for explicit copy)
-    const cachedAnalysis = camp.analysis_cache || camp.target_personas;
-    if (cachedAnalysis) {
-      setAnalysis(cachedAnalysis);
-      setStep(3); // Skip directly to settings
-    } else {
-      // No cached analysis — go to step 1 with pre-filled data
-      setAnalysis(null);
-      setStep(1);
-    }
-  };
 
   const handleAnalyze = async (data: { url?: string; description?: string }) => {
     setInputData(data);
@@ -155,9 +113,6 @@ function CampaignNewContent() {
           product_url: inputData.url || null,
           product_description: inputData.description || inputData.url || "",
           target_personas: analysis,
-          // Only cache analysis for copy flows
-          analysis_cache: copyFromId ? analysis : null,
-          copied_from: copyFromId || null,
           ...settings,
         }),
       });
@@ -226,61 +181,12 @@ function CampaignNewContent() {
           <SparkLoader />
         ) : step === 1 ? (
           <div>
-            {/* Copy from existing campaign */}
-            {existingCampaigns.length > 0 && (
-              <div style={{ maxWidth: "600px", margin: "0 auto 32px" }}>
-                <div style={{ background: "#13132a", border: "1px solid rgba(255,255,255,0.07)", borderRadius: "14px", padding: "20px" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px" }}>
-                    <span style={{ fontSize: "16px" }}>📋</span>
-                    <span style={{ fontSize: "14px", fontWeight: 600, color: "#f0efe8" }}>既存のキャンペーンをコピー</span>
-                    <span style={{ fontSize: "11px", color: "rgba(240,239,232,0.35)", marginLeft: "auto" }}>分析をスキップ</span>
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                    {existingCampaigns.slice(0, 5).map((c) => (
-                      <button
-                        key={c.id}
-                        onClick={() => handleCopyCampaign(c.id)}
-                        style={{
-                          display: "flex", alignItems: "center", gap: "10px", width: "100%",
-                          background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)",
-                          borderRadius: "10px", padding: "10px 14px", cursor: "pointer", transition: "all 0.2s",
-                          textAlign: "left",
-                        }}
-                        onMouseEnter={(e) => { e.currentTarget.style.borderColor = "rgba(255,107,53,0.3)"; e.currentTarget.style.background = "rgba(255,107,53,0.05)"; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.borderColor = "rgba(255,255,255,0.07)"; e.currentTarget.style.background = "rgba(255,255,255,0.03)"; }}
-                      >
-                        <span style={{ fontSize: "12px", color: "rgba(240,239,232,0.6)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          {c.product_description?.slice(0, 40) || c.product_url || "—"}
-                        </span>
-                        <span style={{ fontSize: "10px", color: "rgba(240,239,232,0.25)", flexShrink: 0 }}>
-                          {new Date(c.created_at).toLocaleDateString("ja-JP")}
-                        </span>
-                        <span style={{ fontSize: "11px", color: "#ff6b35", fontWeight: 600, flexShrink: 0 }}>→</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div style={{ textAlign: "center", margin: "16px 0", fontSize: "12px", color: "rgba(240,239,232,0.25)" }}>
-                  または新しく分析する ↓
-                </div>
-              </div>
-            )}
-
             <Step1Input onAnalyze={handleAnalyze} initialUrl={initialUrl} />
           </div>
         ) : step === 2 && analysis ? (
-          <Step2Analysis analysis={analysis} onContinue={() => setStep(3)} onBack={() => { setStep(1); setCopyFromId(null); setAnalysis(null); }} userPlan={userPlan} />
+          <Step2Analysis analysis={analysis} onContinue={() => setStep(3)} onBack={() => { setStep(1); setAnalysis(null); }} userPlan={userPlan} />
         ) : step === 3 && analysis ? (
-          <div>
-            {copyFromId && (
-              <div style={{ maxWidth: "600px", margin: "0 auto 16px", textAlign: "center" }}>
-                <span style={{ fontSize: "12px", padding: "4px 12px", borderRadius: "8px", background: "rgba(45,209,122,0.1)", color: "#2dd17a", fontWeight: 600 }}>
-                  📋 既存キャンペーンからコピー中 — 分析スキップ済み
-                </span>
-              </div>
-            )}
-            <Step3Settings recommendedPlatforms={analysis.recommended_platforms} onSubmit={handleCreate} loading={creating} />
-          </div>
+          <Step3Settings recommendedPlatforms={analysis.recommended_platforms} onSubmit={handleCreate} loading={creating} />
         ) : null}
       </div>
     </div>
