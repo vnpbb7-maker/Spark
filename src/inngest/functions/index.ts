@@ -621,7 +621,6 @@ export const discoverTargets = inngest.createFunction(
               }
             }
 
-            // Multi-factor scoring with Claude
             const scoreResponse = await fetch("https://api.anthropic.com/v1/messages", {
               method: "POST",
               headers: {
@@ -632,7 +631,8 @@ export const discoverTargets = inngest.createFunction(
               body: JSON.stringify({
                 model: "claude-haiku-4-5-20251001",
                 max_tokens: 300,
-                system: "You must respond with valid JSON only. No markdown, no explanation.",
+                temperature: 0,
+                system: "You must respond with valid JSON only. No markdown, no explanation. Start with { and end with }.",
                 messages: [
                   {
                     role: "user",
@@ -646,25 +646,22 @@ export const discoverTargets = inngest.createFunction(
 
 以下の4軸で評価してください（各0-25点、合計100点）:
 1. 課題一致度 (relevance_score): プロダクトが解決する課題を抱えているか
-2. 行動意欲 (intent_score): 新しいツールを試す意欲を示しているか（「探してる」「困ってる」「試したい」等）
+2. 行動意欲 (intent_score): 新しいツールを試す意欲を示しているか
 3. 影響力 (influence_score): フォロワーやコミュニティへの影響力があるか
 4. 接触可能性 (accessibility_score): 返信・反応してくれそうか
 
 JSON形式で返してください:
-{"relevance_score":0,"intent_score":0,"influence_score":0,"accessibility_score":0,"total_score":0,"priority":"S","reason":"日本語で1文","estimated_age":"20代","estimated_role":"推定役職"}
-
-priority基準: S=80点以上, A=60-79, B=40-59, C=39以下`,
+{"relevance_score":0,"intent_score":0,"influence_score":0,"accessibility_score":0,"reason":"日本語で1文","estimated_age":"20代","estimated_role":"推定役職"}`,
                   },
-                  { role: "assistant", content: "{" },
                 ],
               }),
             });
 
             const scoreData = await scoreResponse.json();
-            const scoreText = "{" + (scoreData.content?.[0]?.text || "");
-            const scoreMatch = scoreText.match(/\{[\s\S]*\}/);
+            const rawScoreText = scoreData.content?.[0]?.text || "";
+            const scoreMatch = rawScoreText.match(/\{[\s\S]*\}/);
 
-            console.log(`[scoring] Raw API response for ${t.username}:`, scoreText.slice(0, 200));
+            console.log(`[scoring] Raw response for ${t.username}:`, rawScoreText.slice(0, 200));
 
             if (scoreMatch) {
               const score = JSON.parse(scoreMatch[0]);
@@ -674,13 +671,16 @@ priority基準: S=80点以上, A=60-79, B=40-59, C=39以下`,
               const a = Math.min(25, Math.max(0, score.accessibility_score || 0));
               const totalScore = Math.min(100, Math.max(0, r + i + f + a));
 
+              // Always compute priority from total_score (ignore Claude's suggestion)
+              const priority = totalScore >= 80 ? "S" : totalScore >= 60 ? "A" : totalScore >= 40 ? "B" : "C";
+
               const updateData = {
                 match_score: totalScore,
                 relevance_score: r,
                 intent_score: i,
                 influence_score: f,
                 accessibility_score: a,
-                priority: score.priority || (totalScore >= 80 ? "S" : totalScore >= 60 ? "A" : totalScore >= 40 ? "B" : "C"),
+                priority,
                 ai_reason: (score.reason || "").slice(0, 200),
                 estimated_age: score.estimated_age || "不明",
                 estimated_role: (score.estimated_role || "不明").slice(0, 50),

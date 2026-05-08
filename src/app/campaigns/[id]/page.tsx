@@ -195,7 +195,10 @@ export default function CampaignDetailPage() {
 
   const visibleTargets = targets
     .filter((t) => platformFilter === "all" || t.platform === platformFilter)
-    .filter((t) => priorityFilter === "all" || t.priority === priorityFilter);
+    .filter((t) => {
+      if (priorityFilter === "all") return true;
+      return t.priority === priorityFilter;
+    });
 
   const selectedCount = [...selected].filter((id) => visibleTargets.some((t) => t.id === id)).length;
 
@@ -241,7 +244,8 @@ export default function CampaignDetailPage() {
             <div style={{ display: "flex", gap: "8px", marginBottom: "12px", flexWrap: "wrap", alignItems: "center" }}>
               {/* Priority filter */}
               {["all", "S", "A", "B", "C"].map((p) => {
-                const count = p === "all" ? visibleTargets.length : targets.filter((t) => t.priority === p).length;
+                const platformFiltered = targets.filter((t) => platformFilter === "all" || t.platform === platformFilter);
+                const count = p === "all" ? platformFiltered.length : platformFiltered.filter((t) => t.priority === p).length;
                 const ps = p !== "all" ? PRIORITY_STYLE[p] : null;
                 return (
                   <button key={p} onClick={() => setPriorityFilter(p)} style={{
