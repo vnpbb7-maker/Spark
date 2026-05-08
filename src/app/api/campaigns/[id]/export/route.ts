@@ -32,13 +32,23 @@ export async function GET(
       );
     }
 
-    // Fetch top 100 targets with comments
-    const { data: targets } = await supabase
+    // Fetch targets — if specific IDs provided, only those; otherwise top 100
+    const idsParam = req.nextUrl.searchParams.get("ids");
+    const targetIds = idsParam ? idsParam.split(",").filter(Boolean) : null;
+
+    let query = supabase
       .from("targets")
       .select("*, comments(*)")
       .eq("campaign_id", campaignId)
-      .order("match_score", { ascending: false })
-      .limit(100);
+      .order("match_score", { ascending: false });
+
+    if (targetIds && targetIds.length > 0) {
+      query = query.in("id", targetIds);
+    } else {
+      query = query.limit(100);
+    }
+
+    const { data: targets } = await query;
 
     // Build rows
     const rows = (targets || []).map(

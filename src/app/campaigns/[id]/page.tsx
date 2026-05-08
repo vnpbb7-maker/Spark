@@ -155,14 +155,19 @@ export default function CampaignDetailPage() {
   const handleExport = async () => {
     setExporting(true);
     try {
-      const res = await fetch(`/api/campaigns/${campaignId}/export`);
+      // If user has selected specific targets, only export those
+      const selectedIds = [...selected].filter((id) => visibleTargets.some((t) => t.id === id));
+      const url = selectedIds.length > 0
+        ? `/api/campaigns/${campaignId}/export?ids=${selectedIds.join(",")}`
+        : `/api/campaigns/${campaignId}/export`;
+      const res = await fetch(url);
       if (!res.ok) { alert("エクスポートに失敗しました"); setExporting(false); return; }
       const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a"); a.href = url; a.download = `spark_targets_${campaignId.slice(0, 8)}.xlsx`; a.click();
-      URL.revokeObjectURL(url);
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a"); a.href = blobUrl; a.download = `spark_targets_${campaignId.slice(0, 8)}.xlsx`; a.click();
+      URL.revokeObjectURL(blobUrl);
       setFunnel((p) => ({ ...p, exported: p.generated }));
-      setToast("✅ エクスポート完了！"); setTimeout(() => setToast(""), 3000);
+      setToast(`✅ エクスポート完了！${selectedIds.length > 0 ? ` (${selectedIds.length}件)` : ""}`); setTimeout(() => setToast(""), 3000);
     } catch { alert("エクスポートに失敗しました"); }
     setExporting(false);
   };
