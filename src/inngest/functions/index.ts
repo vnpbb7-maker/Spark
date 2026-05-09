@@ -502,7 +502,7 @@ export const discoverTargets = inngest.createFunction(
           console.log(`[discovery] Reddit redirect → searching: ${jpSites.join(", ")}`);
           for (const site of jpSites) {
             if (limitReached) break;
-            const query = `${site} ${searchTerms[0] || keyword} 困っている OR 探している`;
+            const query = `${site} ${searchTerms[0] || ""} 困っている OR 探している`;
             try {
               const tavilyResponse = await fetch("https://api.tavily.com/search", {
                 method: "POST",
@@ -626,6 +626,8 @@ export const discoverTargets = inngest.createFunction(
           }
         }
       }
+    }
+
     // Connpass API discovery (if "connpass" is in selected platforms)
     if (platforms.includes("connpass") && !limitReached) {
       try {

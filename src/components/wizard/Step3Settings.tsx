@@ -119,7 +119,7 @@ export default function Step3Settings({ recommendedPlatforms, onSubmit, loading 
     setPlatforms(allowed);
   }, [recommendedPlatforms, userPlan]);
 
-  const handlePlatformClick = (p: typeof PLATFORMS[number]) => {
+  const handlePlatformClick = (p: typeof ALL_PLATFORMS[number]) => {
     if (!canUsePlatform(p.requiredPlan, userPlan)) {
       setUpgradeModal(p.name);
       return;
