@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useRealtimeLog, LogEntry } from "@/hooks/useRealtimeLog";
@@ -199,13 +199,11 @@ export default function CampaignDetailPage() {
   const st = STATUS_MAP[campaign?.status as string] || STATUS_MAP.running;
   const uniquePlatforms = [...new Set(targets.map((t) => t.platform))];
 
-  const visibleTargets = targets
+  const visibleTargets = useMemo(() => targets
     .filter((t) => platformFilter === "all" || t.platform === platformFilter)
-    .filter((t) => {
-      if (priorityFilter === "all") return true;
-      return t.priority === priorityFilter;
-    })
-    .filter((t) => (t.match_score || 0) >= minScore);
+    .filter((t) => priorityFilter === "all" || t.priority === priorityFilter)
+    .filter((t) => (t.match_score ?? 0) >= minScore),
+    [targets, platformFilter, priorityFilter, minScore]);
 
   const selectedCount = [...selected].filter((id) => visibleTargets.some((t) => t.id === id)).length;
 
