@@ -58,16 +58,18 @@ export function useRealtimeLog(campaignId?: string) {
           ...(filter ? { filter } : {}),
         },
         (payload) => {
-          console.log("[Realtime] targets INSERT event:", payload);
-          const t = payload.new as Record<string, string | number>;
-          addLog(
-            makeLogEntry({
-              icon: "🔍",
-              text: `${t.platform}で発見: @${t.username} (マッチ度${t.match_score}%)`,
-              color: "#ff6b35",
-              type: "find",
-            })
-          );
+          // Only show scored targets in the feed (skip unscored inserts)
+          const t = payload.new as Record<string, string | number | null>;
+          if (t.status === "scored" && t.priority) {
+            addLog(
+              makeLogEntry({
+                icon: "🔍",
+                text: `${t.platform}で発見: @${t.username} (${t.priority}ランク ${t.match_score}%)`,
+                color: "#ff6b35",
+                type: "find",
+              })
+            );
+          }
         }
       )
       .on(
@@ -79,7 +81,6 @@ export function useRealtimeLog(campaignId?: string) {
           ...(filter ? { filter } : {}),
         },
         (payload) => {
-          console.log("[Realtime] comments INSERT event:", payload);
           const c = payload.new as Record<string, string | boolean | null>;
           addLog(
             makeLogEntry({
@@ -100,8 +101,8 @@ export function useRealtimeLog(campaignId?: string) {
           ...(filter ? { filter } : {}),
         },
         (payload) => {
-          console.log("[Realtime] targets UPDATE event:", payload);
           const t = payload.new as Record<string, string | number | null>;
+          // Show when target gets scored
           if (t.priority && !payload.old?.priority) {
             addLog(
               makeLogEntry({
@@ -109,6 +110,39 @@ export function useRealtimeLog(campaignId?: string) {
                 text: `AI分析完了: @${t.username} → ${t.priority}ランク (${t.match_score}%)`,
                 color: "#7c5cfc",
                 type: "score",
+              })
+            );
+          }
+          // Show when contact info is found
+          if (t.twitter_handle && !payload.old?.twitter_handle) {
+            addLog(
+              makeLogEntry({
+                icon: "📬",
+                text: `連絡先発見: @${t.username} (${t.twitter_handle})`,
+                color: "#2dd17a",
+                type: "contact",
+              })
+            );
+          }
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "DELETE",
+          schema: "public",
+          table: "targets",
+          ...(filter ? { filter } : {}),
+        },
+        (payload) => {
+          const t = payload.old as Record<string, string | number | null>;
+          if (t?.username) {
+            addLog(
+              makeLogEntry({
+                icon: "⚠️",
+                text: `スコア不足で除外: @${t.username} (${t.match_score}%)`,
+                color: "rgba(240,239,232,0.3)",
+                type: "remove",
               })
             );
           }

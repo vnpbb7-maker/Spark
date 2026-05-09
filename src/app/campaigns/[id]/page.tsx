@@ -86,11 +86,11 @@ export default function CampaignDetailPage() {
       entries.push({ log: { id: `log-c-${c.id}`, icon: "✍️", text: `コメント生成: ${c.platform}`, color: "#ffd60a", timestamp: ts, type: "generate" }, time: c.created_at });
     });
     existingTargets?.forEach((t) => {
+      // Only show scored targets in logs (skip pending/unscored)
+      if (!t.priority) return;
       const ts = new Date(t.created_at).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-      entries.push({ log: { id: `log-t-${t.id}`, icon: "🔍", text: `${t.platform}で発見: @${t.username} (${t.match_score}%)`, color: "#ff6b35", timestamp: ts, type: "find" }, time: t.created_at });
-      if (t.priority) {
-        entries.push({ log: { id: `log-s-${t.id}`, icon: "🧠", text: `AI分析: @${t.username} → ${t.priority}ランク`, color: "#7c5cfc", timestamp: ts, type: "score" }, time: t.created_at });
-      }
+      entries.push({ log: { id: `log-t-${t.id}`, icon: "🔍", text: `${t.platform}で発見: @${t.username} (${t.priority}ランク ${t.match_score}%)`, color: "#ff6b35", timestamp: ts, type: "find" }, time: t.created_at });
+      entries.push({ log: { id: `log-s-${t.id}`, icon: "🧠", text: `AI分析: @${t.username} → ${t.priority}ランク`, color: "#7c5cfc", timestamp: ts, type: "score" }, time: t.created_at });
     });
     entries.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
     return entries.slice(0, 20).map((e) => e.log);
