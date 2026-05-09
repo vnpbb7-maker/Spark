@@ -355,7 +355,7 @@ export const discoverTargets = inngest.createFunction(
     const insertedTargets: string[] = [];
     let limitReached = false;
     console.log("Personas count:", personas.length);
-    console.log("Platforms:", platforms);
+    console.log("[discovery] platforms selected:", platforms);
 
     for (const persona of personas.slice(0, 3)) {
       if (limitReached) break;
@@ -417,9 +417,21 @@ export const discoverTargets = inngest.createFunction(
         sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
         const startDate = sixMonthsAgo.toISOString().split("T")[0]; // YYYY-MM-DD
 
-        // For Reddit, skip English subreddits — use Japanese platforms instead
+        // For Reddit, search Japanese platforms — but ONLY ones user selected
         if (platform === "reddit") {
-          const jpSites = ["site:note.com", "site:zenn.dev", "site:qiita.com"];
+          const jpPlatformMap: Record<string, string> = {
+            "note": "site:note.com",
+            "zenn": "site:zenn.dev",
+            "qiita": "site:qiita.com",
+            "reddit": "site:reddit.com",
+          };
+          // Only search JP sites that are in the user's selected platforms
+          const jpSites = platforms
+            .filter((p: string) => jpPlatformMap[p])
+            .map((p: string) => jpPlatformMap[p]);
+          // If no JP platforms selected, fall back to reddit itself
+          if (jpSites.length === 0) jpSites.push("site:reddit.com");
+          console.log(`[discovery] Reddit redirect → searching: ${jpSites.join(", ")}`);
           for (const site of jpSites) {
             if (limitReached) break;
             const query = `${site} ${searchTerms[0] || keyword} 困っている OR 探している`;
@@ -439,6 +451,11 @@ export const discoverTargets = inngest.createFunction(
                 if (isCompanyUrl(url, content)) { console.log(`Skipped company: ${url.slice(0, 60)}`); continue; }
                 if (insertedTargets.length >= remaining) { limitReached = true; break; }
                 const detectedPlatform = detectPlatformFromUrl(url);
+                // Only keep results whose detected platform is in user's selected platforms
+                if (!platforms.includes(detectedPlatform) && detectedPlatform !== "web") {
+                  console.log(`[discovery] Skipped off-platform result: ${detectedPlatform} (${url.slice(0, 50)})`);
+                  continue;
+                }
                 const username = extractUsername(url, detectedPlatform);
                 if (username && username !== "unknown") {
                   const dedupKey = `${detectedPlatform}::${username.toLowerCase()}`;
@@ -468,9 +485,14 @@ export const discoverTargets = inngest.createFunction(
             const allQueries = buildMultiPlatformQueries(searchTerm, campaign.target_language || "");
             const selectedQueries = allQueries.filter(q => {
               if (q.targetPlatform === platform) return true;
-              if (q.targetPlatform === "web") return true;
+              // Only include "web" queries if no platform-specific query matched
               return false;
             }).slice(0, 2);
+            // If no platform-specific queries, use web fallback
+            if (selectedQueries.length === 0) {
+              const webQ = allQueries.filter(q => q.targetPlatform === "web").slice(0, 1);
+              selectedQueries.push(...webQ);
+            }
 
             console.log(`Running ${selectedQueries.length} Tavily queries for platform=${platform}, signal="${searchTerm}"`);
 
@@ -505,6 +527,11 @@ export const discoverTargets = inngest.createFunction(
               if (isCompanyUrl(url, content)) { console.log(`Skipped company: ${url.slice(0, 60)}`); continue; }
 
               const detectedPlatform = detectPlatformFromUrl(url);
+              // Only keep results whose detected platform is in user's selected platforms
+              if (!platforms.includes(detectedPlatform) && detectedPlatform !== "web") {
+                console.log(`[discovery] Skipped off-platform result: ${detectedPlatform} (${url.slice(0, 50)})`);
+                continue;
+              }
               const username = extractUsername(url, detectedPlatform);
 
               if (insertedTargets.length >= remaining) { limitReached = true; break; }

@@ -58,7 +58,7 @@ export default function CampaignDetailPage() {
   const [exporting, setExporting] = useState(false);
   const [platformFilter, setPlatformFilter] = useState("all");
   const [priorityFilter, setPriorityFilter] = useState("all");
-  const [minScore, setMinScore] = useState(0);
+  const [minScore, setMinScore] = useState(50);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [generatingIds, setGeneratingIds] = useState<Set<string>>(new Set());
   const [bulkGenerating, setBulkGenerating] = useState(false);
