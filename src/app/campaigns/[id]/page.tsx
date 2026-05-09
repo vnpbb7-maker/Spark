@@ -21,6 +21,9 @@ const PLATFORM_ICONS: Record<string, { icon: string; color: string }> = {
   youtube: { icon: "▶", color: "#ff0000" }, note: { icon: "📝", color: "#41c9b4" },
   zenn: { icon: "Z", color: "#3ea8ff" }, qiita: { icon: "Q", color: "#55c500" },
   hatena: { icon: "B!", color: "#00a4de" }, yahoo_qa: { icon: "Y!", color: "#ff0033" },
+  wantedly: { icon: "🤝", color: "#21bddb" }, connpass: { icon: "🎪", color: "#e05048" },
+  producthunt: { icon: "🚀", color: "#da552f" }, peatix: { icon: "🎟️", color: "#f54b5e" },
+  discord: { icon: "💬", color: "#5865f2" }, google_maps: { icon: "🗺️", color: "#4285f4" },
   web: { icon: "🌐", color: "#2dd17a" },
 };
 

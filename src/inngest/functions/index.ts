@@ -263,6 +263,12 @@ function buildMultiPlatformQueries(keyword: string, _language: string = ""): { q
   // Reddit — only Japanese
   queries.push({ query: `site:reddit.com ${keyword} 日本語 OR 日本`, targetPlatform: "reddit" });
 
+  // New platforms
+  queries.push({ query: `site:wantedly.com ${keyword} 課題 OR 困っている OR 募集`, targetPlatform: "wantedly" });
+  queries.push({ query: `site:producthunt.com ${keyword} review OR comment OR alternative`, targetPlatform: "producthunt" });
+  queries.push({ query: `site:peatix.com ${keyword} イベント OR セミナー OR 勉強会`, targetPlatform: "peatix" });
+  queries.push({ query: `site:discord.gg OR site:discord.com ${keyword} community OR server OR 日本`, targetPlatform: "discord" });
+
   // Shuffle array for variety
   for (let i = queries.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
@@ -287,6 +293,11 @@ function detectPlatformFromUrl(url: string): string {
   if (u.includes("qiita.com")) return "qiita";
   if (u.includes("hatenablog") || u.includes("hatena.ne.jp")) return "hatena";
   if (u.includes("chiebukuro.yahoo")) return "yahoo_qa";
+  if (u.includes("wantedly.com")) return "wantedly";
+  if (u.includes("connpass.com")) return "connpass";
+  if (u.includes("producthunt.com")) return "producthunt";
+  if (u.includes("peatix.com")) return "peatix";
+  if (u.includes("discord.gg") || u.includes("discord.com")) return "discord";
   if (u.includes("5ch.net") || u.includes("2ch.sc")) return "5ch";
   if (u.includes("quora.com")) return "quora";
   if (u.includes("stackoverflow.com")) return "stackoverflow";
@@ -328,6 +339,24 @@ function extractUsername(url: string, platform: string): string {
         return pathParts[0] || "zenn";
       case "qiita":
         return pathParts[0] || "qiita";
+      case "wantedly":
+        if (pathParts[0] === "id" && pathParts[1]) return pathParts[1];
+        if (pathParts[0] === "companies" && pathParts[1]) return pathParts[1];
+        return pathParts[0] || "wantedly";
+      case "connpass":
+        if (pathParts[0] === "user" && pathParts[1]) return pathParts[1];
+        return pathParts[0] || "connpass";
+      case "producthunt":
+        if (pathParts[0]?.startsWith("@")) return pathParts[0].replace("@", "");
+        if (pathParts[0] === "posts" && pathParts[1]) return pathParts[1];
+        return pathParts[0] || "producthunt";
+      case "peatix":
+        if (pathParts[0] === "event" && pathParts[1]) return `event-${pathParts[1]}`;
+        return pathParts[0] || "peatix";
+      case "discord":
+        return pathParts[1] || pathParts[0] || "discord";
+      case "google_maps":
+        return pathParts[0] || "business";
       default:
         return urlObj.hostname.replace("www.", "").split(".")[0] || "web";
     }
@@ -597,6 +626,115 @@ export const discoverTargets = inngest.createFunction(
           }
         }
       }
+    // Connpass API discovery (if "connpass" is in selected platforms)
+    if (platforms.includes("connpass") && !limitReached) {
+      try {
+        const personas = (campaign.analysis as Record<string, unknown>)?.personas as Array<Record<string, unknown>> || [];
+        const keyword = (personas[0]?.discovery_signals as string[] || [])[0] || (campaign.product_description as string || "").slice(0, 20);
+        console.log(`[connpass] Searching events for: ${keyword}`);
+        const connpassRes = await fetch(`https://connpass.com/api/v1/event/?keyword=${encodeURIComponent(keyword)}&count=10&order=2`, {
+          signal: AbortSignal.timeout(8000),
+        });
+        if (connpassRes.ok) {
+          const connpassData = await connpassRes.json();
+          const events = (connpassData.events || []) as Array<Record<string, unknown>>;
+          console.log(`[connpass] Found ${events.length} events`);
+          for (const event of events.slice(0, 5)) {
+            if (insertedTargets.length >= (campaignLimit - (count || 0))) { break; }
+            const ownerName = (event.owner_display_name as string) || (event.owner_nickname as string) || "";
+            const eventUrl = event.event_url as string || "";
+            if (!ownerName || ownerName === "unknown") continue;
+            const dedupKey = `connpass::${ownerName.toLowerCase()}`;
+            if (dedupSet.has(dedupKey)) continue;
+            dedupSet.add(dedupKey);
+            const social = extractSocialFromContent(String(event.description || ""));
+            await getSupabase().from("targets").insert({
+              campaign_id: campaignId, platform: "connpass", username: ownerName,
+              profile_url: `https://connpass.com/user/${ownerName}/`,
+              post_url: eventUrl,
+              post_content: String(event.title || "").slice(0, 500),
+              match_score: 55, match_reason: `Connpassイベント主催者`, status: "pending",
+              ...(social.found_email ? { email: social.found_email } : {}),
+            });
+            insertedTargets.push(ownerName);
+            console.log(`[connpass] Inserted: ${ownerName} (event: ${(event.title as string || "").slice(0, 40)})`);
+          }
+        }
+      } catch (err) { console.error("[connpass] error:", err); }
+    }
+
+    // Google Places API discovery (if "google_maps" is in selected platforms)
+    if (platforms.includes("google_maps") && !limitReached && process.env.GOOGLE_PLACES_API_KEY) {
+      try {
+        const personas = (campaign.analysis as Record<string, unknown>)?.personas as Array<Record<string, unknown>> || [];
+        const keyword = (personas[0]?.discovery_signals as string[] || [])[0] || (campaign.product_description as string || "").slice(0, 30);
+        const area = (campaign.target_area as string) || "東京";
+        const query = `${keyword} ${area}`;
+        console.log(`[google_maps] Searching: ${query}`);
+        const placesRes = await fetch(
+          `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(query)}&language=ja&key=${process.env.GOOGLE_PLACES_API_KEY}`,
+          { signal: AbortSignal.timeout(8000) }
+        );
+        if (placesRes.ok) {
+          const placesData = await placesRes.json();
+          const places = (placesData.results || []) as Array<Record<string, unknown>>;
+          console.log(`[google_maps] Found ${places.length} businesses`);
+          for (const place of places.slice(0, 8)) {
+            if (insertedTargets.length >= (campaignLimit - (count || 0))) break;
+            const name = (place.name as string) || "";
+            if (!name) continue;
+            const dedupKey = `google_maps::${name.toLowerCase()}`;
+            if (dedupSet.has(dedupKey)) continue;
+            dedupSet.add(dedupKey);
+            const placeId = place.place_id as string || "";
+            const mapsUrl = `https://www.google.com/maps/place/?q=place_id:${placeId}`;
+            const address = (place.formatted_address as string) || "";
+            // Try to get details (phone/website) from Place Details API
+            let phone = "";
+            let website = "";
+            if (placeId) {
+              try {
+                const detailRes = await fetch(
+                  `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=formatted_phone_number,website&key=${process.env.GOOGLE_PLACES_API_KEY}`,
+                  { signal: AbortSignal.timeout(5000) }
+                );
+                if (detailRes.ok) {
+                  const detail = await detailRes.json();
+                  phone = (detail.result?.formatted_phone_number as string) || "";
+                  website = (detail.result?.website as string) || "";
+                }
+              } catch { /* skip details */ }
+            }
+            // Hunter.io email lookup if website found
+            let email = "";
+            if (website && process.env.HUNTER_API_KEY) {
+              try {
+                const domain = new URL(website).hostname;
+                const hunterRes = await fetch(
+                  `https://api.hunter.io/v2/domain-search?domain=${domain}&limit=1&api_key=${process.env.HUNTER_API_KEY}`,
+                  { signal: AbortSignal.timeout(5000) }
+                );
+                if (hunterRes.ok) {
+                  const hunterData = await hunterRes.json();
+                  const emails = hunterData.data?.emails as Array<Record<string, string>> || [];
+                  if (emails[0]?.value) email = emails[0].value;
+                }
+              } catch { /* skip hunter */ }
+            }
+            await getSupabase().from("targets").insert({
+              campaign_id: campaignId, platform: "google_maps", username: name,
+              profile_url: mapsUrl, post_url: mapsUrl,
+              post_content: `${address} ${phone ? `📞 ${phone}` : ""}`.slice(0, 500),
+              match_score: 50, match_reason: `Googleマップ: ${area}`, status: "pending",
+              ...(email ? { email } : {}),
+              ...(phone ? { phone } : {}),
+              ...(website ? { website } : {}),
+            });
+            insertedTargets.push(name);
+            console.log(`[google_maps] Inserted: ${name} (${address.slice(0, 30)})`);
+          }
+        }
+      } catch (err) { console.error("[google_maps] error:", err); }
     }
 
     // 公開連絡先情報の抽出（プロフィールページから）

@@ -20,13 +20,44 @@ const PLATFORM_GROUPS: { label: string; platforms: PlatformDef[] }[] = [
     ],
   },
   {
-    label: "ブログ・コミュニティ",
+    label: "日本語プラットフォーム",
     platforms: [
       { id: "note", name: "note.com", icon: "📝", color: "#41c9b4", requiredPlan: "free" },
       { id: "yahoo_qa", name: "Yahoo知恵袋", icon: "🟡", color: "#ff0033", requiredPlan: "free" },
-      { id: "zenn", name: "Zenn", icon: "💻", color: "#3ea8ff", requiredPlan: "growth" },
-      { id: "qiita", name: "Qiita", icon: "🟩", color: "#55c500", requiredPlan: "growth" },
+      { id: "zenn", name: "Zenn", icon: "💻", color: "#3ea8ff", requiredPlan: "free" },
+      { id: "qiita", name: "Qiita", icon: "🟩", color: "#55c500", requiredPlan: "free" },
       { id: "hatena", name: "はてなブログ", icon: "✏️", color: "#00a4de", requiredPlan: "growth" },
+    ],
+  },
+  {
+    label: "求人・キャリア",
+    platforms: [
+      { id: "wantedly", name: "Wantedly", icon: "🤝", color: "#21bddb", requiredPlan: "free" },
+    ],
+  },
+  {
+    label: "イベント",
+    platforms: [
+      { id: "connpass", name: "Connpass", icon: "🎪", color: "#e05048", requiredPlan: "free" },
+      { id: "peatix", name: "Peatix", icon: "🎟️", color: "#f54b5e", requiredPlan: "free" },
+    ],
+  },
+  {
+    label: "グローバル",
+    platforms: [
+      { id: "producthunt", name: "Product Hunt", icon: "🚀", color: "#da552f", requiredPlan: "free" },
+    ],
+  },
+  {
+    label: "コミュニティ",
+    platforms: [
+      { id: "discord", name: "Discord/Slack", icon: "💬", color: "#5865f2", requiredPlan: "free" },
+    ],
+  },
+  {
+    label: "地域ビジネス",
+    platforms: [
+      { id: "google_maps", name: "Googleマップ", icon: "🗺️", color: "#4285f4", requiredPlan: "free" },
     ],
   },
   {
