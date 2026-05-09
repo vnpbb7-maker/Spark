@@ -62,6 +62,7 @@ export default function CampaignDetailPage() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [generatingIds, setGeneratingIds] = useState<Set<string>>(new Set());
   const [bulkGenerating, setBulkGenerating] = useState(false);
+  const [draftingIds, setDraftingIds] = useState<Set<string>>(new Set());
 
   // Reset ALL state when campaignId changes (prevents stale data from previous campaign)
   useEffect(() => {
@@ -199,6 +200,24 @@ export default function CampaignDetailPage() {
     setBulkGenerating(false);
     setToast(`✅ ${Math.min(withoutComment.length, 20)}件のコメントを生成しました`);
     setTimeout(() => setToast(""), 3000);
+  };
+
+  const handleDraftEmail = async (targetId: string) => {
+    setDraftingIds((prev) => { const n = new Set(prev); n.add(targetId); return n; });
+    try {
+      const res = await fetch(`/api/targets/${targetId}/draft-email`, { method: "POST" });
+      if (!res.ok) {
+        const err = await res.json();
+        setToast(`❌ ${err.error || "メール下書き作成に失敗"}`); setTimeout(() => setToast(""), 3000);
+        return;
+      }
+      const data = await res.json();
+      window.open(data.draft_url, "_blank");
+      setToast(`✅ Gmail下書きを開きました (${data.email_to})`); setTimeout(() => setToast(""), 4000);
+    } catch {
+      setToast("❌ エラーが発生しました"); setTimeout(() => setToast(""), 3000);
+    }
+    setDraftingIds((prev) => { const n = new Set(prev); n.delete(targetId); return n; });
   };
 
   const st = STATUS_MAP[campaign?.status as string] || STATUS_MAP.running;
@@ -442,6 +461,25 @@ export default function CampaignDetailPage() {
                               📋 コピー
                             </button>
                           </div>
+                        </div>
+                      )}
+
+                      {/* Email draft button — show for targets with real email */}
+                      {t.email && !t.email.startsWith("Twitter:") && (
+                        <div style={{ marginTop: "6px", marginLeft: "52px" }}>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleDraftEmail(t.id); }}
+                            disabled={draftingIds.has(t.id)}
+                            style={{
+                              background: draftingIds.has(t.id) ? "rgba(45,209,122,0.05)" : "rgba(45,209,122,0.1)",
+                              border: "1px solid rgba(45,209,122,0.2)", borderRadius: "8px",
+                              padding: "5px 12px", fontSize: "11px", fontWeight: 600,
+                              color: "#2dd17a", cursor: draftingIds.has(t.id) ? "wait" : "pointer",
+                              transition: "all 0.15s",
+                            }}
+                          >
+                            {draftingIds.has(t.id) ? "⏳ 下書き作成中..." : `📧 メール下書き作成 (${t.email})`}
+                          </button>
                         </div>
                       )}
 

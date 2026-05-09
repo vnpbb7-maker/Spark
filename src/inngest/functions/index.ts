@@ -66,6 +66,31 @@ async function searchTwitterTargets(keyword: string, language: string): Promise<
 // Extract publicly available contact info from a profile/page URL
 type ContactInfo = { email?: string; phone?: string; website?: string; contact_url?: string; twitter_handle?: string };
 
+// Try to get public email from GitHub profile
+async function getGitHubEmail(githubUrl: string): Promise<string | null> {
+  try {
+    const username = githubUrl.split('github.com/')[1]?.split(/[/?#]/)[0];
+    if (!username || username.length < 1) return null;
+    const token = process.env.GITHUB_TOKEN;
+    const headers: Record<string, string> = { 'Accept': 'application/vnd.github.v3+json', 'User-Agent': 'SPARK-Discovery' };
+    if (token) headers['Authorization'] = `token ${token}`;
+    const res = await fetch(`https://api.github.com/users/${username}`, {
+      headers,
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const email = data.email as string | null;
+    if (email && !email.includes('noreply') && !email.includes('users.noreply')) {
+      console.log(`[github] Found public email for ${username}: ${email}`);
+      return email;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 async function extractContactInfo(profileUrl: string, platform: string): Promise<ContactInfo> {
   try {
     // Use Jina Reader to fetch profile page content
@@ -93,12 +118,25 @@ async function extractContactInfo(profileUrl: string, platform: string): Promise
       }
     }
 
-    // Extract email (public profile/bio only)
-    const emailMatch = content.match(/[\w.+-]+@[\w.-]+\.\w{2,}/);
-    if (emailMatch) {
-      const email = emailMatch[0].toLowerCase();
-      if (!email.includes("example") && !email.includes("noreply") && !email.includes("support@") && !email.includes("info@")) {
-        result.email = email;
+    // Extract GitHub link and try to get email from GitHub API
+    const githubMatch = content.match(/https?:\/\/github\.com\/([a-zA-Z0-9_-]+)(?:[?\s/")\]|]|$)/);
+    if (githubMatch && ['qiita', 'zenn', 'note'].includes(platform)) {
+      const ghUrl = `https://github.com/${githubMatch[1]}`;
+      const ghEmail = await getGitHubEmail(ghUrl);
+      if (ghEmail) {
+        result.email = ghEmail;
+        result.website = result.website || ghUrl;
+      }
+    }
+
+    // Extract email from page content (if not already found via GitHub)
+    if (!result.email) {
+      const emailMatch = content.match(/[\w.+-]+@[\w.-]+\.\w{2,}/);
+      if (emailMatch) {
+        const email = emailMatch[0].toLowerCase();
+        if (!email.includes("example") && !email.includes("noreply") && !email.includes("support@") && !email.includes("info@")) {
+          result.email = email;
+        }
       }
     }
 
@@ -115,7 +153,7 @@ async function extractContactInfo(profileUrl: string, platform: string): Promise
     while ((urlMatch = urlPattern.exec(content)) !== null) {
       const domain = urlMatch[1].toLowerCase();
       if (!excludedDomains.some(d => domain.includes(d))) {
-        result.website = urlMatch[0].slice(0, 200);
+        result.website = result.website || urlMatch[0].slice(0, 200);
         break;
       }
     }
