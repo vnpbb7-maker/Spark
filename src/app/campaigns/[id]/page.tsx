@@ -54,7 +54,7 @@ export default function CampaignDetailPage() {
 
   const [campaign, setCampaign] = useState<Record<string, unknown> | null>(null);
   const [targets, setTargets] = useState<TargetRow[]>([]);
-  const [funnel, setFunnel] = useState({ discovered: 0, generated: 0, exported: 0 });
+  const [exportedCount, setExportedCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [toast, setToast] = useState("");
@@ -72,7 +72,7 @@ export default function CampaignDetailPage() {
     setCampaign(null);
     setTargets([]);
     setInitialLogs([]);
-    setFunnel({ discovered: 0, generated: 0, exported: 0 });
+    setExportedCount(0);
     setLoading(true);
     setSelected(new Set());
     setExpanded(new Set());
@@ -140,9 +140,7 @@ export default function CampaignDetailPage() {
     });
     setTargets(enriched);
 
-    const discovered = enriched.length;
-    const generated = enriched.filter((t) => t.comment).length;
-    setFunnel({ discovered, generated, exported: 0 });
+
 
     // Build logs from same data (no extra queries)
     const logTargets = enriched.map(t => ({ id: t.id, platform: t.platform, username: t.username, match_score: t.match_score, created_at: (tgtsResult.data?.find((d: any) => d.id === t.id) as any)?.created_at || "", priority: t.priority || undefined }));
@@ -176,7 +174,7 @@ export default function CampaignDetailPage() {
       const blobUrl = URL.createObjectURL(blob);
       const a = document.createElement("a"); a.href = blobUrl; a.download = `spark_targets_${campaignId.slice(0, 8)}.xlsx`; a.click();
       URL.revokeObjectURL(blobUrl);
-      setFunnel((p) => ({ ...p, exported: p.generated }));
+      setExportedCount(visibleTargets.filter(t => t.comment).length);
       setToast(`✅ エクスポート完了！${selectedIds.length > 0 ? ` (${selectedIds.length}件)` : ""}`); setTimeout(() => setToast(""), 3000);
     } catch { alert("エクスポートに失敗しました"); }
     setExporting(false);
@@ -231,6 +229,12 @@ export default function CampaignDetailPage() {
     .filter((t) => priorityFilter === "all" || t.priority === priorityFilter)
     .filter((t) => (t.match_score ?? 0) >= minScore),
     [targets, platformFilter, priorityFilter, minScore]);
+
+  const funnel = useMemo(() => ({
+    discovered: visibleTargets.length,
+    generated: visibleTargets.filter((t) => t.comment).length,
+    exported: exportedCount,
+  }), [visibleTargets, exportedCount]);
 
   const selectedCount = [...selected].filter((id) => visibleTargets.some((t) => t.id === id)).length;
 
