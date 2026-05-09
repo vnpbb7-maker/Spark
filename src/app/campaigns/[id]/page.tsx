@@ -111,6 +111,11 @@ export default function CampaignDetailPage() {
 
     if (!campResult.data) { routerRef.current.push("/dashboard"); return; }
     setCampaign(campResult.data);
+    // Set minimum score filter from campaign settings
+    const campaignMinScore = (campResult.data as Record<string, unknown>).min_match_score as number;
+    if (campaignMinScore && campaignMinScore > 0) {
+      setMinScore(campaignMinScore);
+    }
 
     const enriched: TargetRow[] = (tgtsResult.data || []).map((t: Record<string, unknown>) => {
       const comments = (t.comments as Array<Record<string, unknown>>) || [];

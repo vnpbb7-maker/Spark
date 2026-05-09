@@ -328,7 +328,8 @@ export const discoverTargets = inngest.createFunction(
       return { error: "Campaign limit reached" };
     }
     const remaining = campaignLimit - existingCount;
-    console.log(`Campaign ${campaignId}: ${existingCount}/${campaignLimit} targets, remaining: ${remaining}`);
+    const minMatchScore = (campaign.min_match_score as number) || 50;
+    console.log(`Campaign ${campaignId}: ${existingCount}/${campaignLimit} targets, remaining: ${remaining}, minMatchScore: ${minMatchScore}`);
 
     // 2b. Cross-campaign deduplication: load all existing targets for this user
     const userId = campaign.user_id;
@@ -721,6 +722,11 @@ JSON形式で返してください:
                 console.error(`[scoring] DB update error for ${t.username}:`, updateErr);
               } else {
                 console.log(`[scoring] ✅ ${t.username}: ${updateData.priority} (${totalScore}%) [R:${r} I:${i} F:${f} A:${a}]`);
+                // Delete targets that score below the campaign's min_match_score
+                if (totalScore < minMatchScore) {
+                  await getSupabase().from("targets").delete().eq("id", t.id);
+                  console.log(`[filter] Removed low score target: @${t.username} (score: ${totalScore}, min: ${minMatchScore})`);
+                }
               }
             } else {
               console.log(`[scoring] No valid JSON in response for ${t.username}, setting C`);
