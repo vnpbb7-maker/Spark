@@ -5,14 +5,14 @@ import { useRouter } from "next/navigation";
 import { CampaignSettings } from "@/types/campaign";
 import { createClient } from "@/lib/supabase/client";
 
-type PlatformDef = { id: string; name: string; icon: string; color: string; requiredPlan: string };
+type PlatformDef = { id: string; name: string; icon: string; color: string; requiredPlan: string; desc?: string };
 
 const PLATFORM_GROUPS: { label: string; platforms: PlatformDef[] }[] = [
   {
     label: "SNSプラットフォーム",
     platforms: [
-      { id: "twitter", name: "X", icon: "𝕏", color: "#1d9bf0", requiredPlan: "starter" },
-      { id: "reddit", name: "Reddit", icon: "🤖", color: "#ff4500", requiredPlan: "free" },
+      { id: "twitter", name: "X", icon: "𝕏", color: "#1d9bf0", requiredPlan: "starter", desc: "キーワード検索で個人を発見" },
+      { id: "reddit", name: "Reddit", icon: "🤖", color: "#ff4500", requiredPlan: "free", desc: "日本語プラットフォームに転送" },
       { id: "instagram", name: "Instagram", icon: "◈", color: "#e1306c", requiredPlan: "starter" },
       { id: "linkedin", name: "LinkedIn", icon: "in", color: "#0a66c2", requiredPlan: "growth" },
       { id: "tiktok", name: "TikTok", icon: "♪", color: "#ff0050", requiredPlan: "growth" },
@@ -22,48 +22,28 @@ const PLATFORM_GROUPS: { label: string; platforms: PlatformDef[] }[] = [
   {
     label: "日本語プラットフォーム",
     platforms: [
-      { id: "note", name: "note.com", icon: "📝", color: "#41c9b4", requiredPlan: "free" },
-      { id: "yahoo_qa", name: "Yahoo知恵袋", icon: "🟡", color: "#ff0033", requiredPlan: "free" },
-      { id: "zenn", name: "Zenn", icon: "💻", color: "#3ea8ff", requiredPlan: "free" },
-      { id: "qiita", name: "Qiita", icon: "🟩", color: "#55c500", requiredPlan: "free" },
+      { id: "note", name: "note.com", icon: "📝", color: "#41c9b4", requiredPlan: "free", desc: "連絡先取得率が低い" },
+      { id: "yahoo_qa", name: "Yahoo知恵袋", icon: "🟡", color: "#ff0033", requiredPlan: "free", desc: "質問者の悩みを直接発見" },
+      { id: "zenn", name: "Zenn", icon: "💻", color: "#3ea8ff", requiredPlan: "free", desc: "技術者・エンジニアに特化" },
+      { id: "qiita", name: "Qiita", icon: "🟩", color: "#55c500", requiredPlan: "free", desc: "技術者・エンジニアに特化" },
       { id: "hatena", name: "はてなブログ", icon: "✏️", color: "#00a4de", requiredPlan: "growth" },
     ],
   },
   {
-    label: "求人・キャリア",
+    label: "求人・イベント・コミュニティ",
     platforms: [
-      { id: "wantedly", name: "Wantedly", icon: "🤝", color: "#21bddb", requiredPlan: "free" },
-    ],
-  },
-  {
-    label: "イベント",
-    platforms: [
-      { id: "connpass", name: "Connpass", icon: "🎪", color: "#e05048", requiredPlan: "free" },
-      { id: "peatix", name: "Peatix", icon: "🎟️", color: "#f54b5e", requiredPlan: "free" },
-    ],
-  },
-  {
-    label: "グローバル",
-    platforms: [
-      { id: "producthunt", name: "Product Hunt", icon: "🚀", color: "#da552f", requiredPlan: "free" },
-    ],
-  },
-  {
-    label: "コミュニティ",
-    platforms: [
-      { id: "discord", name: "Discord/Slack", icon: "💬", color: "#5865f2", requiredPlan: "free" },
-    ],
-  },
-  {
-    label: "地域ビジネス",
-    platforms: [
-      { id: "google_maps", name: "Googleマップ", icon: "🗺️", color: "#4285f4", requiredPlan: "free" },
+      { id: "wantedly", name: "Wantedly", icon: "🤝", color: "#21bddb", requiredPlan: "free", desc: "求職者・スタートアップ人材" },
+      { id: "connpass", name: "Connpass", icon: "🎪", color: "#e05048", requiredPlan: "free", desc: "イベント参加者・技術コミュニティ" },
+      { id: "peatix", name: "Peatix", icon: "🎟️", color: "#f54b5e", requiredPlan: "free", desc: "イベント主催者・参加者" },
+      { id: "producthunt", name: "Product Hunt", icon: "🚀", color: "#da552f", requiredPlan: "starter", desc: "新ツール好きのアーリーアダプター" },
+      { id: "discord", name: "Discord / Slack", icon: "💬", color: "#5865f2", requiredPlan: "starter", desc: "コミュニティに直接アプローチ" },
+      { id: "google_maps", name: "Googleマップ", icon: "🗺️", color: "#4285f4", requiredPlan: "free", desc: "地域ビジネスの担当者を発見" },
     ],
   },
   {
     label: "ウェブ全体",
     platforms: [
-      { id: "web", name: "Web全体", icon: "🌐", color: "#2dd17a", requiredPlan: "growth" },
+      { id: "web", name: "Web全体", icon: "🌐", color: "#2dd17a", requiredPlan: "growth", desc: "制限なしで全ウェブ検索" },
     ],
   },
 ];
@@ -205,6 +185,9 @@ export default function Step3Settings({ recommendedPlatforms, onSubmit, loading 
                         <span style={{ fontSize: "10px", fontWeight: 600, color: "#ff6b35", background: "rgba(255,107,53,0.1)", padding: "2px 8px", borderRadius: "6px" }}>🔒 {getPlanLabel(p.requiredPlan)}</span>
                       )}
                     </div>
+                    {p.desc && allowed && (
+                      <div style={{ fontSize: "10px", color: "rgba(240,239,232,0.3)", lineHeight: 1.3, marginTop: "-2px" }}>{p.desc}</div>
+                    )}
                     {!allowed && (
                       <div style={{ fontSize: "11px", color: "rgba(255,107,53,0.7)", marginTop: "2px" }}>アップグレードして使う →</div>
                     )}
