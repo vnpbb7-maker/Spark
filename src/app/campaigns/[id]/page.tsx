@@ -58,6 +58,7 @@ export default function CampaignDetailPage() {
   const [exporting, setExporting] = useState(false);
   const [platformFilter, setPlatformFilter] = useState("all");
   const [priorityFilter, setPriorityFilter] = useState("all");
+  const [minScore, setMinScore] = useState(0);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [generatingIds, setGeneratingIds] = useState<Set<string>>(new Set());
   const [bulkGenerating, setBulkGenerating] = useState(false);
@@ -203,7 +204,8 @@ export default function CampaignDetailPage() {
     .filter((t) => {
       if (priorityFilter === "all") return true;
       return t.priority === priorityFilter;
-    });
+    })
+    .filter((t) => (t.match_score || 0) >= minScore);
 
   const selectedCount = [...selected].filter((id) => visibleTargets.some((t) => t.id === id)).length;
 
@@ -249,8 +251,10 @@ export default function CampaignDetailPage() {
             <div style={{ display: "flex", gap: "8px", marginBottom: "12px", flexWrap: "wrap", alignItems: "center" }}>
               {/* Priority filter */}
               {["all", "S", "A", "B", "C"].map((p) => {
-                const platformFiltered = targets.filter((t) => platformFilter === "all" || t.platform === platformFilter);
-                const count = p === "all" ? platformFiltered.length : platformFiltered.filter((t) => t.priority === p).length;
+                const baseFiltered = targets
+                  .filter((t) => platformFilter === "all" || t.platform === platformFilter)
+                  .filter((t) => (t.match_score || 0) >= minScore);
+                const count = p === "all" ? baseFiltered.length : baseFiltered.filter((t) => t.priority === p).length;
                 const ps = p !== "all" ? PRIORITY_STYLE[p] : null;
                 return (
                   <button key={p} onClick={() => setPriorityFilter(p)} style={{
@@ -279,6 +283,25 @@ export default function CampaignDetailPage() {
                   </button>
                 );
               })}
+              <span style={{ color: "rgba(255,255,255,0.1)", margin: "0 4px" }}>|</span>
+              {/* Minimum score filter */}
+              <select
+                value={minScore}
+                onChange={(e) => setMinScore(Number(e.target.value))}
+                style={{
+                  background: minScore > 0 ? "rgba(255,107,53,0.12)" : "rgba(255,255,255,0.03)",
+                  border: `1px solid ${minScore > 0 ? "rgba(255,107,53,0.3)" : "rgba(255,255,255,0.07)"}`,
+                  borderRadius: "8px", padding: "4px 8px", fontSize: "11px", fontWeight: 600,
+                  color: minScore > 0 ? "#ff6b35" : "rgba(240,239,232,0.5)",
+                  cursor: "pointer", outline: "none",
+                }}
+              >
+                <option value={0}>最低スコア: なし</option>
+                <option value={30}>≥ 30%</option>
+                <option value={50}>≥ 50%</option>
+                <option value={70}>≥ 70%</option>
+                <option value={90}>≥ 90%</option>
+              </select>
             </div>
 
             {/* Action bar */}
