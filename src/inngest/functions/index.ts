@@ -721,12 +721,8 @@ JSON形式で返してください:
               if (updateErr) {
                 console.error(`[scoring] DB update error for ${t.username}:`, updateErr);
               } else {
-                console.log(`[scoring] ✅ ${t.username}: ${updateData.priority} (${totalScore}%) [R:${r} I:${i} F:${f} A:${a}]`);
-                // Delete targets that score below the campaign's min_match_score
-                if (totalScore < minMatchScore) {
-                  await getSupabase().from("targets").delete().eq("id", t.id);
-                  console.log(`[filter] Removed low score target: @${t.username} (score: ${totalScore}, min: ${minMatchScore})`);
-                }
+                const belowThreshold = totalScore < minMatchScore;
+                console.log(`[scoring] ✅ ${t.username}: ${updateData.priority} (${totalScore}%) [R:${r} I:${i} F:${f} A:${a}]${belowThreshold ? ` (below threshold ${minMatchScore}%)` : ""}`);
               }
             } else {
               console.log(`[scoring] No valid JSON in response for ${t.username}, setting C`);

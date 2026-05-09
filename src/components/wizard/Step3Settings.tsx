@@ -307,14 +307,14 @@ export default function Step3Settings({ recommendedPlatforms, onSubmit, loading 
         <input
           type="range"
           min={30}
-          max={90}
+          max={70}
           value={minMatchScore}
           onChange={(e) => setMinMatchScore(Number(e.target.value))}
           style={{ width: "100%", accentColor: "#ff6b35" }}
         />
         <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "rgba(240,239,232,0.4)" }}>
           <span>30%（広く）</span>
-          <span>90%（厳密）</span>
+          <span>70%（厳密）</span>
         </div>
       </div>
 
