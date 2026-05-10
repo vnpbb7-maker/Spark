@@ -827,6 +827,7 @@ export const discoverTargets = inngest.createFunction(
               }
             }
 
+            const productDescription = campaign.product_description || campaign.product_url || "";
             const scoreResponse = await fetch("https://api.anthropic.com/v1/messages", {
               method: "POST",
               headers: {
@@ -842,22 +843,34 @@ export const discoverTargets = inngest.createFunction(
                 messages: [
                   {
                     role: "user",
-                    content: `あなたはβテスターの適性を評価する専門家です。
-以下の投稿を読んで、このプロダクトのβテスターとして適切かを評価してください。
+                    content: `あなたはβテスター候補の適性を判断する専門家です。
+以下の投稿を読んで、このプロダクトのβテスターとして適切かを判断してください。
 
-プロダクト: ${campaign.product_description || campaign.product_url}
-投稿者: ${t.username}
-プラットフォーム: ${t.platform}
+プロダクト: ${productDescription}
+投稿者: ${t.username} (${t.platform})
 投稿内容: ${enrichedContent.slice(0, 500)}
 
-以下の4軸で評価してください（各0-25点、合計100点）:
-1. 課題一致度 (relevance_score): プロダクトが解決する課題を抱えているか
-2. 行動意欲 (intent_score): 新しいツールを試す意欲を示しているか
-3. 影響力 (influence_score): フォロワーやコミュニティへの影響力があるか
-4. 接触可能性 (accessibility_score): 返信・反応してくれそうか
+以下の3つの質問に答えてください：
 
-JSON形式で返してください:
-{"relevance_score":0,"intent_score":0,"influence_score":0,"accessibility_score":0,"reason":"日本語で1文","estimated_age":"20代","estimated_role":"推定役職"}`,
+Q1. この人は今まさにこのプロダクトが解決する課題を抱えていますか？(0-10)
+- 10: 「困っている」「探している」「やりたい」など直接的な課題表現がある
+- 7: 課題に関連する内容を書いているが直接的ではない
+- 3: 関連分野だが課題は不明確
+- 0: 関係ない
+
+Q2. この人は新しいツールを試す意欲がありますか？(0-10)
+- 10: 「試したい」「使ってみたい」「βテスト」など直接的な表現
+- 7: 新しいツールや技術への関心を示している
+- 3: 保守的または既存ツールに満足している様子
+- 0: 意欲が全く読み取れない
+
+Q3. この人に連絡は取れそうですか？(0-5)
+- 5: 個人アカウントでアクティブに投稿している
+- 3: アカウントはあるが活動が不明
+- 0: 企業アカウントまたは連絡不可
+
+JSONのみ返してください:
+{"q1_score":0,"q2_score":0,"q3_score":0,"reason":"日本語で1文","estimated_age":"20代","estimated_role":"推定職種"}`,
                   },
                 ],
               }),
@@ -871,22 +884,22 @@ JSON形式で返してください:
 
             if (scoreMatch) {
               const score = JSON.parse(scoreMatch[0]);
-              const r = Math.min(25, Math.max(0, score.relevance_score || 0));
-              const i = Math.min(25, Math.max(0, score.intent_score || 0));
-              const f = Math.min(25, Math.max(0, score.influence_score || 0));
-              const a = Math.min(25, Math.max(0, score.accessibility_score || 0));
-              const totalScore = Math.min(100, Math.max(0, r + i + f + a));
+              const q1 = Math.min(10, Math.max(0, score.q1_score || 0));
+              const q2 = Math.min(10, Math.max(0, score.q2_score || 0));
+              const q3 = Math.min(5, Math.max(0, score.q3_score || 0));
+              const totalScore = Math.min(100, Math.max(0, (q1 + q2 + q3) * 4));
 
-              // Always compute priority from total_score
-              // Lowered thresholds for better distribution
-              const priority = totalScore >= 70 ? "S" : totalScore >= 50 ? "A" : totalScore >= 30 ? "B" : "C";
+              const priority = totalScore >= 75 ? "S" : totalScore >= 55 ? "A" : totalScore >= 35 ? "B" : "C";
 
               const updateData = {
                 match_score: totalScore,
-                relevance_score: r,
-                intent_score: i,
-                influence_score: f,
-                accessibility_score: a,
+                q1_score: q1,
+                q2_score: q2,
+                q3_score: q3,
+                relevance_score: q1,
+                intent_score: q2,
+                influence_score: q3,
+                accessibility_score: q3,
                 priority,
                 ai_reason: (score.reason || "").slice(0, 200),
                 estimated_age: score.estimated_age || "不明",
@@ -900,11 +913,11 @@ JSON形式で返してください:
                 console.error(`[scoring] DB update error for ${t.username}:`, updateErr);
               } else {
                 const belowThreshold = totalScore < minMatchScore;
-                console.log(`[scoring] ✅ ${t.username}: ${updateData.priority} (${totalScore}%) [R:${r} I:${i} F:${f} A:${a}]${belowThreshold ? ` (below threshold ${minMatchScore}%)` : ""}`);
+                console.log(`[scoring] ✅ ${t.username}: ${priority} (${totalScore}%) [Q1:${q1} Q2:${q2} Q3:${q3}]${belowThreshold ? ` (below ${minMatchScore}%)` : ""}`);
               }
             } else {
               console.log(`[scoring] No valid JSON in response for ${t.username}, setting C`);
-              await getSupabase().from("targets").update({ priority: "C", status: "scored", relevance_score: 0, intent_score: 0, influence_score: 0, accessibility_score: 0 }).eq("id", t.id);
+              await getSupabase().from("targets").update({ priority: "C", status: "scored", q1_score: 0, q2_score: 0, q3_score: 0, relevance_score: 0, intent_score: 0, influence_score: 0, accessibility_score: 0 }).eq("id", t.id);
             }
           } catch (scoreErr) {
             console.error(`[scoring] Error for ${t.username}:`, scoreErr);

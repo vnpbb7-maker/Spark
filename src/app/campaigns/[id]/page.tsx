@@ -41,6 +41,7 @@ type TargetRow = {
   estimated_age: string | null; estimated_role: string | null;
   relevance_score: number | null; intent_score: number | null;
   influence_score: number | null; accessibility_score: number | null;
+  q1_score: number | null; q2_score: number | null; q3_score: number | null;
   comment?: { id: string; content: string; approach: string | null };
 };
 
@@ -66,6 +67,7 @@ export default function CampaignDetailPage() {
   const [generatingIds, setGeneratingIds] = useState<Set<string>>(new Set());
   const [bulkGenerating, setBulkGenerating] = useState(false);
   const [draftingIds, setDraftingIds] = useState<Set<string>>(new Set());
+  const minScoreInitRef = useRef(false);
 
   // Reset ALL state when campaignId changes (prevents stale data from previous campaign)
   useEffect(() => {
@@ -78,6 +80,7 @@ export default function CampaignDetailPage() {
     setExpanded(new Set());
     setPlatformFilter("all");
     setPriorityFilter("all");
+    minScoreInitRef.current = false;
   }, [campaignId]);
 
   const buildLogsFromData = useCallback((
@@ -115,10 +118,13 @@ export default function CampaignDetailPage() {
 
     if (!campResult.data) { routerRef.current.push("/dashboard"); return; }
     setCampaign(campResult.data);
-    // Set minimum score filter from campaign settings (cap at 50 for initial display)
-    const campaignMinScore = (campResult.data as Record<string, unknown>).min_match_score as number;
-    if (campaignMinScore && campaignMinScore > 0) {
-      setMinScore(Math.min(campaignMinScore, 50));
+    // Set minimum score filter from campaign settings ONCE (never override user's manual selection)
+    if (!minScoreInitRef.current) {
+      const campaignMinScore = (campResult.data as Record<string, unknown>).min_match_score as number;
+      if (campaignMinScore && campaignMinScore > 0) {
+        setMinScore(Math.min(campaignMinScore, 50));
+      }
+      minScoreInitRef.current = true;
     }
 
     const enriched: TargetRow[] = (tgtsResult.data || []).map((t: Record<string, unknown>) => {
@@ -135,6 +141,9 @@ export default function CampaignDetailPage() {
         intent_score: t.intent_score as number | null,
         influence_score: t.influence_score as number | null,
         accessibility_score: t.accessibility_score as number | null,
+        q1_score: t.q1_score as number | null,
+        q2_score: t.q2_score as number | null,
+        q3_score: t.q3_score as number | null,
         comment: comment ? { id: comment.id as string, content: comment.content as string, approach: comment.approach as string | null } : undefined,
       };
     });
@@ -499,20 +508,19 @@ export default function CampaignDetailPage() {
                             </div>
                           )}
                           {/* Sub-scores — always show */}
-                          {t.relevance_score != null ? (
-                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px", background: "rgba(255,255,255,0.02)", borderRadius: "8px", padding: "10px" }}>
+                          {(t.q1_score != null || t.relevance_score != null) ? (
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "6px", background: "rgba(255,255,255,0.02)", borderRadius: "8px", padding: "10px" }}>
                               {[
-                                { label: "課題一致", score: t.relevance_score, color: "#ff6b35" },
-                                { label: "行動意欲", score: t.intent_score, color: "#2dd17a" },
-                                { label: "影響力", score: t.influence_score, color: "#1d9bf0" },
-                                { label: "接触性", score: t.accessibility_score, color: "#ffd60a" },
+                                { label: "課題の深さ", score: t.q1_score ?? t.relevance_score ?? 0, max: 10, color: "#ff6b35" },
+                                { label: "試す意欲", score: t.q2_score ?? t.intent_score ?? 0, max: 10, color: "#2dd17a" },
+                                { label: "接触可能性", score: t.q3_score ?? t.influence_score ?? 0, max: 5, color: "#1d9bf0" },
                               ].map((s) => (
-                                <div key={s.label} style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                                  <span style={{ fontSize: "10px", color: "rgba(240,239,232,0.35)", width: "48px", flexShrink: 0 }}>{s.label}</span>
-                                  <div style={{ flex: 1, height: "4px", background: "rgba(255,255,255,0.05)", borderRadius: "2px", overflow: "hidden" }}>
-                                    <div style={{ width: `${((s.score || 0) / 25) * 100}%`, height: "100%", background: s.color, borderRadius: "2px" }} />
+                                <div key={s.label} style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                                  <span style={{ fontSize: "10px", color: "rgba(240,239,232,0.4)", width: "60px", flexShrink: 0 }}>{s.label}</span>
+                                  <div style={{ flex: 1, height: "5px", background: "rgba(255,255,255,0.05)", borderRadius: "3px", overflow: "hidden" }}>
+                                    <div style={{ width: `${(s.score / s.max) * 100}%`, height: "100%", background: s.color, borderRadius: "3px" }} />
                                   </div>
-                                  <span style={{ fontSize: "10px", color: s.color, fontWeight: 700, width: "20px", textAlign: "right" }}>{s.score || 0}</span>
+                                  <span style={{ fontSize: "10px", color: s.color, fontWeight: 700, width: "30px", textAlign: "right" }}>{s.score}/{s.max}</span>
                                 </div>
                               ))}
                             </div>
