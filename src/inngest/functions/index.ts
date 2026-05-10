@@ -189,11 +189,40 @@ const COMPANY_SIGNALS = [
   '株式会社', '合同会社', '有限会社', 'inc.', 'corp', 'co.jp', 'co.,ltd', 'company', 'official',
   'サービス紹介', 'プレスリリース', 'お知らせ', '会社概要', '採用情報', '企業',
   '/press/', '/news/', '/company/', '/about/', '/service/', '/recruit/',
+  'blog.', '/blog/', 'techblog', 'engineering.', 'developers.', 'product/', 'landing',
+];
+
+// Allowlist of personal platform URL patterns
+const PERSONAL_URL_PATTERNS = [
+  /note\.com\/[a-zA-Z0-9_-]+/,
+  /qiita\.com\/[a-zA-Z0-9_-]+/,
+  /zenn\.dev\/[a-zA-Z0-9_-]+/,
+  /(?:twitter|x)\.com\/[a-zA-Z0-9_]+/,
+  /reddit\.com\/(?:user|r)\/[a-zA-Z0-9_-]+/,
+  /wantedly\.com\/(?:id|users)\/[a-zA-Z0-9_-]+/,
+  /connpass\.com\/(?:user|event)\/[a-zA-Z0-9_-]+/,
+  /producthunt\.com\/(?:@|posts\/)[a-zA-Z0-9_-]+/,
+  /peatix\.com\/event\/[0-9]+/,
+  /hatenablog\.com/,
+  /hatena\.ne\.jp/,
+  /chiebukuro\.yahoo\.co\.jp/,
+  /discord\.(?:gg|com)/,
+  /github\.com\/[a-zA-Z0-9_-]+/,
 ];
 
 function isCompanyUrl(url: string, content: string = ""): boolean {
   const lower = (url + " " + content.slice(0, 200)).toLowerCase();
-  return COMPANY_SIGNALS.some(s => lower.includes(s));
+  // Check company signals first
+  if (COMPANY_SIGNALS.some(s => lower.includes(s))) return true;
+  // If URL is from a known personal platform, it's NOT a company
+  if (PERSONAL_URL_PATTERNS.some(p => p.test(url))) return false;
+  // Unknown domain without personal platform pattern = likely company blog
+  const detectedPlatform = detectPlatformFromUrl(url);
+  if (detectedPlatform === "web") {
+    console.log(`[filter] Skipped unknown domain (likely company): ${url.slice(0, 60)}`);
+    return true;
+  }
+  return false;
 }
 
 // Build author profile URL from article URL
@@ -828,6 +857,10 @@ export const discoverTargets = inngest.createFunction(
             }
 
             const productDescription = campaign.product_description || campaign.product_url || "";
+            // Detect if this looks like a company/corporate post
+            const looksLikeCompany = /株式会社|合同会社|公式|サービス|ソリューション|press|release/.test(enrichedContent.slice(0, 300));
+            const isPersonalPlatform = ["note", "qiita", "zenn", "twitter", "reddit", "wantedly", "connpass"].includes(t.platform);
+
             const scoreResponse = await fetch("https://api.anthropic.com/v1/messages", {
               method: "POST",
               headers: {
@@ -838,39 +871,44 @@ export const discoverTargets = inngest.createFunction(
               body: JSON.stringify({
                 model: "claude-haiku-4-5-20251001",
                 max_tokens: 300,
-                temperature: 0,
-                system: "You must respond with valid JSON only. No markdown, no explanation. Start with { and end with }.",
+                temperature: 0.3,
+                system: `You must respond with valid JSON only. No markdown, no explanation. Start with { and end with }.
+重要ルール:
+- スコアは必ず差をつけてください。全員に同じスコアをつけることは禁止です。
+- 企業ブログや会社の公式記事の場合、q3_scoreは必ず0にしてください。
+- 「困っている」「探している」の直接的表現がない限り、q1_scoreを7以上にしないでください。
+- 一般的な技術記事やノウハウ共有は q1=3, q2=3 程度です。`,
                 messages: [
                   {
                     role: "user",
-                    content: `あなたはβテスター候補の適性を判断する専門家です。
-以下の投稿を読んで、このプロダクトのβテスターとして適切かを判断してください。
+                    content: `βテスター候補を厳密に評価してください。${looksLikeCompany ? "\n⚠️ この投稿は企業・法人の可能性が高いです。個人でない場合はq3=0にしてください。" : ""}
 
 プロダクト: ${productDescription}
 投稿者: ${t.username} (${t.platform})
 投稿内容: ${enrichedContent.slice(0, 500)}
 
-以下の3つの質問に答えてください：
+Q1. 課題の深さ (0-10):
+  0: プロダクトと全く無関係
+  2-3: 関連分野だが課題を抱えている証拠なし（ノウハウ記事、一般論）
+  5-6: 課題に言及しているが解決策を探していない
+  8-9: 「困っている」「探している」「やりたい」と明確に表現
+  10: 「今すぐ解決したい」「ツールを探している」と緊急性がある
 
-Q1. この人は今まさにこのプロダクトが解決する課題を抱えていますか？(0-10)
-- 10: 「困っている」「探している」「やりたい」など直接的な課題表現がある
-- 7: 課題に関連する内容を書いているが直接的ではない
-- 3: 関連分野だが課題は不明確
-- 0: 関係ない
+Q2. 試す意欲 (0-10):
+  0: 意欲が全く読み取れない
+  2-3: 既存ツールに満足、保守的
+  5-6: 新しい技術への関心はあるが積極的ではない
+  8-9: 「試したい」「使ってみたい」と表現
+  10: βテストや新サービスに積極的に参加する人
 
-Q2. この人は新しいツールを試す意欲がありますか？(0-10)
-- 10: 「試したい」「使ってみたい」「βテスト」など直接的な表現
-- 7: 新しいツールや技術への関心を示している
-- 3: 保守的または既存ツールに満足している様子
-- 0: 意欲が全く読み取れない
+Q3. 接触可能性 (0-5):
+  0: 企業アカウント/ボット/連絡不可${!isPersonalPlatform ? " ← 個人プラットフォームではないため注意" : ""}
+  1-2: アカウントはあるが連絡手段不明
+  3-4: 個人アカウントでアクティブ
+  5: SNSリンクやメールが公開されている
 
-Q3. この人に連絡は取れそうですか？(0-5)
-- 5: 個人アカウントでアクティブに投稿している
-- 3: アカウントはあるが活動が不明
-- 0: 企業アカウントまたは連絡不可
-
-JSONのみ返してください:
-{"q1_score":0,"q2_score":0,"q3_score":0,"reason":"日本語で1文","estimated_age":"20代","estimated_role":"推定職種"}`,
+JSONのみ:
+{"q1_score":0,"q2_score":0,"q3_score":0,"reason":"日本語1文","estimated_age":"20代/30代/40代/不明","estimated_role":"職種"}`,
                   },
                 ],
               }),
