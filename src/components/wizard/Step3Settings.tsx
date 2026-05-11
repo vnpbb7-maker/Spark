@@ -84,7 +84,7 @@ export default function Step3Settings({ recommendedPlatforms, onSubmit, loading 
   const [platforms, setPlatforms] = useState<string[]>([]);
   const [dailyLimit, setDailyLimit] = useState(10);
   const [tone, setTone] = useState<CampaignSettings["tone"]>("casual");
-  const [autoMode, setAutoMode] = useState(false);
+
   const [userPlan, setUserPlan] = useState("free");
   const [upgradeModal, setUpgradeModal] = useState<string | null>(null);
   const [targetLanguage, setTargetLanguage] = useState("ja");
@@ -132,7 +132,7 @@ export default function Step3Settings({ recommendedPlatforms, onSubmit, loading 
       router.push("/pricing");
       return;
     }
-    onSubmit({ platforms, daily_limit: dailyLimit, tone, auto_mode: autoMode, target_language: targetLanguage, required_keywords: requiredKeywords, min_match_score: minMatchScore });
+    onSubmit({ platforms, daily_limit: dailyLimit, tone, auto_mode: false, target_language: targetLanguage, required_keywords: requiredKeywords, min_match_score: minMatchScore });
   };
 
   return (
@@ -235,26 +235,6 @@ export default function Step3Settings({ recommendedPlatforms, onSubmit, loading 
         </div>
       </div>
 
-      {/* Auto mode toggle */}
-      <div style={{ marginBottom: "40px" }}>
-        <h3 style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600, fontSize: "15px", color: "#f0efe8", marginBottom: "12px" }}>承認モード</h3>
-        <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-          <button onClick={() => setAutoMode(false)} style={{ display: "flex", alignItems: "flex-start", gap: "12px", padding: "18px", background: !autoMode ? "rgba(255,107,53,0.1)" : "rgba(255,255,255,0.03)", border: `1px solid ${!autoMode ? "rgba(255,107,53,0.4)" : "rgba(255,255,255,0.07)"}`, borderRadius: "14px", cursor: "pointer", transition: "all 0.2s", textAlign: "left" }}>
-            <span style={{ fontSize: "24px" }}>🔶</span>
-            <div>
-              <div style={{ fontSize: "15px", fontWeight: 600, color: !autoMode ? "#ff6b35" : "#f0efe8", marginBottom: "4px" }}>半自動モード（推奨）</div>
-              <div style={{ fontSize: "12px", color: "rgba(240,239,232,0.4)" }}>AIが生成 → あなたが確認 → 投稿</div>
-            </div>
-          </button>
-          <button onClick={() => setAutoMode(true)} style={{ display: "flex", alignItems: "flex-start", gap: "12px", padding: "18px", background: autoMode ? "rgba(45,209,122,0.1)" : "rgba(255,255,255,0.03)", border: `1px solid ${autoMode ? "rgba(45,209,122,0.4)" : "rgba(255,255,255,0.07)"}`, borderRadius: "14px", cursor: "pointer", transition: "all 0.2s", textAlign: "left" }}>
-            <span style={{ fontSize: "24px" }}>🟢</span>
-            <div>
-              <div style={{ fontSize: "15px", fontWeight: 600, color: autoMode ? "#2dd17a" : "#f0efe8", marginBottom: "4px" }}>全自動モード</div>
-              <div style={{ fontSize: "12px", color: "rgba(240,239,232,0.4)" }}>AIが全て自動で実行</div>
-            </div>
-          </button>
-        </div>
-      </div>
 
       {/* Language selection */}
       <div style={{ marginBottom: "36px" }}>
@@ -358,8 +338,8 @@ export default function Step3Settings({ recommendedPlatforms, onSubmit, loading 
               {upgradeModal}はGrowthプランで利用可能
             </div>
             <div style={{ fontSize: 13, color: "rgba(240,239,232,0.5)", marginBottom: 24, lineHeight: 1.6 }}>
-              Growthプラン（$299/月）にアップグレードすると
-              全6プラットフォームで自動コメント投稿が使えます。
+              Growthプラン（$99/月）にアップグレードすると
+              全プラットフォームで自動ターゲット発見が使えます。
             </div>
             <button
               onClick={async () => {
