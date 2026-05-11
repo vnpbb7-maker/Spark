@@ -453,8 +453,6 @@ export const discoverTargets = inngest.createFunction(
 
     // 3. Generate problem-focused search queries via Claude
     const platforms = (campaign.platforms || []) as string[];
-    const insertedTargets: string[] = [];
-    let limitReached = false;
     const productDescription = (campaign.product_description as string) || "";
     console.log("[discovery] User selected platforms:", JSON.stringify(platforms));
 
@@ -513,6 +511,9 @@ JSON形式で返してください: { "queries": ["クエリ1", "クエリ2", "�
 
     // ═══ STEP 2: Discover targets ═══
     const discoveryResult = await step.run("discover-targets-search", async () => {
+
+    const insertedTargets: string[] = [];
+    let limitReached = false;
 
     // 6-month freshness
     const sixMonthsAgo = new Date();
