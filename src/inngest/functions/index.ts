@@ -448,249 +448,198 @@ export const discoverTargets = inngest.createFunction(
     });
     console.log(`[dedup] Loaded ${dedupSet.size} existing targets across ${userCampaignIds.length} campaigns`);
 
-    // 3. Tavily APIでターゲット発見
-    const personas = campaign.target_personas?.personas || [];
-    const platforms = campaign.platforms || [];
+    // 3. Generate problem-focused search queries via Claude
+    const platforms = (campaign.platforms || []) as string[];
     const insertedTargets: string[] = [];
     let limitReached = false;
-    console.log("Personas count:", personas.length);
-    console.log("[discovery] platforms selected:", platforms);
+    const productDescription = (campaign.product_description as string) || "";
+    console.log("[discovery] User selected platforms:", JSON.stringify(platforms));
 
-    for (const persona of personas.slice(0, 3)) {
+    // Generate search queries focused on PEOPLE WITH PROBLEMS
+    let searchQueries: string[] = [];
+    try {
+      const queryGenRes = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-api-key": process.env.ANTHROPIC_API_KEY || "", "anthropic-version": "2023-06-01" },
+        body: JSON.stringify({
+          model: "claude-3-5-haiku-20241022", max_tokens: 500, temperature: 0.7,
+          messages: [{ role: "user", content: `あなたは検索クエリ生成の専門家です。
+
+このプロダクトが解決する課題を「今まさに抱えている個人」を見つけるための検索クエリを生成してください。
+
+プロダクト: ${productDescription}
+
+ルール:
+- 全て日本語で生成
+- 記事やブログではなく、「困っている人」「探している人」を見つけるクエリ
+- 「〜で困っている」「〜のツール探してる」「〜を自動化したい」「〜しんどい」「〜いい方法ない？」のような表現を使う
+- 5つのクエリを返す
+
+JSON形式で返してください: { "queries": ["クエリ1", "クエリ2", "クエリ3", "クエリ4", "クエリ5"] }` }],
+        }),
+      });
+      if (queryGenRes.ok) {
+        const queryGenData = await queryGenRes.json();
+        const text = queryGenData.content?.[0]?.text || "";
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          const parsed = JSON.parse(jsonMatch[0]);
+          searchQueries = parsed.queries || [];
+        }
+      }
+    } catch (e) { console.error("[discovery] Query generation error:", e); }
+
+    // Fallback if Claude fails
+    if (searchQueries.length === 0) {
+      const keywords = productDescription.split(/\s+/).filter(Boolean).slice(0, 3);
+      searchQueries = [
+        `${keywords[0] || ""} 困っている 解決策`,
+        `${keywords[0] || ""} ツール 探している`,
+        `${keywords.join(" ")} 自動化したい`,
+      ];
+    }
+    console.log("[discovery] Generated queries:", searchQueries);
+
+    // 6-month freshness
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+    const startDate = sixMonthsAgo.toISOString().split("T")[0];
+
+    // Platform-specific site prefixes
+    const PLATFORM_SITE: Record<string, string> = {
+      twitter: "site:x.com OR site:twitter.com",
+      reddit: "site:reddit.com",
+      note: "site:note.com",
+      qiita: "site:qiita.com",
+      zenn: "site:zenn.dev",
+      yahoo_qa: "site:detail.chiebukuro.yahoo.co.jp",
+      hatena: "site:hatenablog.com OR site:hatenadiary.com",
+      wantedly: "site:wantedly.com",
+      producthunt: "site:producthunt.com",
+      peatix: "site:peatix.com",
+    };
+
+    // Process each platform the user selected (HARD BLOCK: skip anything not selected)
+    for (const platform of platforms) {
       if (limitReached) break;
 
-      // Build search queries from new persona format (discovery_signals + twitter_keywords)
-      // Fall back to legacy format (where_to_find / keywords) for old cached data
-      const discoverySignals = persona.discovery_signals || [];
-      const twitterKeywords = persona.twitter_keywords || [];
-      const redditCommunities = persona.reddit_communities || [];
-      const legacyKeywords = persona.keywords || [];
+      // Skip platforms handled separately below (connpass, google_maps)
+      if (platform === "connpass" || platform === "google_maps") continue;
 
-      // Combine signals: discovery_signals first, then twitter_keywords
-      const allSignals = [
-        ...discoverySignals,
-        ...twitterKeywords,
-        ...legacyKeywords,
-      ].filter(Boolean);
-
-      // Shuffle signals for variety across runs
-      for (let i = allSignals.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [allSignals[i], allSignals[j]] = [allSignals[j], allSignals[i]];
-      }
-      const searchTerms = allSignals.slice(0, 5);
-
-      console.log(`Persona "${persona.label || persona.name}": ${searchTerms.length} search terms, ${redditCommunities.length} reddit communities`);
-
-      for (const platform of platforms.slice(0, 4)) {
-        if (limitReached) break;
-
-        // For Twitter, search using twitter_keywords directly
-        if (platform === "twitter") {
-          const twKeywords = twitterKeywords.length > 0 ? twitterKeywords : searchTerms;
-          for (const keyword of twKeywords.slice(0, 3)) {
-            const tweets = await searchTwitterTargets(keyword, campaign.target_language || "ja");
-            console.log(`Twitter API results for "${keyword}":`, tweets.length);
-
-            for (const tweet of tweets) {
-              if (insertedTargets.length >= remaining) { limitReached = true; break; }
-              if (tweet.username && tweet.username !== "unknown") {
-                const dedupKey = `twitter::${tweet.username.toLowerCase()}`;
-                if (dedupSet.has(dedupKey)) { console.log(`[dedup] Skipped duplicate: @${tweet.username} (twitter)`); continue; }
-                dedupSet.add(dedupKey);
-                await getSupabase().from("targets").insert({
-                  campaign_id: campaignId, platform: "twitter", username: tweet.username,
-                  profile_url: `https://x.com/${tweet.username}`, post_url: tweet.url,
-                  post_content: tweet.content?.slice(0, 500) || "", match_score: 60,
-                  match_reason: `キーワード: ${keyword}`, status: "pending",
-                });
-                insertedTargets.push(tweet.username);
-              }
-            }
-          }
-          continue;
-        }
-
-        // 6-month freshness: calculate start_date for all Tavily searches
-        const sixMonthsAgo = new Date();
-        sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-        const startDate = sixMonthsAgo.toISOString().split("T")[0]; // YYYY-MM-DD
-
-        // For Reddit, search Japanese platforms — but ONLY ones user selected
-        if (platform === "reddit") {
-          const jpPlatformMap: Record<string, string> = {
-            "note": "site:note.com",
-            "zenn": "site:zenn.dev",
-            "qiita": "site:qiita.com",
-            "reddit": "site:reddit.com",
-          };
-          // Only search JP sites that are in the user's selected platforms
-          const jpSites = platforms
-            .filter((p: string) => jpPlatformMap[p])
-            .map((p: string) => jpPlatformMap[p]);
-          // If no JP platforms selected, fall back to reddit itself
-          if (jpSites.length === 0) jpSites.push("site:reddit.com");
-          console.log(`[discovery] Reddit redirect → searching: ${jpSites.join(", ")}`);
-          for (const site of jpSites) {
-            if (limitReached) break;
-            const query = `${site} ${searchTerms[0] || ""} 困っている OR 探している`;
-            try {
-              const tavilyResponse = await fetch("https://api.tavily.com/search", {
-                method: "POST",
-                headers: { "Content-Type": "application/json", "Authorization": `Bearer ${process.env.TAVILY_API_KEY}` },
-                body: JSON.stringify({ query, max_results: 5, search_depth: "basic", topic: "general", include_raw_content: false, start_date: startDate }),
-              });
-              if (!tavilyResponse.ok) continue;
-              const tavilyData = await tavilyResponse.json();
-              const results = filterFreshResults((tavilyData.results || []) as Record<string, unknown>[], sixMonthsAgo);
-              for (const result of results) {
-                const url = (result.url as string) || "";
-                const content = String((result.content as string) || (result.snippet as string) || "").slice(0, 500);
-                if (!url) continue;
-                if (isCompanyUrl(url, content)) { console.log(`Skipped company: ${url.slice(0, 60)}`); continue; }
-                if (insertedTargets.length >= remaining) { limitReached = true; break; }
-                const detectedPlatform = detectPlatformFromUrl(url);
-                // Only keep results whose detected platform is in user's selected platforms
-                if (!platforms.includes(detectedPlatform) && detectedPlatform !== "web") {
-                  console.log(`[discovery] Skipped off-platform result: ${detectedPlatform} (${url.slice(0, 50)})`);
-                  continue;
-                }
-                const username = extractUsername(url, detectedPlatform);
-                if (username && username !== "unknown") {
-                  const dedupKey = `${detectedPlatform}::${username.toLowerCase()}`;
-                  if (dedupSet.has(dedupKey)) { console.log(`[dedup] Skipped duplicate: ${username} (${detectedPlatform})`); continue; }
-                  dedupSet.add(dedupKey);
-                  const profileUrl = buildProfileUrl(url, detectedPlatform, username);
-                  const social = extractSocialFromContent(content);
-                  await getSupabase().from("targets").insert({
-                    campaign_id: campaignId, platform: detectedPlatform, username, profile_url: profileUrl,
-                    post_url: url, post_content: content,
-                    match_score: 55, match_reason: `日本語プラットフォーム: ${site}`, status: "pending",
-                    ...(social.found_email ? { email: social.found_email } : {}),
-                  });
-                  insertedTargets.push(username);
-                  console.log(`Inserted JP target: ${username} (profile: ${profileUrl.slice(0, 40)})`);
-                }
-              }
-            } catch (err) { console.error(`JP platform discovery error:`, err); }
-          }
-          continue;
-        }
-
-        // For other platforms, use discovery_signals with buildMultiPlatformQueries
-        for (const searchTerm of searchTerms.slice(0, 3)) {
+      // Twitter: use dedicated Twitter search API
+      if (platform === "twitter") {
+        for (const query of searchQueries.slice(0, 3)) {
           if (limitReached) break;
-          try {
-            const allQueries = buildMultiPlatformQueries(searchTerm, campaign.target_language || "");
-            const selectedQueries = allQueries.filter(q => {
-              if (q.targetPlatform === platform) return true;
-              // Only include "web" queries if no platform-specific query matched
-              return false;
-            }).slice(0, 2);
-            // If no platform-specific queries, use web fallback
-            if (selectedQueries.length === 0) {
-              const webQ = allQueries.filter(q => q.targetPlatform === "web").slice(0, 1);
-              selectedQueries.push(...webQ);
+          const tweets = await searchTwitterTargets(query, campaign.target_language || "ja");
+          console.log(`[discovery] Twitter results for "${query}": ${tweets.length}`);
+          for (const tweet of tweets) {
+            if (insertedTargets.length >= remaining) { limitReached = true; break; }
+            if (tweet.username && tweet.username !== "unknown") {
+              const dedupKey = `twitter::${tweet.username.toLowerCase()}`;
+              if (dedupSet.has(dedupKey)) continue;
+              dedupSet.add(dedupKey);
+              await getSupabase().from("targets").insert({
+                campaign_id: campaignId, platform: "twitter", username: tweet.username,
+                profile_url: `https://x.com/${tweet.username}`, post_url: tweet.url,
+                post_content: tweet.content?.slice(0, 500) || "", match_score: 60,
+                match_reason: `キーワード: ${query}`, status: "pending",
+              });
+              insertedTargets.push(tweet.username);
             }
-
-            console.log(`Running ${selectedQueries.length} Tavily queries for platform=${platform}, signal="${searchTerm}"`);
-
-            const queryResults = await Promise.allSettled(
-              selectedQueries.map(async (sq) => {
-                const tavilyResponse = await fetch("https://api.tavily.com/search", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json", "Authorization": `Bearer ${process.env.TAVILY_API_KEY}` },
-                  body: JSON.stringify({ query: sq.query, max_results: 5, search_depth: "basic", topic: "general", include_raw_content: false, start_date: startDate }),
-                });
-                if (!tavilyResponse.ok) { console.error(`Tavily error for "${sq.query}":`, tavilyResponse.status); return []; }
-                const tavilyData = await tavilyResponse.json();
-                return (tavilyData.results || []).map((r: Record<string, unknown>) => ({ ...r, _targetPlatform: sq.targetPlatform }));
-              })
-            );
-
-            const rawResults: Record<string, unknown>[] = [];
-            for (const qr of queryResults) {
-              if (qr.status === "fulfilled" && Array.isArray(qr.value)) rawResults.push(...qr.value);
-            }
-            const results = filterFreshResults(rawResults, sixMonthsAgo);
-            console.log(`Tavily results for signal "${searchTerm}": ${results.length} fresh (${rawResults.length} total)`);
-
-            const seenUrls = new Set<string>();
-            for (const result of results) {
-              const url = (result.url as string) || "";
-              const content = String((result.content as string) || (result.snippet as string) || "").slice(0, 500);
-              if (!url || seenUrls.has(url)) continue;
-              seenUrls.add(url);
-
-              // Skip company/corporate pages
-              if (isCompanyUrl(url, content)) { console.log(`Skipped company: ${url.slice(0, 60)}`); continue; }
-
-              const detectedPlatform = detectPlatformFromUrl(url);
-              // Only keep results whose detected platform is in user's selected platforms
-              if (!platforms.includes(detectedPlatform) && detectedPlatform !== "web") {
-                console.log(`[discovery] Skipped off-platform result: ${detectedPlatform} (${url.slice(0, 50)})`);
-                continue;
-              }
-              const username = extractUsername(url, detectedPlatform);
-
-              if (insertedTargets.length >= remaining) { limitReached = true; break; }
-
-              if (username && username !== "unknown") {
-                const dedupKey = `${detectedPlatform}::${username.toLowerCase()}`;
-                if (dedupSet.has(dedupKey)) { console.log(`[dedup] Skipped duplicate: ${username} (${detectedPlatform})`); continue; }
-                dedupSet.add(dedupKey);
-                const profileUrl = buildProfileUrl(url, detectedPlatform, username);
-                const social = extractSocialFromContent(content);
-                await getSupabase().from("targets").insert({
-                  campaign_id: campaignId, platform: detectedPlatform, username,
-                  profile_url: profileUrl, post_url: url,
-                  post_content: content,
-                  match_score: 50, match_reason: `シグナル: ${searchTerm}`, status: "pending",
-                  ...(social.found_email ? { email: social.found_email } : {}),
-                });
-                insertedTargets.push(username);
-                console.log(`Inserted target (${insertedTargets.length}/${remaining}): ${detectedPlatform} ${username} (profile: ${profileUrl.slice(0, 40)})`);
-              }
-            }
-          } catch (err) {
-            console.error("Discovery error:", err);
           }
         }
+        continue;
+      }
+
+      // For all other platforms: use Tavily with site: prefix
+      const sitePrefix = PLATFORM_SITE[platform] || "";
+      for (const query of searchQueries.slice(0, 3)) {
+        if (limitReached) break;
+        const fullQuery = sitePrefix ? `${sitePrefix} ${query}` : query;
+        try {
+          const tavilyResponse = await fetch("https://api.tavily.com/search", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${process.env.TAVILY_API_KEY}` },
+            body: JSON.stringify({ query: fullQuery, max_results: 8, search_depth: "basic", topic: "general", include_raw_content: false, start_date: startDate }),
+          });
+          if (!tavilyResponse.ok) { console.error(`[discovery] Tavily error for "${fullQuery}":`, tavilyResponse.status); continue; }
+          const tavilyData = await tavilyResponse.json();
+          const results = filterFreshResults((tavilyData.results || []) as Record<string, unknown>[], sixMonthsAgo);
+          console.log(`[discovery] Tavily results for "${platform}": ${results.length} (query: "${fullQuery.slice(0, 60)}")`);
+
+          for (const result of results) {
+            const url = (result.url as string) || "";
+            const content = String((result.content as string) || (result.snippet as string) || "").slice(0, 500);
+            if (!url) continue;
+            if (isCompanyUrl(url, content)) { console.log(`[discovery] Skipped company: ${url.slice(0, 60)}`); continue; }
+            if (insertedTargets.length >= remaining) { limitReached = true; break; }
+
+            const detectedPlatform = detectPlatformFromUrl(url);
+            // HARD BLOCK: only accept results matching the target platform or from explicitly selected platforms
+            if (detectedPlatform !== platform && !platforms.includes(detectedPlatform)) {
+              console.log(`[discovery] Blocked off-platform: ${detectedPlatform} (wanted ${platform})`);
+              continue;
+            }
+            const actualPlatform = detectedPlatform !== "web" ? detectedPlatform : platform;
+            const username = extractUsername(url, actualPlatform);
+            if (username && username !== "unknown") {
+              const dedupKey = `${actualPlatform}::${username.toLowerCase()}`;
+              if (dedupSet.has(dedupKey)) continue;
+              dedupSet.add(dedupKey);
+              const profileUrl = buildProfileUrl(url, actualPlatform, username);
+              const social = extractSocialFromContent(content);
+              await getSupabase().from("targets").insert({
+                campaign_id: campaignId, platform: actualPlatform, username,
+                profile_url: profileUrl, post_url: url, post_content: content,
+                match_score: 55, match_reason: `検索: ${query.slice(0, 30)}`, status: "pending",
+                ...(social.found_email ? { email: social.found_email } : {}),
+                ...(social.twitter_handle ? { twitter_handle: social.twitter_handle } : {}),
+              });
+              insertedTargets.push(username);
+              console.log(`[discovery] Inserted (${insertedTargets.length}/${remaining}): ${actualPlatform} @${username}`);
+            }
+          }
+        } catch (err) { console.error("[discovery] Tavily error:", err); }
       }
     }
 
     // Connpass API discovery (if "connpass" is in selected platforms)
     if (platforms.includes("connpass") && !limitReached) {
       try {
-        const personas = (campaign.analysis as Record<string, unknown>)?.personas as Array<Record<string, unknown>> || [];
-        const keyword = (personas[0]?.discovery_signals as string[] || [])[0] || (campaign.product_description as string || "").slice(0, 20);
-        console.log(`[connpass] Searching events for: ${keyword}`);
-        const connpassRes = await fetch(`https://connpass.com/api/v1/event/?keyword=${encodeURIComponent(keyword)}&count=10&order=2`, {
-          signal: AbortSignal.timeout(8000),
-        });
-        if (connpassRes.ok) {
+        // Use Claude-generated search queries for connpass too
+        for (const keyword of searchQueries.slice(0, 2)) {
+          if (limitReached) break;
+          console.log(`[connpass] Searching events for: ${keyword}`);
+          const connpassRes = await fetch(`https://connpass.com/api/v1/event/?keyword=${encodeURIComponent(keyword)}&count=10&order=2`, {
+            signal: AbortSignal.timeout(8000),
+          });
+          if (!connpassRes.ok) continue;
           const connpassData = await connpassRes.json();
           const events = (connpassData.events || []) as Array<Record<string, unknown>>;
-          console.log(`[connpass] Found ${events.length} events`);
+          console.log(`[connpass] Found ${events.length} events for "${keyword}"`);
           for (const event of events.slice(0, 5)) {
-            if (insertedTargets.length >= (campaignLimit - (count || 0))) { break; }
-            const ownerName = (event.owner_display_name as string) || (event.owner_nickname as string) || "";
+            if (insertedTargets.length >= remaining) { limitReached = true; break; }
+            const ownerNickname = (event.owner_nickname as string) || "";
+            const ownerDisplay = (event.owner_display_name as string) || ownerNickname;
             const eventUrl = event.event_url as string || "";
-            if (!ownerName || ownerName === "unknown") continue;
-            const dedupKey = `connpass::${ownerName.toLowerCase()}`;
+            const eventDesc = String(event.description || "").replace(/<[^>]+>/g, "").slice(0, 500);
+            if (!ownerNickname || ownerNickname === "unknown") continue;
+            const dedupKey = `connpass::${ownerNickname.toLowerCase()}`;
             if (dedupSet.has(dedupKey)) continue;
             dedupSet.add(dedupKey);
-            const social = extractSocialFromContent(String(event.description || ""));
+            const social = extractSocialFromContent(eventDesc);
             await getSupabase().from("targets").insert({
-              campaign_id: campaignId, platform: "connpass", username: ownerName,
-              profile_url: `https://connpass.com/user/${ownerName}/`,
+              campaign_id: campaignId, platform: "connpass",
+              username: ownerDisplay || ownerNickname,
+              profile_url: `https://connpass.com/user/${ownerNickname}/`,
               post_url: eventUrl,
-              post_content: String(event.title || "").slice(0, 500),
+              post_content: `${event.title || ""}\n${eventDesc}`.slice(0, 500),
               match_score: 55, match_reason: `Connpassイベント主催者`, status: "pending",
               ...(social.found_email ? { email: social.found_email } : {}),
+              ...(social.twitter_handle ? { twitter_handle: social.twitter_handle } : {}),
             });
-            insertedTargets.push(ownerName);
-            console.log(`[connpass] Inserted: ${ownerName} (event: ${(event.title as string || "").slice(0, 40)})`);
+            insertedTargets.push(ownerNickname);
+            console.log(`[connpass] Inserted: ${ownerDisplay} (nickname: ${ownerNickname}, event: ${(event.title as string || "").slice(0, 30)})`);
           }
         }
       } catch (err) { console.error("[connpass] error:", err); }
@@ -699,8 +648,7 @@ export const discoverTargets = inngest.createFunction(
     // Google Places API discovery (if "google_maps" is in selected platforms)
     if (platforms.includes("google_maps") && !limitReached && process.env.GOOGLE_PLACES_API_KEY) {
       try {
-        const personas = (campaign.analysis as Record<string, unknown>)?.personas as Array<Record<string, unknown>> || [];
-        const keyword = (personas[0]?.discovery_signals as string[] || [])[0] || (campaign.product_description as string || "").slice(0, 30);
+        const keyword = searchQueries[0] || productDescription.slice(0, 30);
         const area = (campaign.target_area as string) || "東京";
         const query = `${keyword} ${area}`;
         console.log(`[google_maps] Searching: ${query}`);
@@ -713,7 +661,7 @@ export const discoverTargets = inngest.createFunction(
           const places = (placesData.results || []) as Array<Record<string, unknown>>;
           console.log(`[google_maps] Found ${places.length} businesses`);
           for (const place of places.slice(0, 8)) {
-            if (insertedTargets.length >= (campaignLimit - (count || 0))) break;
+            if (insertedTargets.length >= remaining) break;
             const name = (place.name as string) || "";
             if (!name) continue;
             const dedupKey = `google_maps::${name.toLowerCase()}`;

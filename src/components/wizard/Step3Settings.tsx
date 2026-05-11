@@ -9,40 +9,32 @@ type PlatformDef = { id: string; name: string; icon: string; color: string; requ
 
 const PLATFORM_GROUPS: { label: string; platforms: PlatformDef[] }[] = [
   {
-    label: "SNSプラットフォーム",
+    label: "おすすめ（無料）",
     platforms: [
-      { id: "twitter", name: "X", icon: "𝕏", color: "#1d9bf0", requiredPlan: "starter", desc: "キーワード検索で個人を発見" },
-      { id: "reddit", name: "Reddit", icon: "🤖", color: "#ff4500", requiredPlan: "free", desc: "日本語プラットフォームに転送" },
-      { id: "instagram", name: "Instagram", icon: "◈", color: "#e1306c", requiredPlan: "starter" },
-      { id: "linkedin", name: "LinkedIn", icon: "in", color: "#0a66c2", requiredPlan: "growth" },
-      { id: "tiktok", name: "TikTok", icon: "♪", color: "#ff0050", requiredPlan: "growth" },
-      { id: "facebook", name: "Facebook", icon: "f", color: "#1877f2", requiredPlan: "growth" },
+      { id: "reddit", name: "Reddit", icon: "🤖", color: "#ff4500", requiredPlan: "free", desc: "日本語プラットフォームも検索" },
+      { id: "twitter", name: "X (Twitter)", icon: "𝕏", color: "#1d9bf0", requiredPlan: "free", desc: "リアルタイムで悩みを発見" },
+      { id: "connpass", name: "Connpass", icon: "🎪", color: "#e05048", requiredPlan: "free", desc: "技術イベント主催者・参加者" },
+      { id: "wantedly", name: "Wantedly", icon: "🤝", color: "#21bddb", requiredPlan: "free", desc: "スタートアップ人材を発見" },
     ],
   },
   {
-    label: "日本語プラットフォーム",
+    label: "日本語プラットフォーム（Starter）",
     platforms: [
-      { id: "note", name: "note.com", icon: "📝", color: "#41c9b4", requiredPlan: "free", desc: "連絡先取得率が低い" },
-      { id: "yahoo_qa", name: "Yahoo知恵袋", icon: "🟡", color: "#ff0033", requiredPlan: "free", desc: "質問者の悩みを直接発見" },
-      { id: "zenn", name: "Zenn", icon: "💻", color: "#3ea8ff", requiredPlan: "free", desc: "技術者・エンジニアに特化" },
-      { id: "qiita", name: "Qiita", icon: "🟩", color: "#55c500", requiredPlan: "free", desc: "技術者・エンジニアに特化" },
-      { id: "hatena", name: "はてなブログ", icon: "✏️", color: "#00a4de", requiredPlan: "growth" },
+      { id: "note", name: "note.com", icon: "📝", color: "#41c9b4", requiredPlan: "starter", desc: "個人の課題発信を発見" },
+      { id: "qiita", name: "Qiita", icon: "🟩", color: "#55c500", requiredPlan: "starter", desc: "技術者・エンジニアに特化" },
+      { id: "zenn", name: "Zenn", icon: "💻", color: "#3ea8ff", requiredPlan: "starter", desc: "技術者・エンジニアに特化" },
+      { id: "yahoo_qa", name: "Yahoo知恵袋", icon: "🟡", color: "#ff0033", requiredPlan: "starter", desc: "質問者の悩みを直接発見" },
+      { id: "peatix", name: "Peatix", icon: "🎟️", color: "#f54b5e", requiredPlan: "starter", desc: "イベント主催者・参加者" },
+      { id: "producthunt", name: "Product Hunt", icon: "🚀", color: "#da552f", requiredPlan: "starter", desc: "アーリーアダプター発見" },
     ],
   },
   {
-    label: "求人・イベント・コミュニティ",
+    label: "拡張プラットフォーム（Growth）",
     platforms: [
-      { id: "wantedly", name: "Wantedly", icon: "🤝", color: "#21bddb", requiredPlan: "free", desc: "求職者・スタートアップ人材" },
-      { id: "connpass", name: "Connpass", icon: "🎪", color: "#e05048", requiredPlan: "free", desc: "イベント参加者・技術コミュニティ" },
-      { id: "peatix", name: "Peatix", icon: "🎟️", color: "#f54b5e", requiredPlan: "free", desc: "イベント主催者・参加者" },
-      { id: "producthunt", name: "Product Hunt", icon: "🚀", color: "#da552f", requiredPlan: "starter", desc: "新ツール好きのアーリーアダプター" },
-      { id: "discord", name: "Discord / Slack", icon: "💬", color: "#5865f2", requiredPlan: "starter", desc: "コミュニティに直接アプローチ" },
-      { id: "google_maps", name: "Googleマップ", icon: "🗺️", color: "#4285f4", requiredPlan: "free", desc: "地域ビジネスの担当者を発見" },
-    ],
-  },
-  {
-    label: "ウェブ全体",
-    platforms: [
+      { id: "linkedin", name: "LinkedIn", icon: "in", color: "#0a66c2", requiredPlan: "growth", desc: "ビジネスプロフェッショナル" },
+      { id: "google_maps", name: "Googleマップ", icon: "🗺️", color: "#4285f4", requiredPlan: "growth", desc: "地域ビジネスの担当者" },
+      { id: "discord", name: "Discord / Slack", icon: "💬", color: "#5865f2", requiredPlan: "growth", desc: "コミュニティに直接アプローチ" },
+      { id: "hatena", name: "はてなブログ", icon: "✏️", color: "#00a4de", requiredPlan: "growth", desc: "ブロガー・技術者" },
       { id: "web", name: "Web全体", icon: "🌐", color: "#2dd17a", requiredPlan: "growth", desc: "制限なしで全ウェブ検索" },
     ],
   },
