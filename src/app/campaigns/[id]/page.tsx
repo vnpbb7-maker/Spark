@@ -135,7 +135,7 @@ export default function CampaignDetailPage() {
       return {
         id: t.id as string, platform: t.platform as string, username: t.username as string,
         post_url: t.post_url as string | null, post_content: t.post_content as string | null,
-        match_score: t.match_score as number, match_reason: t.match_reason as string | null,
+        match_score: Number(t.match_score) || 0, match_reason: t.match_reason as string | null,
         email: t.email as string | null, twitter_handle: t.twitter_handle as string | null,
         priority: t.priority as string | null,
         ai_reason: t.ai_reason as string | null, estimated_age: t.estimated_age as string | null,
@@ -239,7 +239,10 @@ export default function CampaignDetailPage() {
   const visibleTargets = useMemo(() => targets
     .filter((t) => platformFilter === "all" || t.platform === platformFilter)
     .filter((t) => priorityFilter === "all" || t.priority === priorityFilter)
-    .filter((t) => (t.match_score ?? 0) >= minScore)
+    .filter((t) => {
+      const score = Number(t.match_score) || 0;
+      return minScore <= 0 || score >= minScore;
+    })
     .filter((t) => !contactFilter || t.email || t.twitter_handle),
     [targets, platformFilter, priorityFilter, minScore, contactFilter]);
 

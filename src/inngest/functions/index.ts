@@ -232,15 +232,17 @@ function buildProfileUrl(url: string, platform: string, username: string): strin
     case "qiita": return `https://qiita.com/${username}`;
     case "zenn": return `https://zenn.dev/${username}`;
     case "twitter": return `https://x.com/${username}`;
+    case "wantedly": return `https://www.wantedly.com/id/${username}`;
+    case "connpass": return `https://connpass.com/user/${username}/`;
+    case "reddit": return `https://www.reddit.com/user/${username}`;
     case "hatena": {
-      // hatena blog: username.hatenablog.com or hatena.ne.jp/username
       try {
         const host = new URL(url).hostname;
         const sub = host.split(".")[0];
         return `https://profile.hatena.ne.jp/${sub}/`;
       } catch { return url; }
     }
-    default: return url;
+    default: return url || `https://www.google.com/search?q=${encodeURIComponent(username)}`;
   }
 }
 
@@ -772,7 +774,7 @@ export const discoverTargets = inngest.createFunction(
     try {
       const { data: newTargets } = await getSupabase()
         .from("targets")
-        .select("id, profile_url, platform, username")
+        .select("id, profile_url, platform, username, email, twitter_handle")
         .eq("campaign_id", campaignId)
         .is("contact_url", null)
         .order("match_score", { ascending: false })
@@ -781,26 +783,35 @@ export const discoverTargets = inngest.createFunction(
       if (newTargets && newTargets.length > 0) {
         console.log(`[contact] Extracting contact info for ${newTargets.length} targets...`);
         const contactResults = await Promise.allSettled(
-          newTargets.map(async (t: { id: string; profile_url: string; platform: string; username: string }) => {
-            // Use proper profile URL for the platform
-            const profileUrl = buildProfileUrl(t.profile_url, t.platform, t.username);
+          newTargets.map(async (t: { id: string; profile_url: string | null; platform: string; username: string; email: string | null; twitter_handle: string | null }) => {
+            // Always build profile URL from username — don't rely on profile_url being set
+            const profileUrl = buildProfileUrl(t.profile_url || "", t.platform, t.username);
+            console.log(`[contact] Fetching profile for ${t.username} (${t.platform}): ${profileUrl}`);
             const info = await extractContactInfo(profileUrl, t.platform);
-            if (Object.keys(info).length > 0) {
-              // If no email found but twitter_handle exists, note it
-              const updateData: Record<string, unknown> = { ...info };
-              if (!info.email && info.twitter_handle) {
-                updateData.email = `Twitter: ${info.twitter_handle}`;
-              }
-              await getSupabase().from("targets").update(updateData).eq("id", t.id);
-            } else {
-              // Mark as checked so we don't retry
-              await getSupabase().from("targets").update({ contact_url: profileUrl }).eq("id", t.id);
+            console.log(`[contact] Extracted for ${t.username}:`, JSON.stringify(info));
+
+            const updateData: Record<string, unknown> = { contact_url: profileUrl };
+
+            if (info.email && !t.email) {
+              updateData.email = info.email;
             }
+            if (info.twitter_handle) {
+              updateData.twitter_handle = info.twitter_handle;
+            }
+            if (info.website) {
+              updateData.website = info.website;
+            }
+            if (info.phone) {
+              updateData.phone = info.phone;
+            }
+
+            await getSupabase().from("targets").update(updateData).eq("id", t.id);
             return info;
           })
         );
-        const found = contactResults.filter(r => r.status === "fulfilled" && r.value && Object.keys(r.value).length > 1).length;
-        console.log(`[contact] Complete: ${found}/${newTargets.length} targets had contact info`);
+        const found = contactResults.filter(r => r.status === "fulfilled" && r.value && (r.value as ContactInfo).twitter_handle).length;
+        const emailFound = contactResults.filter(r => r.status === "fulfilled" && r.value && (r.value as ContactInfo).email).length;
+        console.log(`[contact] Complete: ${found} twitter handles, ${emailFound} emails from ${newTargets.length} targets`);
       }
     } catch (e) {
       console.error("Contact extraction error:", e);
