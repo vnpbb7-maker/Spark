@@ -4,8 +4,8 @@ import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useRealtimeLog, LogEntry } from "@/hooks/useRealtimeLog";
-import KpiBar from "@/components/campaign/KpiBar";
-import ModeToggle from "@/components/campaign/ModeToggle";
+
+
 import DashboardLiveLog from "@/components/dashboard/DashboardLiveLog";
 
 const STATUS_MAP: Record<string, { icon: string; label: string; color: string }> = {
@@ -37,7 +37,7 @@ const PRIORITY_STYLE: Record<string, { bg: string; color: string; label: string 
 type TargetRow = {
   id: string; platform: string; username: string; post_url: string | null;
   post_content: string | null; match_score: number; match_reason: string | null;
-  email: string | null; priority: string | null; ai_reason: string | null;
+  email: string | null; twitter_handle: string | null; priority: string | null; ai_reason: string | null;
   estimated_age: string | null; estimated_role: string | null;
   relevance_score: number | null; intent_score: number | null;
   influence_score: number | null; accessibility_score: number | null;
@@ -67,6 +67,8 @@ export default function CampaignDetailPage() {
   const [generatingIds, setGeneratingIds] = useState<Set<string>>(new Set());
   const [bulkGenerating, setBulkGenerating] = useState(false);
   const [draftingIds, setDraftingIds] = useState<Set<string>>(new Set());
+  const [contactFilter, setContactFilter] = useState(false);
+  const [showLiveLog, setShowLiveLog] = useState(false);
   const minScoreInitRef = useRef(false);
 
   // Reset ALL state when campaignId changes (prevents stale data from previous campaign)
@@ -134,7 +136,8 @@ export default function CampaignDetailPage() {
         id: t.id as string, platform: t.platform as string, username: t.username as string,
         post_url: t.post_url as string | null, post_content: t.post_content as string | null,
         match_score: t.match_score as number, match_reason: t.match_reason as string | null,
-        email: t.email as string | null, priority: t.priority as string | null,
+        email: t.email as string | null, twitter_handle: t.twitter_handle as string | null,
+        priority: t.priority as string | null,
         ai_reason: t.ai_reason as string | null, estimated_age: t.estimated_age as string | null,
         estimated_role: t.estimated_role as string | null,
         relevance_score: t.relevance_score as number | null,
@@ -236,8 +239,9 @@ export default function CampaignDetailPage() {
   const visibleTargets = useMemo(() => targets
     .filter((t) => platformFilter === "all" || t.platform === platformFilter)
     .filter((t) => priorityFilter === "all" || t.priority === priorityFilter)
-    .filter((t) => (t.match_score ?? 0) >= minScore),
-    [targets, platformFilter, priorityFilter, minScore]);
+    .filter((t) => (t.match_score ?? 0) >= minScore)
+    .filter((t) => !contactFilter || t.email || t.twitter_handle),
+    [targets, platformFilter, priorityFilter, minScore, contactFilter]);
 
   const funnel = useMemo(() => ({
     discovered: visibleTargets.length,
@@ -257,108 +261,147 @@ export default function CampaignDetailPage() {
   return (
     <div style={{ minHeight: "100vh", background: "#0d0d1a", color: "#f0efe8" }}>
       {/* Header */}
-      <div style={{ borderBottom: "1px solid rgba(255,255,255,0.07)", padding: "16px 24px" }}>
+      <div style={{ borderBottom: "1px solid rgba(255,255,255,0.07)", padding: "14px 24px" }}>
         <div style={{ maxWidth: "1200px", margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
-            <a href="/dashboard" style={{ color: "rgba(240,239,232,0.4)", textDecoration: "none", fontSize: "14px" }}>← ダッシュボード</a>
+          <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+            <a href="/dashboard" style={{ color: "rgba(240,239,232,0.4)", textDecoration: "none", fontSize: "13px" }}>← ダッシュボード</a>
             <span style={{ color: "rgba(255,255,255,0.1)" }}>|</span>
-            <h1 style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: "18px" }}>{(campaign?.product_description as string || "").slice(0, 30)}</h1>
-            <span style={{ fontSize: "12px", padding: "4px 10px", borderRadius: "8px", background: `${st.color}20`, color: st.color, fontWeight: 600 }}>{st.icon} {st.label}</span>
+            <h1 style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: "17px", margin: 0 }}>{(campaign?.product_description as string || "").slice(0, 30)}</h1>
+            <span style={{ fontSize: "11px", padding: "3px 10px", borderRadius: "8px", background: `${st.color}18`, color: st.color, fontWeight: 600 }}>{st.icon} {st.label}</span>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-            <button onClick={handleExport} disabled={exporting} style={{
-              background: "linear-gradient(135deg, #2dd17a, #1ba360)", color: "#fff", border: "none", borderRadius: "12px",
-              padding: "10px 24px", fontSize: "14px", fontWeight: 700, cursor: exporting ? "wait" : "pointer",
-              fontFamily: "DM Sans, sans-serif", display: "flex", alignItems: "center", gap: "8px",
-              boxShadow: "0 4px 20px rgba(45,209,122,0.3)", transition: "all 0.2s", opacity: exporting ? 0.7 : 1,
-            }}>
-              📊 {exporting ? "エクスポート中..." : `Excelでエクスポート${selectedCount > 0 ? ` (${selectedCount}件)` : ""}`}
-            </button>
-            <ModeToggle campaignId={campaignId} autoMode={campaign?.auto_mode as boolean || false} onToggle={(m) => setCampaign((p) => p ? { ...p, auto_mode: m } : p)} />
-          </div>
+          <button onClick={() => setShowLiveLog(!showLiveLog)} style={{ background: showLiveLog ? "rgba(124,92,252,0.15)" : "rgba(255,255,255,0.04)", border: `1px solid ${showLiveLog ? "rgba(124,92,252,0.3)" : "rgba(255,255,255,0.08)"}`, borderRadius: "10px", padding: "7px 12px", fontSize: "14px", cursor: "pointer", color: showLiveLog ? "#7c5cfc" : "rgba(240,239,232,0.4)" }}>
+            🔔
+          </button>
         </div>
       </div>
 
-      <div style={{ maxWidth: "1200px", margin: "0 auto", padding: "24px" }}>
-        <KpiBar funnel={funnel} />
+      <div style={{ maxWidth: "1200px", margin: "0 auto", padding: "20px 24px" }}>
+        {/* Stats row - 4 metric cards */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "12px", marginBottom: "20px" }}>
+          {[
+            { label: "発見済み", value: targets.length, icon: "🔍", color: "#ff6b35" },
+            { label: "S+Aランク", value: targets.filter(t => t.priority === "S" || t.priority === "A").length, icon: "⭐", color: "#ffd60a" },
+            { label: "選択中", value: selectedCount, icon: "☑️", color: "#7c5cfc" },
+            { label: "連絡先あり", value: targets.filter(t => t.email || t.twitter_handle).length, icon: "📧", color: "#2dd17a" },
+          ].map((s) => (
+            <div key={s.label} style={{ background: "#13132a", border: "1px solid rgba(255,255,255,0.07)", borderRadius: "14px", padding: "16px 18px" }}>
+              <div style={{ fontSize: "11px", color: "rgba(240,239,232,0.4)", marginBottom: "6px", fontWeight: 500 }}>{s.icon} {s.label}</div>
+              <div style={{ fontSize: "26px", fontWeight: 800, fontFamily: "'Space Grotesk', sans-serif", color: s.color }}>{s.value}</div>
+            </div>
+          ))}
+        </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 340px", gap: "24px" }}>
-          {/* Left */}
-          <div>
-            {/* Filter bar */}
-            <div style={{ display: "flex", gap: "8px", marginBottom: "12px", flexWrap: "wrap", alignItems: "center" }}>
-              {/* Priority filter */}
-              {["all", "S", "A", "B", "C"].map((p) => {
-                const baseFiltered = targets
-                  .filter((t) => platformFilter === "all" || t.platform === platformFilter)
-                  .filter((t) => (t.match_score || 0) >= minScore);
-                const count = p === "all" ? baseFiltered.length : baseFiltered.filter((t) => t.priority === p).length;
-                const ps = p !== "all" ? PRIORITY_STYLE[p] : null;
-                return (
-                  <button key={p} onClick={() => setPriorityFilter(p)} style={{
-                    background: priorityFilter === p ? (ps ? ps.bg : "rgba(255,107,53,0.15)") : "rgba(255,255,255,0.03)",
-                    border: `1px solid ${priorityFilter === p ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.07)"}`,
-                    borderRadius: "10px", padding: "5px 12px", fontSize: "12px", fontWeight: 700,
-                    color: priorityFilter === p ? (ps ? ps.color : "#ff6b35") : "rgba(240,239,232,0.5)",
-                    cursor: "pointer", transition: "all 0.2s",
-                  }}>
-                    {p === "all" ? `全て (${count})` : `${p} (${count})`}
-                  </button>
-                );
-              })}
-              <span style={{ color: "rgba(255,255,255,0.1)", margin: "0 4px" }}>|</span>
-              {/* Platform filter */}
-              {uniquePlatforms.slice(0, 6).map((p) => {
-                const pi = PLATFORM_ICONS[p] || { icon: "?", color: "#888" };
-                return (
-                  <button key={p} onClick={() => setPlatformFilter(platformFilter === p ? "all" : p)} style={{
-                    background: platformFilter === p ? `${pi.color}15` : "transparent",
-                    border: `1px solid ${platformFilter === p ? `${pi.color}40` : "rgba(255,255,255,0.05)"}`,
-                    borderRadius: "8px", padding: "4px 10px", fontSize: "11px", fontWeight: 600,
-                    color: platformFilter === p ? pi.color : "rgba(240,239,232,0.35)", cursor: "pointer",
-                  }}>
-                    {pi.icon}
-                  </button>
-                );
-              })}
-              <span style={{ color: "rgba(255,255,255,0.1)", margin: "0 4px" }}>|</span>
-              {/* Minimum score filter */}
-              <select
-                value={minScore}
-                onChange={(e) => setMinScore(Number(e.target.value))}
-                style={{
-                  background: minScore > 0 ? "rgba(255,107,53,0.12)" : "rgba(255,255,255,0.03)",
-                  border: `1px solid ${minScore > 0 ? "rgba(255,107,53,0.3)" : "rgba(255,255,255,0.07)"}`,
-                  borderRadius: "8px", padding: "4px 8px", fontSize: "11px", fontWeight: 600,
-                  color: minScore > 0 ? "#ff6b35" : "rgba(240,239,232,0.5)",
-                  cursor: "pointer", outline: "none",
-                }}
-              >
-                <option value={0}>最低スコア: なし</option>
-                <option value={30}>≥ 30%</option>
+        <div style={{ display: "grid", gridTemplateColumns: "200px 1fr", gap: "20px" }}>
+          {/* Left sidebar */}
+          <div style={{ position: "sticky", top: "20px", alignSelf: "start", display: "flex", flexDirection: "column", gap: "20px" }}>
+            {/* Priority filter */}
+            <div>
+              <div style={{ fontSize: "10px", fontWeight: 600, color: "rgba(240,239,232,0.3)", textTransform: "uppercase", letterSpacing: "1px", marginBottom: "8px" }}>優先度</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                {["all", "S", "A", "B", "C"].map((p) => {
+                  const count = p === "all" ? targets.length : targets.filter((t) => t.priority === p).length;
+                  const ps = p !== "all" ? PRIORITY_STYLE[p] : null;
+                  const active = priorityFilter === p;
+                  return (
+                    <button key={p} onClick={() => setPriorityFilter(p)} style={{
+                      background: active ? "rgba(255,255,255,0.06)" : "transparent",
+                      border: "none", borderRadius: "8px", padding: "7px 10px",
+                      display: "flex", alignItems: "center", justifyContent: "space-between",
+                      cursor: "pointer", transition: "all 0.15s",
+                    }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                        {ps && <span style={{ width: "18px", height: "18px", borderRadius: "5px", background: ps.bg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "10px", fontWeight: 900, color: ps.color }}>{p}</span>}
+                        <span style={{ fontSize: "12px", fontWeight: active ? 700 : 500, color: active ? "#f0efe8" : "rgba(240,239,232,0.5)" }}>{p === "all" ? "全て" : `${p}ランク`}</span>
+                      </div>
+                      <span style={{ fontSize: "11px", fontWeight: 600, color: "rgba(240,239,232,0.3)" }}>{count}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Platform filter */}
+            <div>
+              <div style={{ fontSize: "10px", fontWeight: 600, color: "rgba(240,239,232,0.3)", textTransform: "uppercase", letterSpacing: "1px", marginBottom: "8px" }}>プラットフォーム</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+                {uniquePlatforms.map((p) => {
+                  const pi = PLATFORM_ICONS[p] || { icon: "?", color: "#888" };
+                  const count = targets.filter((t) => t.platform === p).length;
+                  const active = platformFilter === p;
+                  return (
+                    <button key={p} onClick={() => setPlatformFilter(active ? "all" : p)} style={{
+                      background: active ? `${pi.color}12` : "transparent",
+                      border: "none", borderRadius: "8px", padding: "7px 10px",
+                      display: "flex", alignItems: "center", justifyContent: "space-between",
+                      cursor: "pointer", transition: "all 0.15s",
+                    }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                        <span style={{ fontSize: "13px" }}>{pi.icon}</span>
+                        <span style={{ fontSize: "12px", fontWeight: active ? 700 : 500, color: active ? pi.color : "rgba(240,239,232,0.5)" }}>{p === "yahoo_qa" ? "Yahoo知恵袋" : p.charAt(0).toUpperCase() + p.slice(1)}</span>
+                      </div>
+                      <span style={{ fontSize: "11px", fontWeight: 600, color: "rgba(240,239,232,0.3)" }}>{count}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Min score */}
+            <div>
+              <div style={{ fontSize: "10px", fontWeight: 600, color: "rgba(240,239,232,0.3)", textTransform: "uppercase", letterSpacing: "1px", marginBottom: "8px" }}>最低スコア</div>
+              <select value={minScore} onChange={(e) => setMinScore(Number(e.target.value))} style={{
+                width: "100%", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)",
+                borderRadius: "8px", padding: "7px 10px", fontSize: "12px", color: "#f0efe8", cursor: "pointer", outline: "none",
+              }}>
+                <option value={0}>制限なし</option>
                 <option value={50}>≥ 50%</option>
                 <option value={70}>≥ 70%</option>
+                <option value={80}>≥ 80%</option>
                 <option value={90}>≥ 90%</option>
               </select>
             </div>
 
-            {/* Action bar */}
-            <div style={{ display: "flex", gap: "8px", marginBottom: "16px", alignItems: "center" }}>
-              <button onClick={selectAll} style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "8px", padding: "6px 14px", fontSize: "12px", fontWeight: 600, color: "rgba(240,239,232,0.5)", cursor: "pointer" }}>
-                全選択
+            {/* Contact filter */}
+            <div>
+              <div style={{ fontSize: "10px", fontWeight: 600, color: "rgba(240,239,232,0.3)", textTransform: "uppercase", letterSpacing: "1px", marginBottom: "8px" }}>連絡先</div>
+              <button onClick={() => setContactFilter(!contactFilter)} style={{
+                width: "100%", background: contactFilter ? "rgba(45,209,122,0.1)" : "rgba(255,255,255,0.04)",
+                border: `1px solid ${contactFilter ? "rgba(45,209,122,0.25)" : "rgba(255,255,255,0.08)"}`,
+                borderRadius: "8px", padding: "7px 10px", fontSize: "12px", fontWeight: 600,
+                color: contactFilter ? "#2dd17a" : "rgba(240,239,232,0.5)", cursor: "pointer", textAlign: "left",
+              }}>
+                {contactFilter ? "✅ 連絡先ありのみ" : "連絡先ありのみ"}
               </button>
-              <button onClick={selectSA} style={{ background: "rgba(255,214,0,0.08)", border: "1px solid rgba(255,214,0,0.2)", borderRadius: "8px", padding: "6px 14px", fontSize: "12px", fontWeight: 600, color: "#ffd60a", cursor: "pointer" }}>
-                S+Aのみ選択
-              </button>
-              <button onClick={() => setSelected(new Set())} style={{ background: "transparent", border: "1px solid rgba(255,255,255,0.07)", borderRadius: "8px", padding: "6px 14px", fontSize: "12px", fontWeight: 600, color: "rgba(240,239,232,0.3)", cursor: "pointer" }}>
-                選択解除
-              </button>
-              <button onClick={handleBulkGenerate} disabled={bulkGenerating} style={{ background: "rgba(124,92,252,0.1)", border: "1px solid rgba(124,92,252,0.25)", borderRadius: "8px", padding: "6px 14px", fontSize: "12px", fontWeight: 600, color: "#7c5cfc", cursor: bulkGenerating ? "wait" : "pointer", opacity: bulkGenerating ? 0.6 : 1 }}>
+            </div>
+
+            {/* Action buttons */}
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "8px" }}>
+              <button onClick={handleBulkGenerate} disabled={bulkGenerating} style={{
+                width: "100%", background: "rgba(124,92,252,0.1)", border: "1px solid rgba(124,92,252,0.2)",
+                borderRadius: "10px", padding: "9px 10px", fontSize: "12px", fontWeight: 700,
+                color: "#7c5cfc", cursor: bulkGenerating ? "wait" : "pointer", opacity: bulkGenerating ? 0.6 : 1,
+              }}>
                 {bulkGenerating ? "⏳ 生成中..." : "💬 一括コメント生成"}
               </button>
-              <span style={{ marginLeft: "auto", fontSize: "12px", color: "rgba(240,239,232,0.4)" }}>
-                {selectedCount > 0 ? `${selectedCount}件選択中` : `${visibleTargets.length}件表示`}
-              </span>
+              <button onClick={handleExport} disabled={exporting} style={{
+                width: "100%", background: "linear-gradient(135deg, #2dd17a, #1ba360)", border: "none",
+                borderRadius: "10px", padding: "10px", fontSize: "12px", fontWeight: 700,
+                color: "#fff", cursor: exporting ? "wait" : "pointer", opacity: exporting ? 0.7 : 1,
+                boxShadow: "0 4px 16px rgba(45,209,122,0.2)",
+              }}>
+                📊 {exporting ? "エクスポート中..." : `エクスポート (${selectedCount > 0 ? selectedCount : visibleTargets.length}件)`}
+              </button>
+            </div>
+          </div>
+
+          {/* Right content */}
+          <div>
+            {/* Selection bar */}
+            <div style={{ display: "flex", gap: "6px", marginBottom: "12px", alignItems: "center" }}>
+              <button onClick={selectAll} style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "7px", padding: "5px 12px", fontSize: "11px", fontWeight: 600, color: "rgba(240,239,232,0.5)", cursor: "pointer" }}>全選択</button>
+              <button onClick={selectSA} style={{ background: "rgba(255,214,0,0.06)", border: "1px solid rgba(255,214,0,0.15)", borderRadius: "7px", padding: "5px 12px", fontSize: "11px", fontWeight: 600, color: "#ffd60a", cursor: "pointer" }}>S+Aのみ</button>
+              <button onClick={() => setSelected(new Set())} style={{ background: "transparent", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "7px", padding: "5px 12px", fontSize: "11px", fontWeight: 600, color: "rgba(240,239,232,0.3)", cursor: "pointer" }}>解除</button>
+              <span style={{ marginLeft: "auto", fontSize: "11px", color: "rgba(240,239,232,0.35)" }}>{selectedCount > 0 ? `${selectedCount}件選択中` : `${visibleTargets.length}件表示`}</span>
             </div>
 
             {/* Target rows */}
@@ -393,147 +436,99 @@ export default function CampaignDetailPage() {
                   const pi = PLATFORM_ICONS[t.platform] || { icon: "?", color: "#888" };
                   const ps = PRIORITY_STYLE[t.priority || "C"] || PRIORITY_STYLE.C;
                   const isSelected = selected.has(t.id);
-                  const isExpanded = expanded.has(t.id);
+                  const contactInfo = t.email || (t.twitter_handle ? `@${t.twitter_handle}` : null);
                   return (
-                    <div key={t.id} onClick={() => toggleExpand(t.id)} style={{
-                      background: isSelected ? "rgba(255,214,0,0.04)" : "#13132a",
-                      border: `1px solid ${isSelected ? "rgba(255,214,0,0.15)" : "rgba(255,255,255,0.07)"}`,
-                      borderRadius: "12px", padding: "14px 18px", cursor: "pointer", transition: "all 0.15s",
+                    <div key={t.id} style={{
+                      background: isSelected ? "rgba(255,214,0,0.03)" : "#13132a",
+                      border: `1px solid ${isSelected ? "rgba(255,214,0,0.12)" : "rgba(255,255,255,0.06)"}`,
+                      borderRadius: "14px", padding: "16px 18px", transition: "all 0.15s",
                     }}>
-                      {/* Row 1: priority + platform + user + score + age + role + checkbox */}
-                      <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                        {/* Checkbox */}
-                        <div onClick={(e) => { e.stopPropagation(); toggleSelect(t.id); }} style={{
+                      {/* Header row */}
+                      <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "10px" }}>
+                        <div onClick={() => toggleSelect(t.id)} style={{
                           width: "18px", height: "18px", borderRadius: "5px", flexShrink: 0,
-                          border: `2px solid ${isSelected ? "#ffd60a" : "rgba(255,255,255,0.15)"}`,
+                          border: `2px solid ${isSelected ? "#ffd60a" : "rgba(255,255,255,0.12)"}`,
                           background: isSelected ? "#ffd60a" : "transparent", display: "flex", alignItems: "center", justifyContent: "center",
                           cursor: "pointer", transition: "all 0.15s",
                         }}>
-                          {isSelected && <span style={{ fontSize: "11px", color: "#000", fontWeight: 900 }}>✓</span>}
+                          {isSelected && <span style={{ fontSize: "10px", color: "#000", fontWeight: 900 }}>✓</span>}
                         </div>
-
-                        {/* Priority badge */}
-                        <span style={{
-                          background: ps.bg, color: ps.color, fontSize: "11px", fontWeight: 900,
-                          width: "24px", height: "24px", borderRadius: "6px", display: "flex", alignItems: "center",
-                          justifyContent: "center", flexShrink: 0,
-                        }}>{ps.label}</span>
-
-                        {/* Platform icon */}
-                        <span style={{ fontSize: "14px", fontWeight: 700, color: pi.color, flexShrink: 0 }}>{pi.icon}</span>
-
-                        {/* Username */}
-                        <span style={{ fontSize: "13px", fontWeight: 600, color: "#f0efe8" }}>@{t.username}</span>
-
-                        {/* Score */}
-                        <span style={{ fontSize: "11px", padding: "2px 8px", borderRadius: "6px", background: `${pi.color}12`, color: pi.color, fontWeight: 600 }}>
-                          {t.match_score}%
-                        </span>
-
-                        {/* Age + Role */}
-                        {t.estimated_role && (
-                          <span style={{ fontSize: "11px", color: "rgba(240,239,232,0.35)" }}>
-                            {t.estimated_age || ""} {t.estimated_role}
-                          </span>
-                        )}
-
-                        {/* Email badge */}
-                        {t.email && <span style={{ fontSize: "10px", color: "#2dd17a" }}>✉️</span>}
-
-                        {/* Expand indicator */}
-                        <span style={{ marginLeft: "auto", fontSize: "10px", color: "rgba(240,239,232,0.2)", transition: "transform 0.2s", transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)" }}>▼</span>
+                        <span style={{ background: ps.bg, color: ps.color, fontSize: "10px", fontWeight: 900, width: "22px", height: "22px", borderRadius: "6px", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{ps.label}</span>
+                        <span style={{ fontSize: "14px", fontWeight: 700, color: "#f0efe8" }}>@{t.username}</span>
+                        <span style={{ fontSize: "10px", padding: "2px 8px", borderRadius: "5px", background: `${pi.color}12`, color: pi.color, fontWeight: 600, flexShrink: 0 }}>{pi.icon} {t.platform === "yahoo_qa" ? "Yahoo知恵袋" : t.platform.charAt(0).toUpperCase() + t.platform.slice(1)}</span>
+                        {contactInfo && <span style={{ fontSize: "10px", padding: "2px 8px", borderRadius: "5px", background: "rgba(29,155,240,0.1)", color: "#1d9bf0", fontWeight: 600 }}>{contactInfo.includes("@") && !contactInfo.includes(".") ? contactInfo : "✉️"}</span>}
+                        {t.estimated_role && <span style={{ fontSize: "10px", color: "rgba(240,239,232,0.3)" }}>{t.estimated_role}</span>}
+                        <span style={{ marginLeft: "auto", fontSize: "20px", fontWeight: 800, fontFamily: "'Space Grotesk'", color: t.match_score >= 75 ? "#ffd60a" : t.match_score >= 55 ? "#2dd17a" : "rgba(240,239,232,0.4)" }}>{t.match_score}%</span>
                       </div>
 
-                      {/* Row 2: AI reason / match reason — always show */}
-                      <div style={{ fontSize: "12px", color: "rgba(240,239,232,0.4)", marginTop: "6px", marginLeft: "52px" }}>
-                        💡 {t.ai_reason || t.match_reason || t.comment?.approach || "分析中..."}
-                      </div>
-
-                      {/* Comment generation / display */}
-                      {!t.comment ? (
-                        <div style={{ marginTop: "8px", marginLeft: "52px" }}>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); handleGenerateComment(t.id); }}
-                            disabled={generatingIds.has(t.id)}
-                            style={{
-                              background: generatingIds.has(t.id) ? "rgba(124,92,252,0.05)" : "rgba(124,92,252,0.1)",
-                              border: "1px solid rgba(124,92,252,0.2)", borderRadius: "8px",
-                              padding: "5px 12px", fontSize: "11px", fontWeight: 600,
-                              color: "#7c5cfc", cursor: generatingIds.has(t.id) ? "wait" : "pointer",
-                              transition: "all 0.15s",
-                            }}
-                          >
-                            {generatingIds.has(t.id) ? "⏳ 生成中..." : "💬 参考コメント生成"}
-                          </button>
+                      {/* Hit reason box */}
+                      {(t.ai_reason || t.match_reason) && (
+                        <div style={{ background: "rgba(255,107,53,0.05)", border: "1px solid rgba(255,107,53,0.1)", borderRadius: "8px", padding: "8px 12px", marginBottom: "10px" }}>
+                          <span style={{ fontSize: "11px", color: "rgba(240,239,232,0.6)", lineHeight: 1.5 }}>💡 {t.ai_reason || t.match_reason}</span>
                         </div>
-                      ) : (
-                        <div style={{ marginTop: "8px", marginLeft: "52px" }}>
-                          <div style={{ display: "flex", alignItems: "flex-start", gap: "8px", fontSize: "12px", color: "rgba(240,239,232,0.7)", lineHeight: 1.6, background: "rgba(255,214,10,0.04)", border: "1px solid rgba(255,214,10,0.08)", borderRadius: "8px", padding: "10px" }}>
-                            <span style={{ flex: 1 }}>💬 {t.comment.content}</span>
-                            <button
-                              onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(t.comment!.content); setToast("📋 コピーしました"); setTimeout(() => setToast(""), 2000); }}
-                              style={{ flexShrink: 0, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "6px", padding: "3px 8px", fontSize: "10px", fontWeight: 600, color: "rgba(240,239,232,0.5)", cursor: "pointer" }}
-                            >
-                              📋 コピー
-                            </button>
+                      )}
+
+                      {/* Score bars */}
+                      <div style={{ display: "flex", gap: "16px", marginBottom: "10px" }}>
+                        {[
+                          { label: "課題の深さ", score: t.q1_score ?? t.relevance_score ?? 0, max: 10, color: "#ff6b35" },
+                          { label: "試す意欲", score: t.q2_score ?? t.intent_score ?? 0, max: 10, color: "#2dd17a" },
+                          { label: "接触可能性", score: t.q3_score ?? t.influence_score ?? 0, max: 5, color: "#1d9bf0" },
+                        ].map((s) => (
+                          <div key={s.label} style={{ flex: 1, display: "flex", alignItems: "center", gap: "6px" }}>
+                            <span style={{ fontSize: "9px", color: "rgba(240,239,232,0.3)", width: "52px", flexShrink: 0 }}>{s.label}</span>
+                            <div style={{ flex: 1, height: "4px", background: "rgba(255,255,255,0.05)", borderRadius: "2px", overflow: "hidden" }}>
+                              <div style={{ width: `${(s.score / s.max) * 100}%`, height: "100%", background: s.color, borderRadius: "2px" }} />
+                            </div>
+                            <span style={{ fontSize: "9px", color: s.color, fontWeight: 700, width: "24px", textAlign: "right" }}>{s.score}/{s.max}</span>
                           </div>
-                        </div>
-                      )}
+                        ))}
+                      </div>
 
-                      {/* Email draft button — show for targets with real email */}
-                      {t.email && !t.email.startsWith("Twitter:") && (
-                        <div style={{ marginTop: "6px", marginLeft: "52px" }}>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); handleDraftEmail(t.id); }}
-                            disabled={draftingIds.has(t.id)}
-                            style={{
-                              background: draftingIds.has(t.id) ? "rgba(45,209,122,0.05)" : "rgba(45,209,122,0.1)",
-                              border: "1px solid rgba(45,209,122,0.2)", borderRadius: "8px",
-                              padding: "5px 12px", fontSize: "11px", fontWeight: 600,
-                              color: "#2dd17a", cursor: draftingIds.has(t.id) ? "wait" : "pointer",
-                              transition: "all 0.15s",
-                            }}
-                          >
-                            {draftingIds.has(t.id) ? "⏳ 下書き作成中..." : `📧 メール下書き作成 (${t.email})`}
+                      {/* Action row */}
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                        {t.post_content && <span style={{ fontSize: "11px", color: "rgba(240,239,232,0.25)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.post_content.slice(0, 80)}</span>}
+                        {!t.post_content && <span style={{ flex: 1 }} />}
+                        {!t.comment ? (
+                          <button onClick={() => handleGenerateComment(t.id)} disabled={generatingIds.has(t.id)} style={{
+                            background: "rgba(124,92,252,0.08)", border: "1px solid rgba(124,92,252,0.15)", borderRadius: "7px",
+                            padding: "4px 10px", fontSize: "10px", fontWeight: 600, color: "#7c5cfc",
+                            cursor: generatingIds.has(t.id) ? "wait" : "pointer", flexShrink: 0,
+                          }}>
+                            {generatingIds.has(t.id) ? "⏳" : "💬 コメント生成"}
                           </button>
-                        </div>
-                      )}
+                        ) : (
+                          <button onClick={() => { navigator.clipboard.writeText(t.comment!.content); setToast("📋 コピーしました"); setTimeout(() => setToast(""), 2000); }} style={{
+                            background: "rgba(255,214,10,0.06)", border: "1px solid rgba(255,214,10,0.12)", borderRadius: "7px",
+                            padding: "4px 10px", fontSize: "10px", fontWeight: 600, color: "#ffd60a",
+                            cursor: "pointer", flexShrink: 0,
+                          }}>
+                            📋 コメントをコピー
+                          </button>
+                        )}
+                        {t.email && !t.email.startsWith("Twitter:") && (
+                          <button onClick={() => handleDraftEmail(t.id)} disabled={draftingIds.has(t.id)} style={{
+                            background: "rgba(45,209,122,0.08)", border: "1px solid rgba(45,209,122,0.15)", borderRadius: "7px",
+                            padding: "4px 10px", fontSize: "10px", fontWeight: 600, color: "#2dd17a",
+                            cursor: draftingIds.has(t.id) ? "wait" : "pointer", flexShrink: 0,
+                          }}>
+                            {draftingIds.has(t.id) ? "⏳" : "📧 メール"}
+                          </button>
+                        )}
+                        {t.post_url && (
+                          <a href={t.post_url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} style={{
+                            background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "7px",
+                            padding: "4px 8px", fontSize: "10px", color: "rgba(240,239,232,0.3)", textDecoration: "none", flexShrink: 0,
+                          }}>
+                            🔗
+                          </a>
+                        )}
+                      </div>
 
-                      {/* Expanded content */}
-                      {isExpanded && (
-                        <div style={{ marginTop: "12px", marginLeft: "52px", display: "flex", flexDirection: "column", gap: "8px" }}>
-                          {t.post_content && (
-                            <div style={{ fontSize: "12px", color: "rgba(240,239,232,0.35)", fontStyle: "italic", lineHeight: 1.5, background: "rgba(255,255,255,0.02)", borderRadius: "8px", padding: "10px" }}>
-                              &quot;{t.post_content.slice(0, 200)}{t.post_content.length > 200 ? "..." : ""}&quot;
-                            </div>
-                          )}
-                          {/* Sub-scores — always show */}
-                          {(t.q1_score != null || t.relevance_score != null) ? (
-                            <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "6px", background: "rgba(255,255,255,0.02)", borderRadius: "8px", padding: "10px" }}>
-                              {[
-                                { label: "課題の深さ", score: t.q1_score ?? t.relevance_score ?? 0, max: 10, color: "#ff6b35" },
-                                { label: "試す意欲", score: t.q2_score ?? t.intent_score ?? 0, max: 10, color: "#2dd17a" },
-                                { label: "接触可能性", score: t.q3_score ?? t.influence_score ?? 0, max: 5, color: "#1d9bf0" },
-                              ].map((s) => (
-                                <div key={s.label} style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                                  <span style={{ fontSize: "10px", color: "rgba(240,239,232,0.4)", width: "60px", flexShrink: 0 }}>{s.label}</span>
-                                  <div style={{ flex: 1, height: "5px", background: "rgba(255,255,255,0.05)", borderRadius: "3px", overflow: "hidden" }}>
-                                    <div style={{ width: `${(s.score / s.max) * 100}%`, height: "100%", background: s.color, borderRadius: "3px" }} />
-                                  </div>
-                                  <span style={{ fontSize: "10px", color: s.color, fontWeight: 700, width: "30px", textAlign: "right" }}>{s.score}/{s.max}</span>
-                                </div>
-                              ))}
-                            </div>
-                          ) : (
-                            <div style={{ fontSize: "11px", color: "rgba(240,239,232,0.25)", fontStyle: "italic", padding: "8px 10px", background: "rgba(255,255,255,0.02)", borderRadius: "8px" }}>
-                              🧠 スコア計算中...
-                            </div>
-                          )}
-                          {t.post_url && (
-                            <a href={t.post_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: "11px", color: "rgba(240,239,232,0.25)", textDecoration: "none" }}>
-                              🔗 {t.post_url.slice(0, 60)}...
-                            </a>
-                          )}
+                      {/* Comment preview if exists */}
+                      {t.comment && (
+                        <div style={{ marginTop: "8px", fontSize: "11px", color: "rgba(240,239,232,0.5)", lineHeight: 1.5, background: "rgba(255,214,10,0.03)", border: "1px solid rgba(255,214,10,0.06)", borderRadius: "8px", padding: "8px 10px" }}>
+                          💬 {t.comment.content.slice(0, 150)}{t.comment.content.length > 150 ? "..." : ""}
                         </div>
                       )}
                     </div>
@@ -542,15 +537,21 @@ export default function CampaignDetailPage() {
               </div>
             )}
           </div>
-
-          {/* Right - Live log */}
-          <div>
-            <div style={{ height: "500px", position: "sticky", top: "24px" }}>
-              <DashboardLiveLog logs={logs} platforms={(campaign?.platforms as string[]) || []} campaignCreatedAt={campaign?.created_at as string} hasData={hasData} />
-            </div>
-          </div>
         </div>
       </div>
+
+      {/* Live log drawer */}
+      {showLiveLog && (
+        <div style={{ position: "fixed", top: 0, right: 0, width: "360px", height: "100vh", background: "#13132a", borderLeft: "1px solid rgba(255,255,255,0.08)", zIndex: 999, display: "flex", flexDirection: "column" }}>
+          <div style={{ padding: "16px 20px", borderBottom: "1px solid rgba(255,255,255,0.07)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <span style={{ fontSize: "14px", fontWeight: 700, fontFamily: "'Space Grotesk'" }}>🔔 アクティビティ</span>
+            <button onClick={() => setShowLiveLog(false)} style={{ background: "none", border: "none", color: "rgba(240,239,232,0.4)", fontSize: "18px", cursor: "pointer" }}>✕</button>
+          </div>
+          <div style={{ flex: 1, overflow: "auto" }}>
+            <DashboardLiveLog logs={logs} platforms={(campaign?.platforms as string[]) || []} campaignCreatedAt={campaign?.created_at as string} hasData={hasData} />
+          </div>
+        </div>
+      )}
 
       {toast && (
         <div style={{ position: "fixed", bottom: 32, right: 32, background: "#2dd17a", color: "#fff", borderRadius: 12, padding: "12px 20px", fontSize: 14, fontWeight: 600, zIndex: 1000, boxShadow: "0 4px 20px rgba(0,0,0,0.3)", fontFamily: "DM Sans" }}>
