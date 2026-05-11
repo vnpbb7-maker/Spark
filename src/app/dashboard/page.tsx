@@ -74,10 +74,44 @@ export default function DashboardPage() {
     if (!camps || camps.length === 0) { setCampaigns([]); setLoading(false); return; }
 
     const campIds = camps.map((c) => c.id);
+    console.log("[dashboard] Found campaigns:", campIds.length, "ids:", campIds);
 
     // Fetch all targets for these campaigns in one query
-    const { data: allTargets } = await supabase.from("targets").select("id, campaign_id, username, platform, match_score, priority, email, twitter_handle, created_at").in("campaign_id", campIds).order("match_score", { ascending: false });
-    const tgts = allTargets || [];
+    const { data: allTargets, error: tgtError } = await supabase
+      .from("targets")
+      .select("id, campaign_id, username, platform, match_score, priority, email, twitter_handle, created_at")
+      .in("campaign_id", campIds)
+      .order("match_score", { ascending: false });
+
+    if (tgtError) console.error("[dashboard] Targets fetch error:", tgtError);
+    let tgts = allTargets || [];
+    console.log("[dashboard] Fetched targets:", tgts.length);
+
+    // Fallback: if bulk query returns 0 but campaigns exist, try per-campaign
+    if (tgts.length === 0 && campIds.length > 0) {
+      console.log("[dashboard] Bulk query returned 0, trying per-campaign fallback...");
+      const perCampResults = await Promise.all(
+        campIds.slice(0, 10).map(async (cid) => {
+          const { data, error } = await supabase
+            .from("targets")
+            .select("id, campaign_id, username, platform, match_score, priority, email, twitter_handle, created_at")
+            .eq("campaign_id", cid)
+            .order("match_score", { ascending: false })
+            .limit(50);
+          if (error) console.error(`[dashboard] Per-camp fetch error for ${cid}:`, error);
+          return data || [];
+        })
+      );
+      tgts = perCampResults.flat();
+      console.log("[dashboard] Fallback fetched:", tgts.length, "targets");
+    }
+
+    // Helper: check if target has real contact info
+    const hasContact = (t: { email: unknown; twitter_handle: unknown }) => {
+      const email = t.email as string | null;
+      const tw = t.twitter_handle as string | null;
+      return (email && !email.startsWith("Twitter:")) || !!tw;
+    };
 
     // Build enriched campaigns
     const enriched: CampaignRow[] = camps.map((c) => {
@@ -87,21 +121,24 @@ export default function DashboardPage() {
         platforms: (c.platforms as string[]) || [], status: c.status || "running", created_at: c.created_at,
         targets_count: ct.length,
         sa_count: ct.filter((t) => t.priority === "S" || t.priority === "A").length,
-        contact_count: ct.filter((t) => t.email || t.twitter_handle).length,
+        contact_count: ct.filter(hasContact).length,
       };
     });
     setCampaigns(enriched);
+    console.log("[dashboard] Enriched campaigns:", enriched.map(c => ({ id: c.id.slice(0,8), targets: c.targets_count, sa: c.sa_count, contacts: c.contact_count })));
 
     // Global stats
     const today = new Date(); today.setHours(0, 0, 0, 0);
     const todayNew = tgts.filter((t) => new Date(t.created_at) >= today).length;
-    setStats({
+    const globalStats = {
       total: tgts.length,
       sa: tgts.filter((t) => t.priority === "S" || t.priority === "A").length,
-      contacts: tgts.filter((t) => t.email || t.twitter_handle).length,
-      exported: enriched.reduce((s, c) => s + c.sa_count, 0), // approximate
+      contacts: tgts.filter(hasContact).length,
+      exported: enriched.reduce((s, c) => s + c.sa_count, 0),
       todayNew,
-    });
+    };
+    setStats(globalStats);
+    console.log("[dashboard] Global stats:", globalStats);
 
     // Top targets (S+A only)
     setTopTargets(
