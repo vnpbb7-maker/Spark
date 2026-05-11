@@ -3,10 +3,29 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { useRealtimeLog, LogEntry } from "@/hooks/useRealtimeLog";
-import KpiCards from "@/components/dashboard/KpiCards";
-import CampaignList from "@/components/dashboard/CampaignList";
-import DashboardLiveLog from "@/components/dashboard/DashboardLiveLog";
+
+const PLATFORM_ICONS: Record<string, { icon: string; label: string }> = {
+  twitter: { icon: "𝕏", label: "X" }, reddit: { icon: "🤖", label: "Reddit" },
+  note: { icon: "📝", label: "note" }, zenn: { icon: "📘", label: "Zenn" },
+  qiita: { icon: "💻", label: "Qiita" }, hatena: { icon: "B!", label: "はてな" },
+  yahoo_qa: { icon: "🟡", label: "Yahoo知恵袋" }, wantedly: { icon: "🤝", label: "Wantedly" },
+  connpass: { icon: "🎪", label: "Connpass" }, producthunt: { icon: "🚀", label: "ProductHunt" },
+  peatix: { icon: "🎟️", label: "Peatix" }, discord: { icon: "💬", label: "Discord" },
+  google_maps: { icon: "🗺️", label: "Googleマップ" }, web: { icon: "🌐", label: "Web" },
+};
+
+const PRIORITY_STYLE: Record<string, { bg: string; color: string }> = {
+  S: { bg: "linear-gradient(135deg, #ffd700, #ffaa00)", color: "#000" },
+  A: { bg: "linear-gradient(135deg, #2dd17a, #1ba360)", color: "#fff" },
+  B: { bg: "linear-gradient(135deg, #3ea8ff, #2d7fd3)", color: "#fff" },
+  C: { bg: "rgba(255,255,255,0.08)", color: "rgba(240,239,232,0.4)" },
+};
+
+const STATUS_MAP: Record<string, { dot: string; label: string; color: string }> = {
+  running: { dot: "🟢", label: "稼働中", color: "#2dd17a" },
+  paused: { dot: "🟡", label: "一時停止", color: "#ffd60a" },
+  completed: { dot: "⚫", label: "完了", color: "rgba(240,239,232,0.4)" },
+};
 
 const NAV_ITEMS = [
   { label: "ダッシュボード", href: "/dashboard", icon: "📊", active: true },
@@ -15,98 +34,93 @@ const NAV_ITEMS = [
   { label: "設定", href: "/settings", icon: "⚙️" },
 ];
 
+type CampaignRow = {
+  id: string; product_url: string; product_description: string; platforms: string[];
+  status: string; created_at: string;
+  targets_count: number; sa_count: number; contact_count: number;
+};
+
+type TopTarget = {
+  id: string; campaign_id: string; username: string; platform: string;
+  match_score: number; priority: string;
+};
+
+type ActivityItem = { id: string; icon: string; text: string; color: string; time: string; type: string };
+
 export default function DashboardPage() {
   const router = useRouter();
-  const realtimeLogs = useRealtimeLog();
   const [user, setUser] = useState<{ email?: string } | null>(null);
-  const [campaigns, setCampaigns] = useState<Array<Record<string, unknown>>>([]);
-  const [kpi, setKpi] = useState({ targetsFound: 0, analyzed: 0, exported: 0, conversions: 0, prevTargets: 0, prevAnalyzed: 0, prevExported: 0, prevConversions: 0 });
+  const [campaigns, setCampaigns] = useState<CampaignRow[]>([]);
+  const [stats, setStats] = useState({ total: 0, sa: 0, contacts: 0, exported: 0, todayNew: 0 });
+  const [topTargets, setTopTargets] = useState<TopTarget[]>([]);
+  const [activities, setActivities] = useState<ActivityItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [initialLogs, setInitialLogs] = useState<LogEntry[]>([]);
+  const [menuOpen, setMenuOpen] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     const supabase = createClient();
     const { data: { session } } = await supabase.auth.getSession();
-
     if (!session) {
-      // cookieがまだ反映されていない可能性があるので少し待ってリトライ
       await new Promise((r) => setTimeout(r, 500));
-      const { data: { session: retrySession } } = await supabase.auth.getSession();
-      if (!retrySession) {
-        router.push("/auth/login");
-        return;
-      }
+      const { data: { session: retry } } = await supabase.auth.getSession();
+      if (!retry) { router.push("/auth/login"); return; }
     }
-
     const { data: { user: u } } = await supabase.auth.getUser();
     if (!u) { router.push("/auth/login"); return; }
     setUser(u);
 
     // Fetch campaigns
     const { data: camps } = await supabase.from("campaigns").select("*").eq("user_id", u.id).order("created_at", { ascending: false });
+    if (!camps || camps.length === 0) { setCampaigns([]); setLoading(false); return; }
 
-    if (camps) {
-      const enriched = await Promise.all(camps.map(async (c) => {
-        try {
-          const { count: tc } = await supabase.from("targets").select("*", { count: "exact", head: true }).eq("campaign_id", c.id);
-          const { count: pc } = await supabase.from("comments").select("*", { count: "exact", head: true }).eq("campaign_id", c.id).not("posted_at", "is", null);
-          const { count: cc } = await supabase.from("comments").select("*", { count: "exact", head: true }).eq("campaign_id", c.id).not("responded_at", "is", null);
-          return { ...c, targets_count: tc || 0, posted_count: pc || 0, conversion_count: cc || 0 };
-        } catch {
-          return { ...c, targets_count: 0, posted_count: 0, conversion_count: 0 };
-        }
-      }));
-      setCampaigns(enriched);
+    const campIds = camps.map((c) => c.id);
 
-      // KPI
-      const totalTargets = enriched.reduce((s, c) => s + (c.targets_count as number), 0);
-      const totalPosted = enriched.reduce((s, c) => s + (c.posted_count as number), 0);
-      const totalConversions = enriched.reduce((s, c) => s + (c.conversion_count as number), 0);
-      let analyzedCount = 0;
-      try {
-        const { count } = await supabase.from("comments").select("*", { count: "exact", head: true });
-        analyzedCount = count || 0;
-      } catch {}
-      setKpi({ targetsFound: totalTargets, analyzed: analyzedCount, exported: totalPosted, conversions: totalConversions, prevTargets: Math.max(0, totalTargets - 5), prevAnalyzed: Math.max(0, analyzedCount - 2), prevExported: Math.max(0, totalPosted - 3), prevConversions: Math.max(0, totalConversions - 1) });
+    // Fetch all targets for these campaigns in one query
+    const { data: allTargets } = await supabase.from("targets").select("id, campaign_id, username, platform, match_score, priority, email, twitter_handle, created_at").in("campaign_id", campIds).order("match_score", { ascending: false });
+    const tgts = allTargets || [];
 
-      // 最近のアクティビティを取得
-      const campIds = camps.map((c) => c.id);
-      const { data: recentTargets } = await supabase
-        .from("targets")
-        .select("platform, username, match_score, created_at")
-        .in("campaign_id", campIds)
-        .order("created_at", { ascending: false })
-        .limit(15);
+    // Build enriched campaigns
+    const enriched: CampaignRow[] = camps.map((c) => {
+      const ct = tgts.filter((t) => t.campaign_id === c.id);
+      return {
+        id: c.id, product_url: c.product_url || "", product_description: c.product_description || "",
+        platforms: (c.platforms as string[]) || [], status: c.status || "running", created_at: c.created_at,
+        targets_count: ct.length,
+        sa_count: ct.filter((t) => t.priority === "S" || t.priority === "A").length,
+        contact_count: ct.filter((t) => t.email || t.twitter_handle).length,
+      };
+    });
+    setCampaigns(enriched);
 
-      const { data: recentComments } = await supabase
-        .from("comments")
-        .select("platform, approved, posted_at, created_at")
-        .in("campaign_id", campIds)
-        .order("created_at", { ascending: false })
-        .limit(10);
+    // Global stats
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const todayNew = tgts.filter((t) => new Date(t.created_at) >= today).length;
+    setStats({
+      total: tgts.length,
+      sa: tgts.filter((t) => t.priority === "S" || t.priority === "A").length,
+      contacts: tgts.filter((t) => t.email || t.twitter_handle).length,
+      exported: enriched.reduce((s, c) => s + c.sa_count, 0), // approximate
+      todayNew,
+    });
 
-      const entries: { log: LogEntry; time: string }[] = [];
-      let counter = 0;
+    // Top targets (S+A only)
+    setTopTargets(
+      tgts.filter((t) => t.priority === "S" || t.priority === "A")
+        .slice(0, 5)
+        .map((t) => ({ id: t.id, campaign_id: t.campaign_id, username: t.username, platform: t.platform, match_score: t.match_score, priority: t.priority || "B" }))
+    );
 
-      recentComments?.forEach((c) => {
-        const ts = new Date(c.posted_at || c.created_at).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-        if (c.posted_at) {
-          entries.push({ log: { id: `dinit-${++counter}`, icon: "📤", text: `${c.platform}に投稿完了`, color: "#2dd17a", timestamp: ts, type: "post" }, time: c.posted_at });
-        } else if (c.approved) {
-          entries.push({ log: { id: `dinit-${++counter}`, icon: "✅", text: `コメント承認: ${c.platform}`, color: "#7c5cfc", timestamp: ts, type: "approve" }, time: c.created_at });
-        } else {
-          entries.push({ log: { id: `dinit-${++counter}`, icon: "✍", text: `コメント生成: ${c.platform}`, color: "#ffd60a", timestamp: ts, type: "generate" }, time: c.created_at });
-        }
-      });
-
-      recentTargets?.forEach((t) => {
-        const ts = new Date(t.created_at).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-        entries.push({ log: { id: `dinit-${++counter}`, icon: "🔍", text: `${t.platform}で発見: @${t.username} (${t.match_score}%)`, color: "#ff6b35", timestamp: ts, type: "find" }, time: t.created_at });
-      });
-
-      entries.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
-      setInitialLogs(entries.slice(0, 20).map((e) => e.log));
-    }
+    // Activity feed
+    const acts: ActivityItem[] = [];
+    let c = 0;
+    tgts.slice(0, 8).forEach((t) => {
+      const ts = new Date(t.created_at).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
+      acts.push({ id: `a-${++c}`, icon: "🔍", text: `${t.platform}で発見: @${t.username} (${t.match_score}%)`, color: "#1d9bf0", time: ts, type: "discover" });
+      if (t.priority) {
+        acts.push({ id: `a-${++c}`, icon: "🧠", text: `AI分析: @${t.username} → ${t.priority}ランク`, color: "#ffd60a", time: ts, type: "score" });
+      }
+    });
+    setActivities(acts.slice(0, 10));
     setLoading(false);
   }, [router]);
 
@@ -115,77 +129,194 @@ export default function DashboardPage() {
   const handlePause = async (id: string) => {
     const supabase = createClient();
     const camp = campaigns.find((c) => c.id === id);
-    const newStatus = camp?.status === "paused" ? "running" : "paused";
-    await supabase.from("campaigns").update({ status: newStatus }).eq("id", id);
-    fetchData();
+    await supabase.from("campaigns").update({ status: camp?.status === "paused" ? "running" : "paused" }).eq("id", id);
+    setMenuOpen(null); fetchData();
   };
-
   const handleDelete = async (id: string) => {
     if (!confirm("本当に削除しますか？")) return;
     const supabase = createClient();
     await supabase.from("campaigns").delete().eq("id", id);
-    fetchData();
+    setMenuOpen(null); fetchData();
   };
-
   const handleLogout = async () => {
     const supabase = createClient();
     await supabase.auth.signOut();
     router.push("/");
   };
 
-  if (loading) {
-    return <div style={{ minHeight: "100vh", background: "#0d0d1a", display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(240,239,232,0.3)" }}>読み込み中...</div>;
-  }
+  if (loading) return <div style={{ minHeight: "100vh", background: "#0d0d1a", display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(240,239,232,0.3)" }}>読み込み中...</div>;
 
   return (
     <div style={{ display: "flex", minHeight: "100vh", background: "#0d0d1a", color: "#f0efe8" }}>
       {/* Sidebar */}
-      <aside style={{ width: "240px", background: "#0a0a18", borderRight: "1px solid rgba(255,255,255,0.07)", display: "flex", flexDirection: "column", flexShrink: 0, position: "fixed", top: 0, bottom: 0, left: 0, zIndex: 40 }}>
-        <div style={{ padding: "24px 20px", display: "flex", alignItems: "center", gap: "8px", fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: "20px" }}>
-          <span style={{ color: "#ff6b35", fontSize: "22px" }}>⚡</span> SPARK
+      <aside style={{ width: "220px", background: "#0a0a18", borderRight: "1px solid rgba(255,255,255,0.07)", display: "flex", flexDirection: "column", flexShrink: 0, position: "fixed", top: 0, bottom: 0, left: 0, zIndex: 40 }}>
+        <div style={{ padding: "22px 18px", display: "flex", alignItems: "center", gap: "8px", fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: "19px" }}>
+          <span style={{ color: "#ff6b35", fontSize: "20px" }}>⚡</span> SPARK
         </div>
-        <nav style={{ flex: 1, padding: "0 12px" }}>
+        <nav style={{ flex: 1, padding: "0 10px" }}>
           {NAV_ITEMS.map((item) => (
-            <a key={item.label} href={item.href} style={{ display: "flex", alignItems: "center", gap: "10px", padding: "12px 14px", borderRadius: "10px", marginBottom: "4px", textDecoration: "none", fontSize: "14px", fontWeight: item.active ? 600 : 400, color: item.active ? "#ff6b35" : "rgba(240,239,232,0.5)", background: item.active ? "rgba(255,107,53,0.1)" : "transparent", transition: "all 0.2s" }}>
-              <span style={{ fontSize: "16px" }}>{item.icon}</span>
+            <a key={item.label} href={item.href} style={{ display: "flex", alignItems: "center", gap: "10px", padding: "11px 14px", borderRadius: "10px", marginBottom: "3px", textDecoration: "none", fontSize: "13px", fontWeight: item.active ? 600 : 400, color: item.active ? "#ff6b35" : "rgba(240,239,232,0.5)", background: item.active ? "rgba(255,107,53,0.1)" : "transparent" }}>
+              <span style={{ fontSize: "15px" }}>{item.icon}</span>
               {item.label}
             </a>
           ))}
         </nav>
-        <div style={{ padding: "16px 20px", borderTop: "1px solid rgba(255,255,255,0.07)", display: "flex", alignItems: "center", gap: "10px" }}>
-          <div style={{ width: "32px", height: "32px", borderRadius: "50%", background: "rgba(255,107,53,0.2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "14px", fontWeight: 700, color: "#ff6b35" }}>
+        <div style={{ padding: "14px 18px", borderTop: "1px solid rgba(255,255,255,0.07)", display: "flex", alignItems: "center", gap: "10px" }}>
+          <div style={{ width: "30px", height: "30px", borderRadius: "50%", background: "rgba(255,107,53,0.2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "13px", fontWeight: 700, color: "#ff6b35" }}>
             {(user?.email || "U")[0].toUpperCase()}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <p style={{ fontSize: "12px", color: "#f0efe8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user?.email}</p>
+            <p style={{ fontSize: "11px", color: "#f0efe8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", margin: 0 }}>{user?.email}</p>
           </div>
-          <button onClick={handleLogout} style={{ background: "none", border: "none", color: "rgba(240,239,232,0.3)", cursor: "pointer", fontSize: "14px" }} title="ログアウト">↩</button>
+          <button onClick={handleLogout} style={{ background: "none", border: "none", color: "rgba(240,239,232,0.3)", cursor: "pointer", fontSize: "13px" }} title="ログアウト">↩</button>
         </div>
       </aside>
 
       {/* Main */}
-      <div style={{ flex: 1, marginLeft: "240px", display: "flex" }}>
-        <main style={{ flex: 1, padding: "32px 32px 32px 32px", minWidth: 0 }}>
-          {/* Header */}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "32px" }}>
-            <div>
-              <h1 style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: "24px", marginBottom: "4px" }}>おかえりなさい 👋</h1>
-              <p style={{ fontSize: "14px", color: "rgba(240,239,232,0.4)" }}>{user?.email}</p>
+      <main style={{ flex: 1, marginLeft: "220px", padding: "28px 32px" }}>
+        {/* Header */}
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "28px" }}>
+          <div>
+            <h1 style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: "20px", marginBottom: "4px", margin: 0 }}>おかえり 👋</h1>
+            <p style={{ fontSize: "12px", color: "rgba(240,239,232,0.35)", margin: "4px 0 0" }}>
+              {user?.email} · 今日のターゲット発見数: <span style={{ color: "#ff6b35", fontWeight: 700 }}>{stats.todayNew}件</span>
+            </p>
+          </div>
+          <a href="/campaigns/new" style={{ background: "#ff6b35", color: "#fff", textDecoration: "none", padding: "10px 22px", borderRadius: "11px", fontSize: "13px", fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif", boxShadow: "0 0 20px rgba(255,107,53,0.3)", display: "flex", alignItems: "center", gap: "6px" }}>
+            + 新しいキャンペーン
+          </a>
+        </div>
+
+        {/* 4 Stats */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "12px", marginBottom: "28px" }}>
+          {[
+            { label: "総発見数", value: stats.total, delta: `今日 +${stats.todayNew}`, icon: "🔍", color: "#ff6b35" },
+            { label: "S+Aランク", value: stats.sa, delta: "", icon: "⭐", color: "#ffd60a" },
+            { label: "連絡先取得", value: stats.contacts, delta: "", icon: "📧", color: "#2dd17a" },
+            { label: "エクスポート済み", value: stats.exported, delta: "", icon: "📊", color: "#7c5cfc" },
+          ].map((s) => (
+            <div key={s.label} style={{ background: "#13132a", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "14px", padding: "18px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                <span style={{ fontSize: "11px", color: "rgba(240,239,232,0.4)", fontWeight: 500 }}>{s.icon} {s.label}</span>
+                {s.delta && <span style={{ fontSize: "10px", color: s.color, fontWeight: 600, background: `${s.color}15`, padding: "2px 6px", borderRadius: "6px" }}>{s.delta}</span>}
+              </div>
+              <div style={{ fontSize: "28px", fontWeight: 800, fontFamily: "'Space Grotesk'", color: s.color }}>{s.value}</div>
             </div>
-            <a href="/campaigns/new" style={{ background: "#ff6b35", color: "#fff", textDecoration: "none", padding: "12px 24px", borderRadius: "12px", fontSize: "14px", fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif", boxShadow: "0 0 20px rgba(255,107,53,0.35)" }}>
-              + 新しいキャンペーン
-            </a>
+          ))}
+        </div>
+
+        {/* Campaign list */}
+        <div style={{ marginBottom: "28px" }}>
+          <h2 style={{ fontFamily: "'Space Grotesk'", fontWeight: 700, fontSize: "16px", marginBottom: "14px" }}>キャンペーン一覧</h2>
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+            {campaigns.length === 0 ? (
+              <div style={{ background: "#13132a", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "14px", padding: "40px", textAlign: "center" }}>
+                <div style={{ fontSize: "28px", marginBottom: "10px" }}>🚀</div>
+                <div style={{ fontSize: "14px", color: "rgba(240,239,232,0.5)", marginBottom: "8px" }}>キャンペーンがまだありません</div>
+                <a href="/campaigns/new" style={{ color: "#ff6b35", fontSize: "13px", textDecoration: "none", fontWeight: 600 }}>最初のキャンペーンを作成 →</a>
+              </div>
+            ) : campaigns.map((c) => {
+              const st = STATUS_MAP[c.status] || STATUS_MAP.running;
+              return (
+                <div key={c.id} style={{ background: "#13132a", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "12px", padding: "14px 18px", display: "flex", alignItems: "center", gap: "16px" }}>
+                  {/* Left: product + platforms */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: "13px", fontWeight: 700, marginBottom: "5px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.product_description || c.product_url || "キャンペーン"}</div>
+                    <div style={{ display: "flex", gap: "4px", flexWrap: "wrap" }}>
+                      {c.platforms.slice(0, 5).map((p) => {
+                        const pi = PLATFORM_ICONS[p] || { icon: "?", label: p };
+                        return <span key={p} style={{ fontSize: "9px", padding: "1px 6px", borderRadius: "4px", background: "rgba(255,255,255,0.04)", color: "rgba(240,239,232,0.4)" }}>{pi.icon} {pi.label}</span>;
+                      })}
+                    </div>
+                  </div>
+                  {/* Status */}
+                  <div style={{ display: "flex", alignItems: "center", gap: "5px", width: "80px", flexShrink: 0 }}>
+                    <span style={{ fontSize: "10px" }}>{st.dot}</span>
+                    <span style={{ fontSize: "11px", color: st.color, fontWeight: 600 }}>{st.label}</span>
+                  </div>
+                  {/* Mini stats */}
+                  <div style={{ display: "flex", gap: "12px", flexShrink: 0 }}>
+                    {[
+                      { label: "発見", value: c.targets_count, color: "#ff6b35" },
+                      { label: "S+A", value: c.sa_count, color: "#ffd60a" },
+                      { label: "連絡先", value: c.contact_count, color: "#2dd17a" },
+                    ].map((s) => (
+                      <div key={s.label} style={{ textAlign: "center", minWidth: "40px" }}>
+                        <div style={{ fontSize: "15px", fontWeight: 800, fontFamily: "'Space Grotesk'", color: s.color }}>{s.value}</div>
+                        <div style={{ fontSize: "9px", color: "rgba(240,239,232,0.3)" }}>{s.label}</div>
+                      </div>
+                    ))}
+                  </div>
+                  {/* Actions */}
+                  <div style={{ display: "flex", gap: "6px", flexShrink: 0, position: "relative" }}>
+                    <a href={`/campaigns/${c.id}`} style={{ background: "rgba(255,107,53,0.08)", border: "1px solid rgba(255,107,53,0.15)", borderRadius: "7px", padding: "5px 10px", fontSize: "10px", fontWeight: 600, color: "#ff6b35", textDecoration: "none" }}>📊 詳細</a>
+                    <a href={`/api/campaigns/${c.id}/export`} style={{ background: "rgba(45,209,122,0.08)", border: "1px solid rgba(45,209,122,0.15)", borderRadius: "7px", padding: "5px 10px", fontSize: "10px", fontWeight: 600, color: "#2dd17a", textDecoration: "none" }}>📥</a>
+                    <button onClick={() => setMenuOpen(menuOpen === c.id ? null : c.id)} style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "7px", padding: "5px 8px", fontSize: "10px", color: "rgba(240,239,232,0.4)", cursor: "pointer" }}>⋯</button>
+                    {menuOpen === c.id && (
+                      <div style={{ position: "absolute", top: "100%", right: 0, marginTop: "4px", background: "#1a1a2e", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "10px", padding: "4px", zIndex: 50, minWidth: "120px" }}>
+                        <button onClick={() => handlePause(c.id)} style={{ width: "100%", background: "none", border: "none", padding: "8px 12px", fontSize: "12px", color: "#ffd60a", cursor: "pointer", textAlign: "left", borderRadius: "6px" }}>
+                          {c.status === "paused" ? "▶️ 再開" : "⏸️ 一時停止"}
+                        </button>
+                        <button onClick={() => handleDelete(c.id)} style={{ width: "100%", background: "none", border: "none", padding: "8px 12px", fontSize: "12px", color: "#ff4444", cursor: "pointer", textAlign: "left", borderRadius: "6px" }}>
+                          🗑️ 削除
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Bottom 2-column */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+          {/* Live activity */}
+          <div style={{ background: "#13132a", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "14px", padding: "18px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "14px" }}>
+              <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#2dd17a", boxShadow: "0 0 8px #2dd17a" }} />
+              <span style={{ fontSize: "13px", fontWeight: 700, fontFamily: "'Space Grotesk'" }}>ライブアクティビティ</span>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+              {activities.length === 0 ? (
+                <div style={{ fontSize: "12px", color: "rgba(240,239,232,0.3)", padding: "16px 0", textAlign: "center" }}>アクティビティはまだありません</div>
+              ) : activities.map((a) => (
+                <div key={a.id} style={{ display: "flex", alignItems: "center", gap: "10px", padding: "6px 0" }}>
+                  <div style={{ width: "26px", height: "26px", borderRadius: "50%", background: `${a.color}15`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "12px", flexShrink: 0 }}>{a.icon}</div>
+                  <span style={{ fontSize: "11px", color: "rgba(240,239,232,0.6)", flex: 1 }}>{a.text}</span>
+                  <span style={{ fontSize: "10px", color: "rgba(240,239,232,0.25)", flexShrink: 0 }}>{a.time}</span>
+                </div>
+              ))}
+            </div>
           </div>
 
-          <KpiCards data={kpi} />
-          <CampaignList campaigns={campaigns as never[]} onPause={handlePause} onDelete={handleDelete} />
-        </main>
-
-        {/* Right sidebar - Live Log */}
-        <aside style={{ width: "320px", borderLeft: "1px solid rgba(255,255,255,0.07)", flexShrink: 0, padding: "32px 16px" }}>
-          <DashboardLiveLog logs={[...realtimeLogs, ...initialLogs.filter((il) => !realtimeLogs.some((rl) => rl.text === il.text))].slice(0, 20)} />
-        </aside>
-      </div>
+          {/* Top targets */}
+          <div style={{ background: "#13132a", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "14px", padding: "18px" }}>
+            <div style={{ marginBottom: "14px" }}>
+              <span style={{ fontSize: "13px", fontWeight: 700, fontFamily: "'Space Grotesk'" }}>注目ターゲット</span>
+              <span style={{ fontSize: "10px", color: "rgba(240,239,232,0.3)", marginLeft: "8px" }}>S+Aランクのみ</span>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+              {topTargets.length === 0 ? (
+                <div style={{ fontSize: "12px", color: "rgba(240,239,232,0.3)", padding: "16px 0", textAlign: "center" }}>S+Aランクのターゲットがまだ見つかっていません</div>
+              ) : topTargets.map((t) => {
+                const ps = PRIORITY_STYLE[t.priority] || PRIORITY_STYLE.C;
+                const pi = PLATFORM_ICONS[t.platform] || { icon: "?", label: t.platform };
+                return (
+                  <a key={t.id} href={`/campaigns/${t.campaign_id}`} style={{ display: "flex", alignItems: "center", gap: "10px", padding: "8px 10px", borderRadius: "8px", textDecoration: "none", color: "#f0efe8", transition: "background 0.15s" }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.04)")}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
+                    <span style={{ background: ps.bg, color: ps.color, fontSize: "9px", fontWeight: 900, width: "20px", height: "20px", borderRadius: "5px", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{t.priority}</span>
+                    <span style={{ fontSize: "12px", fontWeight: 600 }}>@{t.username}</span>
+                    <span style={{ fontSize: "10px", color: "rgba(240,239,232,0.3)" }}>{pi.icon} {pi.label}</span>
+                    <span style={{ marginLeft: "auto", fontSize: "14px", fontWeight: 800, fontFamily: "'Space Grotesk'", color: t.match_score >= 75 ? "#ffd60a" : "#2dd17a" }}>{t.match_score}%</span>
+                  </a>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </main>
     </div>
   );
 }
