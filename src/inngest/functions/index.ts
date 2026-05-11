@@ -413,7 +413,7 @@ export const discoverTargets = inngest.createFunction(
 
     // 2. Per-campaign target limit
     // TODO: change back to 10 before production release
-    const campaignLimit = campaign.daily_limit || 20;
+    const campaignLimit = campaign.daily_limit || 30;
 
     const { count } = await getSupabase()
       .from("targets")
@@ -551,16 +551,15 @@ JSON形式で返してください: { "queries": ["クエリ1", "クエリ2", "�
         continue;
       }
 
-      // For all other platforms: use Tavily with site: prefix
       const sitePrefix = PLATFORM_SITE[platform] || "";
-      for (const query of searchQueries.slice(0, 3)) {
+      for (const query of searchQueries) {
         if (limitReached) break;
         const fullQuery = sitePrefix ? `${sitePrefix} ${query}` : query;
         try {
           const tavilyResponse = await fetch("https://api.tavily.com/search", {
             method: "POST",
             headers: { "Content-Type": "application/json", "Authorization": `Bearer ${process.env.TAVILY_API_KEY}` },
-            body: JSON.stringify({ query: fullQuery, max_results: 8, search_depth: "basic", topic: "general", include_raw_content: false, start_date: startDate }),
+            body: JSON.stringify({ query: fullQuery, max_results: 10, search_depth: "basic", topic: "general", include_raw_content: false, start_date: startDate }),
           });
           if (!tavilyResponse.ok) { console.error(`[discovery] Tavily error for "${fullQuery}":`, tavilyResponse.status); continue; }
           const tavilyData = await tavilyResponse.json();
@@ -601,6 +600,7 @@ JSON形式で返してください: { "queries": ["クエリ1", "クエリ2", "�
           }
         } catch (err) { console.error("[discovery] Tavily error:", err); }
       }
+      console.log(`[discovery] Progress after ${platform}: ${insertedTargets.length}/${remaining} targets found`);
     }
 
     // Connpass API discovery (if "connpass" is in selected platforms)
@@ -886,7 +886,7 @@ JSONのみ:
               const q3 = Math.min(5, Math.max(0, score.q3_score || 0));
               const totalScore = Math.min(100, Math.max(0, (q1 + q2 + q3) * 4));
 
-              const priority = totalScore >= 75 ? "S" : totalScore >= 55 ? "A" : totalScore >= 35 ? "B" : "C";
+              const priority = totalScore >= 65 ? "S" : totalScore >= 50 ? "A" : totalScore >= 35 ? "B" : "C";
 
               const updateData = {
                 match_score: totalScore,

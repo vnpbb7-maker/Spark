@@ -272,9 +272,19 @@ export default function CampaignDetailPage() {
             <h1 style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: "17px", margin: 0 }}>{(campaign?.product_description as string || "").slice(0, 30)}</h1>
             <span style={{ fontSize: "11px", padding: "3px 10px", borderRadius: "8px", background: `${st.color}18`, color: st.color, fontWeight: 600 }}>{st.icon} {st.label}</span>
           </div>
-          <button onClick={() => setShowLiveLog(!showLiveLog)} style={{ background: showLiveLog ? "rgba(124,92,252,0.15)" : "rgba(255,255,255,0.04)", border: `1px solid ${showLiveLog ? "rgba(124,92,252,0.3)" : "rgba(255,255,255,0.08)"}`, borderRadius: "10px", padding: "7px 12px", fontSize: "14px", cursor: "pointer", color: showLiveLog ? "#7c5cfc" : "rgba(240,239,232,0.4)" }}>
-            🔔
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <a href={`/campaigns/${campaignId}/outreach${selectedCount > 0 ? `?ids=${[...selected].join(",")}` : ""}`} style={{
+              background: "linear-gradient(135deg, #7c5cfc, #5a3fd6)", color: "#fff", border: "none", borderRadius: "10px",
+              padding: "8px 18px", fontSize: "12px", fontWeight: 700, textDecoration: "none",
+              fontFamily: "'Space Grotesk'", boxShadow: "0 4px 16px rgba(124,92,252,0.3)",
+              display: "flex", alignItems: "center", gap: "6px",
+            }}>
+              📨 送信する{selectedCount > 0 ? ` (${selectedCount}件)` : ""}
+            </a>
+            <button onClick={() => setShowLiveLog(!showLiveLog)} style={{ background: showLiveLog ? "rgba(124,92,252,0.15)" : "rgba(255,255,255,0.04)", border: `1px solid ${showLiveLog ? "rgba(124,92,252,0.3)" : "rgba(255,255,255,0.08)"}`, borderRadius: "10px", padding: "7px 12px", fontSize: "14px", cursor: "pointer", color: showLiveLog ? "#7c5cfc" : "rgba(240,239,232,0.4)" }}>
+              🔔
+            </button>
+          </div>
         </div>
       </div>
 
