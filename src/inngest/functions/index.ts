@@ -398,9 +398,12 @@ function extractUsername(url: string, platform: string): string {
 
 export const discoverTargets = inngest.createFunction(
   { id: "discover-targets", triggers: [{ event: "campaign/discover" }] },
-  async ({ event }: any) => {
+  async ({ event, step }: any) => {
     const campaignId = event.data.campaign_id as string;
     console.log("Starting discover for campaign:", campaignId);
+
+    // ═══ STEP 1: Get campaign + generate queries ═══
+    const stepData = await step.run("get-campaign-and-queries", async () => {
 
     // 1. キャンペーン取得
     const { data: campaign } = await getSupabase()
@@ -409,7 +412,7 @@ export const discoverTargets = inngest.createFunction(
       .eq("id", campaignId)
       .single();
 
-    if (!campaign) return { error: "Campaign not found" };
+    if (!campaign) return { campaign: null, platforms: [], productDescription: "", searchQueries: [], remaining: 0, dedupKeys: [] as string[], minMatchScore: 0 };
 
     // 2. Per-campaign target limit
     // TODO: change back to 10 before production release
@@ -423,7 +426,7 @@ export const discoverTargets = inngest.createFunction(
     const existingCount = count || 0;
     if (existingCount >= campaignLimit) {
       console.log(`Campaign limit reached: ${existingCount}/${campaignLimit}`);
-      return { error: "Campaign limit reached" };
+      return { campaign: null, platforms: [], productDescription: "", searchQueries: [], remaining: 0, dedupKeys: [] as string[], minMatchScore: 0 };
     }
     const remaining = campaignLimit - existingCount;
     const minMatchScore = (campaign.min_match_score as number) || 50;
@@ -499,6 +502,17 @@ JSON形式で返してください: { "queries": ["クエリ1", "クエリ2", "�
       ];
     }
     console.log("[discovery] Generated queries:", searchQueries);
+
+    return { campaign, platforms, productDescription, searchQueries, remaining, dedupKeys: [...dedupSet], minMatchScore };
+    }); // end step 1
+
+    if (!stepData.campaign) return { error: "Campaign not found or limit reached" };
+    const { campaign, platforms, productDescription, searchQueries, remaining } = stepData;
+    const dedupSet = new Set(stepData.dedupKeys);
+    const minMatchScore = stepData.minMatchScore;
+
+    // ═══ STEP 2: Discover targets ═══
+    const discoveryResult = await step.run("discover-targets-search", async () => {
 
     // 6-month freshness
     const sixMonthsAgo = new Date();
@@ -718,6 +732,13 @@ JSON形式で返してください: { "queries": ["クエリ1", "クエリ2", "�
       } catch (err) { console.error("[google_maps] error:", err); }
     }
 
+    console.log(`[step2] Discovery complete: ${insertedTargets.length} targets found`);
+    return { targetsFound: insertedTargets.length };
+    }); // end step 2
+
+    // ═══ STEP 3: Extract contacts ═══
+    await step.run("extract-contacts", async () => {
+
     // 公開連絡先情報の抽出（プロフィールページから）
     try {
       const { data: newTargets } = await getSupabase()
@@ -764,6 +785,10 @@ JSON形式で返してください: { "queries": ["クエリ1", "クエリ2", "�
     } catch (e) {
       console.error("Contact extraction error:", e);
     }
+    }); // end step 3
+
+    // ═══ STEP 4: AI scoring ═══
+    await step.run("score-targets", async () => {
 
     // Firecrawl deep extraction + Multi-factor AI scoring
     try {
@@ -815,7 +840,7 @@ JSON形式で返してください: { "queries": ["クエリ1", "クエリ2", "�
               }
             }
 
-            const productDescription = campaign.product_description || campaign.product_url || "";
+            const scoreProdDesc = productDescription || "";
             // Detect if this looks like a company/corporate post
             const looksLikeCompany = /株式会社|合同会社|公式|サービス|ソリューション|press|release/.test(enrichedContent.slice(0, 300));
             const isPersonalPlatform = ["note", "qiita", "zenn", "twitter", "reddit", "wantedly", "connpass"].includes(t.platform);
@@ -842,7 +867,7 @@ JSON形式で返してください: { "queries": ["クエリ1", "クエリ2", "�
                     role: "user",
                     content: `βテスター候補を厳密に評価してください。${looksLikeCompany ? "\n⚠️ この投稿は企業・法人の可能性が高いです。個人でない場合はq3=0にしてください。" : ""}
 
-プロダクト: ${productDescription}
+プロダクト: ${scoreProdDesc}
 投稿者: ${t.username} (${t.platform})
 投稿内容: ${enrichedContent.slice(0, 500)}
 
@@ -928,8 +953,9 @@ JSONのみ:
 
     // コメント生成は手動トリガーに変更（自動生成を停止）
     // ユーザーがキャンペーンページで個別or一括でコメント生成ボタンを押す
+    }); // end step 4
 
-    return { success: true, campaignId, targetsFound: insertedTargets.length };
+    return { success: true, campaignId, targetsFound: discoveryResult?.targetsFound || 0 };
   }
 );
 
