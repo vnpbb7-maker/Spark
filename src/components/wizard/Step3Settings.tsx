@@ -56,13 +56,10 @@ const PLAN_PRICE: Record<string, string> = {
   growth: "Growthプラン（$99/月）",
 };
 
-function canUsePlatform(platformRequiredPlan: string, userPlan: string): boolean {
-  return PLAN_ORDER.indexOf(userPlan) >= PLAN_ORDER.indexOf(platformRequiredPlan);
-}
-
-function getPlanLabel(requiredPlan: string): string {
-  if (requiredPlan === "starter") return "Starterプラン";
-  return "Growthプラン";
+// TODO: re-enable plan gating after testing
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function canUsePlatform(_platformRequiredPlan: string, _userPlan: string): boolean {
+  return true; // all platforms available during testing
 }
 
 type Props = {
@@ -79,7 +76,7 @@ export default function Step3Settings({ recommendedPlatforms, onSubmit, loading 
 
   const [userPlan, setUserPlan] = useState("free");
   const [isAdmin, setIsAdmin] = useState(false);
-  const [upgradeModal, setUpgradeModal] = useState<string | null>(null);
+  // TODO: Re-add plan restrictions before production launch
   const [targetLanguage, setTargetLanguage] = useState("ja");
   const [requiredKeywords, setRequiredKeywords] = useState("");
   const [minMatchScore, setMinMatchScore] = useState(60);
@@ -132,11 +129,6 @@ export default function Step3Settings({ recommendedPlatforms, onSubmit, loading 
   }, [recommendedPlatforms, userPlan, isAdmin]);
 
   const handlePlatformClick = (p: typeof ALL_PLATFORMS[number]) => {
-    const canUse = isAdmin || canUsePlatform(p.requiredPlan, userPlan);
-    if (!canUse) {
-      setUpgradeModal(p.name);
-      return;
-    }
     setPlatforms((prev) => prev.includes(p.id) ? prev.filter((x) => x !== p.id) : [...prev, p.id]);
   };
 
@@ -165,7 +157,6 @@ export default function Step3Settings({ recommendedPlatforms, onSubmit, loading 
             <div style={{ fontSize: "12px", fontWeight: 600, color: "rgba(240,239,232,0.35)", marginBottom: "8px", textTransform: "uppercase", letterSpacing: "0.5px" }}>{group.label}</div>
             <div style={{ display: "grid", gridTemplateColumns: group.platforms.length === 1 ? "1fr" : "repeat(2, 1fr)", gap: "10px" }}>
               {group.platforms.map((p) => {
-                const allowed = isAdmin || canUsePlatform(p.requiredPlan, userPlan);
                 const selected = platforms.includes(p.id);
                 const recommended = recommendedPlatforms.includes(p.id);
                 return (
@@ -175,16 +166,16 @@ export default function Step3Settings({ recommendedPlatforms, onSubmit, loading 
                     style={{
                       display: "flex", flexDirection: "column", gap: "6px",
                       padding: "14px 16px", textAlign: "left",
-                      background: !allowed ? "rgba(255,255,255,0.02)" : selected ? "rgba(255,107,53,0.1)" : "rgba(255,255,255,0.03)",
-                      border: `1px solid ${!allowed ? "rgba(255,255,255,0.05)" : selected ? "rgba(255,107,53,0.4)" : "rgba(255,255,255,0.07)"}`,
+                      background: selected ? "rgba(255,107,53,0.1)" : "rgba(255,255,255,0.03)",
+                      border: `1px solid ${selected ? "rgba(255,107,53,0.4)" : "rgba(255,255,255,0.07)"}`,
                       borderRadius: "14px", cursor: "pointer", transition: "all 0.2s", position: "relative",
                     }}
                   >
                     <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                      <span style={{ fontSize: "18px", fontWeight: 700, color: allowed ? p.color : "rgba(240,239,232,0.25)" }}>
-                        {allowed ? p.icon : "🔒"}
+                      <span style={{ fontSize: "18px", fontWeight: 700, color: p.color }}>
+                        {p.icon}
                       </span>
-                      <span style={{ fontSize: "14px", fontWeight: selected ? 700 : 500, color: allowed ? (selected ? "#f0efe8" : "rgba(240,239,232,0.6)") : "rgba(240,239,232,0.3)" }}>
+                      <span style={{ fontSize: "14px", fontWeight: selected ? 700 : 500, color: selected ? "#f0efe8" : "rgba(240,239,232,0.6)" }}>
                         {p.name}
                       </span>
                     </div>
@@ -192,17 +183,9 @@ export default function Step3Settings({ recommendedPlatforms, onSubmit, loading 
                       {recommended && (
                         <span style={{ fontSize: "10px", fontWeight: 600, color: "#2dd17a", background: "rgba(45,209,122,0.1)", padding: "2px 8px", borderRadius: "6px" }}>✨ AI推奨</span>
                       )}
-                      {allowed ? (
-                        <span style={{ fontSize: "10px", fontWeight: 600, color: "rgba(240,239,232,0.4)", background: "rgba(255,255,255,0.05)", padding: "2px 8px", borderRadius: "6px" }}>✓ 無料</span>
-                      ) : (
-                        <span style={{ fontSize: "10px", fontWeight: 600, color: "#ff6b35", background: "rgba(255,107,53,0.1)", padding: "2px 8px", borderRadius: "6px" }}>🔒 {getPlanLabel(p.requiredPlan)}</span>
-                      )}
                     </div>
-                    {p.desc && allowed && (
+                    {p.desc && (
                       <div style={{ fontSize: "10px", color: "rgba(240,239,232,0.3)", lineHeight: 1.3, marginTop: "-2px" }}>{p.desc}</div>
-                    )}
-                    {!allowed && (
-                      <div style={{ fontSize: "11px", color: "rgba(255,107,53,0.7)", marginTop: "2px" }}>アップグレードして使う →</div>
                     )}
                   </button>
                 );
@@ -222,16 +205,15 @@ export default function Step3Settings({ recommendedPlatforms, onSubmit, loading 
         <input
           type="range"
           min={10}
-          max={userPlan === "free" ? 10 : userPlan === "starter" ? 50 : 200}
+          max={200}
           step={10}
           value={dailyLimit}
           onChange={(e) => setDailyLimit(Number(e.target.value))}
           style={{ width: "100%", accentColor: "#ff6b35" }}
-          disabled={userPlan === "free"}
         />
         <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", color: "rgba(240,239,232,0.3)", marginTop: "4px" }}>
           <span>10</span>
-          <span>{userPlan === "free" ? "10（Freeプラン）" : userPlan === "starter" ? "50" : "200"}</span>
+          <span>200</span>
         </div>
       </div>
 
@@ -339,57 +321,10 @@ export default function Step3Settings({ recommendedPlatforms, onSubmit, loading 
           transition: "all 0.2s", opacity: loading ? 0.7 : 1,
         }}
       >
-        {loading ? "作成中..." : platforms.length > 0 ? "キャンペーン開始 🚀" : "プランをアップグレード"}
+        {loading ? "作成中..." : "キャンペーン開始 🚀"}
       </button>
 
-      {/* Upgrade Modal */}
-      {upgradeModal && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}>
-          <div style={{ background: "#13132a", border: "0.5px solid rgba(255,255,255,0.15)", borderRadius: 20, padding: 32, maxWidth: 400, width: "90%", textAlign: "center" }}>
-            <div style={{ fontSize: 32, marginBottom: 16 }}>🔒</div>
-            <div style={{ fontFamily: "Space Grotesk", fontSize: 18, fontWeight: 700, color: "#f0efe8", marginBottom: 8 }}>
-              {upgradeModal}はGrowthプランで利用可能
-            </div>
-            <div style={{ fontSize: 13, color: "rgba(240,239,232,0.5)", marginBottom: 24, lineHeight: 1.6 }}>
-              Growthプラン（$99/月）にアップグレードすると
-              全プラットフォームで自動ターゲット発見が使えます。
-            </div>
-            <button
-              onClick={async () => {
-                setUpgradeModal(null);
-                try {
-                  const res = await fetch("/api/stripe/checkout", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                      plan: "growth",
-                      successUrl: `${window.location.origin}/campaigns/new?upgraded=true&step=3`,
-                      cancelUrl: `${window.location.origin}/campaigns/new`,
-                    }),
-                  });
-                  const data = await res.json();
-                  if (data.url) {
-                    window.location.href = data.url;
-                  } else {
-                    router.push("/pricing");
-                  }
-                } catch {
-                  router.push("/pricing");
-                }
-              }}
-              style={{ width: "100%", background: "#ff6b35", color: "#fff", border: "none", borderRadius: 10, padding: "12px", fontSize: 14, fontWeight: 600, cursor: "pointer", marginBottom: 10, fontFamily: "DM Sans" }}
-            >
-              アップグレードする →
-            </button>
-            <button
-              onClick={() => setUpgradeModal(null)}
-              style={{ width: "100%", background: "transparent", color: "rgba(240,239,232,0.5)", border: "0.5px solid rgba(255,255,255,0.1)", borderRadius: 10, padding: "12px", fontSize: 14, cursor: "pointer", fontFamily: "DM Sans" }}
-            >
-              キャンセル
-            </button>
-          </div>
-        </div>
-      )}
+
     </div>
   );
 }
