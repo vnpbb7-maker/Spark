@@ -432,7 +432,7 @@ export const discoverTargets = inngest.createFunction(
     const minMatchScore = (campaign.min_match_score as number) || 50;
     console.log(`Campaign ${campaignId}: ${existingCount}/${campaignLimit} targets, remaining: ${remaining}, minMatchScore: ${minMatchScore}`);
 
-    // 2b. Cross-campaign deduplication: load all existing targets for this user
+    // 2b. Cross-campaign deduplication: only skip targets found in last 7 days
     const userId = campaign.user_id;
     const { data: userCampaigns } = await getSupabase()
       .from("campaigns")
@@ -440,16 +440,18 @@ export const discoverTargets = inngest.createFunction(
       .eq("user_id", userId);
     const userCampaignIds = (userCampaigns || []).map((c: { id: string }) => c.id);
 
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
     const { data: existingTargetRows } = await getSupabase()
       .from("targets")
       .select("username, platform")
-      .in("campaign_id", userCampaignIds);
+      .in("campaign_id", userCampaignIds)
+      .gte("created_at", sevenDaysAgo);
 
     const dedupSet = new Set<string>();
     (existingTargetRows || []).forEach((t: { username: string; platform: string }) => {
       dedupSet.add(`${t.platform}::${t.username.toLowerCase()}`);
     });
-    console.log(`[dedup] Loaded ${dedupSet.size} existing targets across ${userCampaignIds.length} campaigns`);
+    console.log(`[dedup] Loaded ${dedupSet.size} existing targets from last 7 days across ${userCampaignIds.length} campaigns`);
 
     // 3. Generate problem-focused search queries via Claude
     const platforms = (campaign.platforms || []) as string[];
