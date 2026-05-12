@@ -15,6 +15,7 @@ const PLATFORM_GROUPS: { label: string; platforms: PlatformDef[] }[] = [
       { id: "twitter", name: "X (Twitter)", icon: "𝕏", color: "#1d9bf0", requiredPlan: "free", desc: "リアルタイムで悩みを発見" },
       { id: "connpass", name: "Connpass", icon: "🎪", color: "#e05048", requiredPlan: "free", desc: "技術イベント主催者・参加者" },
       { id: "wantedly", name: "Wantedly", icon: "🤝", color: "#21bddb", requiredPlan: "free", desc: "スタートアップ人材を発見" },
+      { id: "google_maps", name: "Googleマップ", icon: "🗺️", color: "#4285f4", requiredPlan: "free", desc: "企業メールアドレスを自動取得（B2B推奨）" },
     ],
   },
   {
@@ -32,7 +33,6 @@ const PLATFORM_GROUPS: { label: string; platforms: PlatformDef[] }[] = [
     label: "拡張プラットフォーム（Growth）",
     platforms: [
       { id: "linkedin", name: "LinkedIn", icon: "in", color: "#0a66c2", requiredPlan: "growth", desc: "ビジネスプロフェッショナル" },
-      { id: "google_maps", name: "Googleマップ", icon: "🗺️", color: "#4285f4", requiredPlan: "growth", desc: "地域ビジネスの担当者" },
       { id: "discord", name: "Discord / Slack", icon: "💬", color: "#5865f2", requiredPlan: "growth", desc: "コミュニティに直接アプローチ" },
       { id: "hatena", name: "はてなブログ", icon: "✏️", color: "#00a4de", requiredPlan: "growth", desc: "ブロガー・技術者" },
       { id: "web", name: "Web全体", icon: "🌐", color: "#2dd17a", requiredPlan: "growth", desc: "制限なしで全ウェブ検索" },

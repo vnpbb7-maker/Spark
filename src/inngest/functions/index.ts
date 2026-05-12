@@ -673,22 +673,30 @@ JSON形式で返してください: { "queries": ["クエリ1", "クエリ2", "�
     }
 
     // Google Places API discovery (if "google_maps" is in selected platforms)
+    // Required env vars: GOOGLE_PLACES_API_KEY, HUNTER_API_KEY (optional)
     if (platforms.includes("google_maps") && !limitReached && process.env.GOOGLE_PLACES_API_KEY) {
       try {
-        const keyword = searchQueries[0] || productDescription.slice(0, 30);
         const area = (campaign.target_area as string) || "東京";
-        const query = `${keyword} ${area}`;
-        console.log(`[google_maps] Searching: ${query}`);
-        const placesRes = await fetch(
-          `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(query)}&language=ja&key=${process.env.GOOGLE_PLACES_API_KEY}`,
-          { signal: AbortSignal.timeout(8000) }
-        );
-        if (placesRes.ok) {
+        // Build B2B-focused queries from product description
+        const b2bQueries = [
+          `${productDescription.slice(0, 20)} 会社 ${area}`,
+          `${productDescription.slice(0, 20)} スタートアップ ${area}`,
+          `${productDescription.slice(0, 20)} 企業 ${area}`,
+        ];
+        console.log(`[google_maps] B2B queries:`, b2bQueries);
+        for (const query of b2bQueries.slice(0, 2)) {
+          if (limitReached || insertedTargets.length >= remaining) break;
+          console.log(`[google_maps] Searching: ${query}`);
+          const placesRes = await fetch(
+            `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(query)}&language=ja&key=${process.env.GOOGLE_PLACES_API_KEY}`,
+            { signal: AbortSignal.timeout(8000) }
+          );
+          if (!placesRes.ok) { console.error(`[google_maps] Places API error: ${placesRes.status}`); continue; }
           const placesData = await placesRes.json();
           const places = (placesData.results || []) as Array<Record<string, unknown>>;
-          console.log(`[google_maps] Found ${places.length} businesses`);
-          for (const place of places.slice(0, 8)) {
-            if (insertedTargets.length >= remaining) break;
+          console.log(`[google_maps] Found ${places.length} businesses for "${query}"`);
+          for (const place of places.slice(0, 6)) {
+            if (insertedTargets.length >= remaining) { limitReached = true; break; }
             const name = (place.name as string) || "";
             if (!name) continue;
             const dedupKey = `google_maps::${name.toLowerCase()}`;
@@ -713,35 +721,43 @@ JSON形式で返してください: { "queries": ["クエリ1", "クエリ2", "�
                 }
               } catch { /* skip details */ }
             }
-            // Hunter.io email lookup if website found
+            // Hunter.io email finder — sort by confidence
             let email = "";
             if (website && process.env.HUNTER_API_KEY) {
               try {
-                const domain = new URL(website).hostname;
+                const domain = new URL(website).hostname.replace("www.", "");
                 const hunterRes = await fetch(
-                  `https://api.hunter.io/v2/domain-search?domain=${domain}&limit=1&api_key=${process.env.HUNTER_API_KEY}`,
+                  `https://api.hunter.io/v2/domain-search?domain=${domain}&limit=3&api_key=${process.env.HUNTER_API_KEY}`,
                   { signal: AbortSignal.timeout(5000) }
                 );
                 if (hunterRes.ok) {
                   const hunterData = await hunterRes.json();
-                  const emails = hunterData.data?.emails as Array<Record<string, string>> || [];
-                  if (emails[0]?.value) email = emails[0].value;
+                  const emails = (hunterData.data?.emails || []) as Array<{ value: string; confidence: number }>;
+                  if (emails.length > 0) {
+                    // Sort by confidence descending, pick highest
+                    emails.sort((a, b) => (b.confidence || 0) - (a.confidence || 0));
+                    email = emails[0].value || "";
+                    console.log(`[google_maps] Hunter found email for ${domain}: ${email} (confidence: ${emails[0].confidence})`);
+                  }
                 }
-              } catch { /* skip hunter */ }
+              } catch (hunterErr) { console.error(`[google_maps] Hunter error:`, hunterErr); }
             }
-            await getSupabase().from("targets").insert({
+            const { error: mapsInsertErr } = await getSupabase().from("targets").insert({
               campaign_id: campaignId, platform: "google_maps", username: name,
               profile_url: mapsUrl, post_url: mapsUrl,
               post_content: `${address} ${phone ? `📞 ${phone}` : ""}`.slice(0, 500),
-              match_score: 50, match_reason: `Googleマップ: ${area}`, status: "pending",
+              match_score: email ? 65 : 50, // higher score if we have email
+              match_reason: `Googleマップ B2B: ${area}`, status: "pending",
               ...(email ? { email } : {}),
               ...(phone ? { phone } : {}),
               ...(website ? { website } : {}),
             });
+            if (mapsInsertErr) { console.error(`[google_maps] Insert error: ${mapsInsertErr.message}`); continue; }
             insertedTargets.push(name);
-            console.log(`[google_maps] Inserted: ${name} (${address.slice(0, 30)})`);
+            console.log(`[google_maps] Inserted: ${name} email=${email || "none"} (${address.slice(0, 30)})`);
           }
         }
+        } // end B2B queries loop
       } catch (err) { console.error("[google_maps] error:", err); }
     }
 
@@ -756,7 +772,7 @@ JSON形式で返してください: { "queries": ["クエリ1", "クエリ2", "�
     try {
       const { data: newTargets } = await getSupabase()
         .from("targets")
-        .select("id, profile_url, platform, username, email, twitter_handle")
+        .select("id, profile_url, platform, username, email, website")
         .eq("campaign_id", campaignId)
         .is("contact_url", null)
         .order("match_score", { ascending: false })
@@ -765,8 +781,7 @@ JSON形式で返してください: { "queries": ["クエリ1", "クエリ2", "�
       if (newTargets && newTargets.length > 0) {
         console.log(`[contact] Extracting contact info for ${newTargets.length} targets...`);
         const contactResults = await Promise.allSettled(
-          newTargets.map(async (t: { id: string; profile_url: string | null; platform: string; username: string; email: string | null; twitter_handle: string | null }) => {
-            // Always build profile URL from username — don't rely on profile_url being set
+          newTargets.map(async (t: { id: string; profile_url: string | null; platform: string; username: string; email: string | null; website: string | null }) => {
             const profileUrl = buildProfileUrl(t.profile_url || "", t.platform, t.username);
             console.log(`[contact] Fetching profile for ${t.username} (${t.platform}): ${profileUrl}`);
             const info = await extractContactInfo(profileUrl, t.platform);
@@ -774,26 +789,37 @@ JSON形式で返してください: { "queries": ["クエリ1", "クエリ2", "�
 
             const updateData: Record<string, unknown> = { contact_url: profileUrl };
 
-            if (info.email && !t.email) {
-              updateData.email = info.email;
-            }
-            if (info.twitter_handle) {
-              updateData.twitter_handle = info.twitter_handle;
-            }
-            if (info.website) {
-              updateData.website = info.website;
-            }
-            if (info.phone) {
-              updateData.phone = info.phone;
+            if (info.email && !t.email) updateData.email = info.email;
+            if (info.website) updateData.website = info.website;
+            if (info.phone) updateData.phone = info.phone;
+
+            // Hunter.io: try for any target with a website (not just google_maps)
+            const websiteUrl = info.website || (t.website as string | null);
+            if (websiteUrl && process.env.HUNTER_API_KEY && !info.email && !t.email) {
+              try {
+                const domain = new URL(websiteUrl).hostname.replace("www.", "");
+                const hunterRes = await fetch(
+                  `https://api.hunter.io/v2/domain-search?domain=${domain}&limit=3&api_key=${process.env.HUNTER_API_KEY}`,
+                  { signal: AbortSignal.timeout(5000) }
+                );
+                if (hunterRes.ok) {
+                  const hunterData = await hunterRes.json();
+                  const emails = (hunterData.data?.emails || []) as Array<{ value: string; confidence: number }>;
+                  if (emails.length > 0) {
+                    emails.sort((a, b) => (b.confidence || 0) - (a.confidence || 0));
+                    updateData.email = emails[0].value;
+                    console.log(`[contact] Hunter email for ${t.username}: ${emails[0].value} (conf: ${emails[0].confidence})`);
+                  }
+                }
+              } catch (hunterErr) { console.error(`[contact] Hunter error for ${t.username}:`, hunterErr); }
             }
 
             await getSupabase().from("targets").update(updateData).eq("id", t.id);
             return info;
           })
         );
-        const found = contactResults.filter(r => r.status === "fulfilled" && r.value && (r.value as ContactInfo).twitter_handle).length;
         const emailFound = contactResults.filter(r => r.status === "fulfilled" && r.value && (r.value as ContactInfo).email).length;
-        console.log(`[contact] Complete: ${found} twitter handles, ${emailFound} emails from ${newTargets.length} targets`);
+        console.log(`[contact] Complete: ${emailFound} emails from ${newTargets.length} targets`);
       }
     } catch (e) {
       console.error("Contact extraction error:", e);
