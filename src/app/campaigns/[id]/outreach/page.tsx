@@ -45,8 +45,10 @@ export default function OutreachPage() {
     if (!camp) return;
     setCampaign(camp);
 
-    // Get selected IDs from URL or default to S+A
+    // Get selected IDs from URL or default to all targets
     const idsParam = searchParams.get("ids");
+    console.log("[outreach] campaignId:", campaignId, "idsParam:", idsParam);
+
     let query = supabase.from("targets")
       .select("id, username, platform, match_score, priority, email, twitter_handle, post_content, ai_reason")
       .eq("campaign_id", campaignId)
@@ -54,12 +56,12 @@ export default function OutreachPage() {
 
     if (idsParam) {
       const ids = idsParam.split(",").filter(Boolean);
-      query = query.in("id", ids);
-    } else {
-      query = query.in("priority", ["S", "A"]);
+      if (ids.length > 0) query = query.in("id", ids);
     }
+    // No filter when no ids — show all targets (S+A will be prioritized by sort order)
 
-    const { data } = await query.limit(50);
+    const { data, error: fetchErr } = await query.limit(50);
+    console.log("[outreach] fetched targets:", data?.length || 0, "error:", fetchErr?.message || "none");
     if (data) {
       setTargets(data.map((t: Record<string, unknown>) => {
         const email = t.email as string | null;
