@@ -169,10 +169,18 @@ export default function DashboardPage() {
     setMenuOpen(null); fetchData();
   };
   const handleDelete = async (id: string) => {
-    if (!confirm("本当に削除しますか？")) return;
+    if (!confirm("このキャンペーンを削除しますか？\n（発見済みターゲットも全て削除されます）")) return;
     const supabase = createClient();
-    await supabase.from("campaigns").delete().eq("id", id);
-    setMenuOpen(null); fetchData();
+    // Optimistic update: remove immediately from UI
+    setCampaigns(prev => prev.filter(c => c.id !== id));
+    setMenuOpen(null);
+    // Delete targets first (FK constraint), then campaign
+    await supabase.from("targets").delete().eq("campaign_id", id);
+    const { error } = await supabase.from("campaigns").delete().eq("id", id);
+    if (error) {
+      console.error("[delete] Campaign delete error:", error.message);
+      fetchData(); // restore state on error
+    }
   };
   const handleLogout = async () => {
     const supabase = createClient();
