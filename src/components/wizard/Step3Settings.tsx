@@ -93,6 +93,7 @@ export default function Step3Settings({ recommendedPlatforms, onSubmit, loading 
         const adminEmails = ["vnpbb7@gmail.com"];
         const admin = adminEmails.includes(user.email || "");
         setIsAdmin(admin);
+        console.log("[admin] email:", user.email, "isAdmin:", admin);
 
         const { data: sub } = await supabase
           .from("subscriptions")
@@ -112,13 +113,14 @@ export default function Step3Settings({ recommendedPlatforms, onSubmit, loading 
   useEffect(() => {
     const allowed = recommendedPlatforms.filter((p) => {
       const plat = ALL_PLATFORMS.find((pl) => pl.id === p);
-      return plat && canUsePlatform(plat.requiredPlan, userPlan);
+      return plat && (isAdmin || canUsePlatform(plat.requiredPlan, userPlan));
     });
     setPlatforms(allowed);
-  }, [recommendedPlatforms, userPlan]);
+  }, [recommendedPlatforms, userPlan, isAdmin]);
 
   const handlePlatformClick = (p: typeof ALL_PLATFORMS[number]) => {
-    if (!canUsePlatform(p.requiredPlan, userPlan)) {
+    const canUse = isAdmin || canUsePlatform(p.requiredPlan, userPlan);
+    if (!canUse) {
       setUpgradeModal(p.name);
       return;
     }
@@ -150,7 +152,7 @@ export default function Step3Settings({ recommendedPlatforms, onSubmit, loading 
             <div style={{ fontSize: "12px", fontWeight: 600, color: "rgba(240,239,232,0.35)", marginBottom: "8px", textTransform: "uppercase", letterSpacing: "0.5px" }}>{group.label}</div>
             <div style={{ display: "grid", gridTemplateColumns: group.platforms.length === 1 ? "1fr" : "repeat(2, 1fr)", gap: "10px" }}>
               {group.platforms.map((p) => {
-                const allowed = canUsePlatform(p.requiredPlan, userPlan);
+                const allowed = isAdmin || canUsePlatform(p.requiredPlan, userPlan);
                 const selected = platforms.includes(p.id);
                 const recommended = recommendedPlatforms.includes(p.id);
                 return (
