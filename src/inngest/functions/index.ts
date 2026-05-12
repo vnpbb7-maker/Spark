@@ -404,13 +404,15 @@ export const discoverTargets = inngest.createFunction(
 
     // ═══ STEP 1: Get campaign + generate queries ═══
     const stepData = await step.run("get-campaign-and-queries", async () => {
+    console.log("[step1] START campaign_id:", campaignId);
 
     // 1. キャンペーン取得
-    const { data: campaign } = await getSupabase()
+    const { data: campaign, error: campErr } = await getSupabase()
       .from("campaigns")
       .select("*")
       .eq("id", campaignId)
       .single();
+    console.log("[step1] campaign found:", !!campaign, "error:", campErr?.message || "none", "platforms:", campaign?.platforms);
 
     if (!campaign) return { campaign: null, platforms: [], productDescription: "", searchQueries: [], remaining: 0, dedupKeys: [] as string[], minMatchScore: 0 };
 
@@ -501,7 +503,8 @@ JSON形式で返してください: { "queries": ["クエリ1", "クエリ2", "�
         `${keywords.join(" ")} 自動化したい`,
       ];
     }
-    console.log("[discovery] Generated queries:", searchQueries);
+    console.log("[step1] generated queries:", searchQueries.length, searchQueries);
+    console.log("[step1] returning:", { platforms, queriesCount: searchQueries.length, remaining });
 
     return { campaign, platforms, productDescription, searchQueries, remaining, dedupKeys: [...dedupSet], minMatchScore };
     }); // end step 1
@@ -517,6 +520,11 @@ JSON形式で返してください: { "queries": ["クエリ1", "クエリ2", "�
     const insertedTargets: string[] = [];
     let limitReached = false;
 
+    console.log("[step2] START platforms:", platforms, "queries:", searchQueries?.length, "remaining:", remaining);
+    console.log("[step2] TAVILY_KEY set:", !!process.env.TAVILY_API_KEY);
+    console.log("[step2] GOOGLE_KEY set:", !!process.env.GOOGLE_PLACES_API_KEY);
+    console.log("[step2] ANTHROPIC_KEY set:", !!process.env.ANTHROPIC_API_KEY);
+    // Legacy logs (kept for compatibility)
     console.log("[search] TAVILY_API_KEY set:", !!process.env.TAVILY_API_KEY);
     console.log("[search] platforms:", platforms);
     console.log("[search] searchQueries:", searchQueries);
@@ -544,6 +552,7 @@ JSON形式で返してください: { "queries": ["クエリ1", "クエリ2", "�
     // Process each platform the user selected (HARD BLOCK: skip anything not selected)
     for (const platform of platforms) {
       if (limitReached) break;
+      console.log(`[step2] processing platform: ${platform} (inserted: ${insertedTargets.length}/${remaining})`);
 
       // Skip platforms handled separately below (connpass, google_maps)
       if (platform === "connpass" || platform === "google_maps") continue;
