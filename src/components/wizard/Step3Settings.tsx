@@ -84,23 +84,36 @@ export default function Step3Settings({ recommendedPlatforms, onSubmit, loading 
   const [requiredKeywords, setRequiredKeywords] = useState("");
   const [minMatchScore, setMinMatchScore] = useState(60);
 
+  // Fast admin check — runs immediately, no subscription query needed
+  useEffect(() => {
+    const checkAdmin = async () => {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      console.log("[admin] checking email:", user?.email);
+      if (user?.email === "vnpbb7@gmail.com") {
+        console.log("[admin] ADMIN ACCESS GRANTED");
+        setIsAdmin(true);
+        setUserPlan("agency");
+        setDailyLimit(1000);
+      }
+    };
+    checkAdmin();
+  }, []);
+
   useEffect(() => {
     const fetchPlan = async () => {
       const supabase = createClient();
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
-        // Admin override: treat specific users as agency plan
-        const adminEmails = ["vnpbb7@gmail.com"];
-        const admin = adminEmails.includes(user.email || "");
-        setIsAdmin(admin);
-        console.log("[admin] email:", user.email, "isAdmin:", admin);
+        // Skip plan fetch for admin — already handled above
+        if (user.email === "vnpbb7@gmail.com") return;
 
         const { data: sub } = await supabase
           .from("subscriptions")
           .select("plan")
           .eq("user_id", user.id)
           .maybeSingle();
-        const plan = admin ? "agency" : (sub?.plan || "free");
+        const plan = sub?.plan || "free";
         setUserPlan(plan);
         if (plan === "growth" || plan === "agency") setDailyLimit(1000);
         else if (plan === "starter") setDailyLimit(100);
