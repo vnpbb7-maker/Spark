@@ -517,6 +517,11 @@ JSON形式で返してください: { "queries": ["クエリ1", "クエリ2", "�
     const insertedTargets: string[] = [];
     let limitReached = false;
 
+    console.log("[search] TAVILY_API_KEY set:", !!process.env.TAVILY_API_KEY);
+    console.log("[search] platforms:", platforms);
+    console.log("[search] searchQueries:", searchQueries);
+    console.log("[search] remaining slots:", remaining, "dedup keys:", dedupSet.size);
+
     // 6-month freshness
     const sixMonthsAgo = new Date();
     sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
@@ -580,8 +585,10 @@ JSON形式で返してください: { "queries": ["クエリ1", "クエリ2", "�
           });
           if (!tavilyResponse.ok) { console.error(`[discovery] Tavily error for "${fullQuery}":`, tavilyResponse.status); continue; }
           const tavilyData = await tavilyResponse.json();
+          const rawCount = tavilyData.results?.length || 0;
           const results = filterFreshResults((tavilyData.results || []) as Record<string, unknown>[], sixMonthsAgo);
-          console.log(`[discovery] Tavily results for "${platform}": ${results.length} (query: "${fullQuery.slice(0, 60)}")`);
+          console.log(`[search] Tavily "${platform}": ${rawCount} raw → ${results.length} fresh (query: "${fullQuery.slice(0, 60)}")`);
+          if (rawCount === 0) console.log("[search] Tavily full response:", JSON.stringify(tavilyData).slice(0, 300));
 
           for (const result of results) {
             const url = (result.url as string) || "";
@@ -593,26 +600,29 @@ JSON形式で返してください: { "queries": ["クエリ1", "クエリ2", "�
             const detectedPlatform = detectPlatformFromUrl(url);
             // HARD BLOCK: only accept results matching the target platform or from explicitly selected platforms
             if (detectedPlatform !== platform && !platforms.includes(detectedPlatform)) {
-              console.log(`[discovery] Blocked off-platform: ${detectedPlatform} (wanted ${platform})`);
+              console.log(`[search] Blocked off-platform: ${detectedPlatform} (wanted ${platform}) url: ${url.slice(0, 50)}`);
               continue;
             }
             const actualPlatform = detectedPlatform !== "web" ? detectedPlatform : platform;
             const username = extractUsername(url, actualPlatform);
             if (username && username !== "unknown") {
               const dedupKey = `${actualPlatform}::${username.toLowerCase()}`;
-              if (dedupSet.has(dedupKey)) continue;
+              if (dedupSet.has(dedupKey)) { console.log(`[search] Dedup skip: ${dedupKey}`); continue; }
               dedupSet.add(dedupKey);
               const profileUrl = buildProfileUrl(url, actualPlatform, username);
               const social = extractSocialFromContent(content);
-              await getSupabase().from("targets").insert({
+              console.log(`[search] Inserting: ${actualPlatform} @${username}`);
+              const { error: insertErr } = await getSupabase().from("targets").insert({
                 campaign_id: campaignId, platform: actualPlatform, username,
                 profile_url: profileUrl, post_url: url, post_content: content,
                 match_score: 55, match_reason: `検索: ${query.slice(0, 30)}`, status: "pending",
                 ...(social.found_email ? { email: social.found_email } : {}),
-                ...(social.twitter_handle ? { twitter_handle: social.twitter_handle } : {}),
               });
+              if (insertErr) { console.error(`[search] Insert error for ${username}:`, insertErr.message); continue; }
               insertedTargets.push(username);
-              console.log(`[discovery] Inserted (${insertedTargets.length}/${remaining}): ${actualPlatform} @${username}`);
+              console.log(`[search] Inserted (${insertedTargets.length}/${remaining}): ${actualPlatform} @${username}`);
+            } else {
+              console.log(`[search] No username from url: ${url.slice(0, 60)}`);
             }
           }
         } catch (err) { console.error("[discovery] Tavily error:", err); }
@@ -645,7 +655,7 @@ JSON形式で返してください: { "queries": ["クエリ1", "クエリ2", "�
             if (dedupSet.has(dedupKey)) continue;
             dedupSet.add(dedupKey);
             const social = extractSocialFromContent(eventDesc);
-            await getSupabase().from("targets").insert({
+            const { error: connErr } = await getSupabase().from("targets").insert({
               campaign_id: campaignId, platform: "connpass",
               username: ownerDisplay || ownerNickname,
               profile_url: `https://connpass.com/user/${ownerNickname}/`,
@@ -653,10 +663,10 @@ JSON形式で返してください: { "queries": ["クエリ1", "クエリ2", "�
               post_content: `${event.title || ""}\n${eventDesc}`.slice(0, 500),
               match_score: 55, match_reason: `Connpassイベント主催者`, status: "pending",
               ...(social.found_email ? { email: social.found_email } : {}),
-              ...(social.twitter_handle ? { twitter_handle: social.twitter_handle } : {}),
             });
+            if (connErr) { console.error(`[connpass] Insert error for ${ownerNickname}:`, connErr.message); continue; }
             insertedTargets.push(ownerNickname);
-            console.log(`[connpass] Inserted: ${ownerDisplay} (nickname: ${ownerNickname}, event: ${(event.title as string || "").slice(0, 30)})`);
+            console.log(`[connpass] Inserted: ${ownerDisplay} (${ownerNickname})`);
           }
         }
       } catch (err) { console.error("[connpass] error:", err); }
