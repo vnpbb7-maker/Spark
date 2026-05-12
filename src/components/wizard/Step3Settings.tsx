@@ -78,6 +78,7 @@ export default function Step3Settings({ recommendedPlatforms, onSubmit, loading 
   const [tone, setTone] = useState<CampaignSettings["tone"]>("casual");
 
   const [userPlan, setUserPlan] = useState("free");
+  const [isAdmin, setIsAdmin] = useState(false);
   const [upgradeModal, setUpgradeModal] = useState<string | null>(null);
   const [targetLanguage, setTargetLanguage] = useState("ja");
   const [requiredKeywords, setRequiredKeywords] = useState("");
@@ -88,12 +89,17 @@ export default function Step3Settings({ recommendedPlatforms, onSubmit, loading 
       const supabase = createClient();
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
+        // Admin override: treat specific users as agency plan
+        const adminEmails = ["vnpbb7@gmail.com"];
+        const admin = adminEmails.includes(user.email || "");
+        setIsAdmin(admin);
+
         const { data: sub } = await supabase
           .from("subscriptions")
           .select("plan")
           .eq("user_id", user.id)
           .maybeSingle();
-        const plan = sub?.plan || "free";
+        const plan = admin ? "agency" : (sub?.plan || "free");
         setUserPlan(plan);
         if (plan === "growth" || plan === "agency") setDailyLimit(1000);
         else if (plan === "starter") setDailyLimit(100);
