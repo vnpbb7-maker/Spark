@@ -55,13 +55,20 @@ export async function GET(
       (t: Record<string, unknown>, i: number) => {
         const comments = (t.comments as Array<Record<string, unknown>>) || [];
         const comment = comments[0];
+        const rawEmail = (t.email as string) || "";
+        const twitterHandle = (t.twitter_handle as string) || "";
+        // Fix: if email starts with "Twitter:", it's actually a twitter handle
+        const isEmailActuallyTwitter = rawEmail.startsWith("Twitter:");
+        const realEmail = isEmailActuallyTwitter ? "" : rawEmail;
+        const realTwitter = twitterHandle || (isEmailActuallyTwitter ? rawEmail.replace("Twitter: ", "").replace("Twitter:", "") : "");
         return {
           "#": i + 1,
           優先度: (t.priority as string) || "—",
           マッチ度: `${t.match_score}%`,
           プラットフォーム: t.platform as string,
           ユーザー名: t.username as string,
-          "Twitter連絡先": (t.twitter_handle as string) || "",
+          "Twitter連絡先": realTwitter,
+          メール: realEmail,
           プロフィールURL: (t.contact_url as string) || (t.profile_url as string) || "",
           投稿URL: (t.post_url as string) || "",
           投稿内容: ((t.post_content as string) || "").slice(0, 300),
@@ -81,7 +88,6 @@ export async function GET(
                 timeZone: "Asia/Tokyo",
               })
             : "",
-          メール: (t.email as string) || "",
           電話番号: (t.phone as string) || "",
           ウェブサイト: (t.website as string) || "",
         };

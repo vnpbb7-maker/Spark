@@ -79,7 +79,7 @@ export default function DashboardPage() {
     // Fetch all targets for these campaigns in one query
     const { data: allTargets, error: tgtError } = await supabase
       .from("targets")
-      .select("id, campaign_id, username, platform, match_score, priority, email, twitter_handle, created_at")
+      .select("id, campaign_id, username, platform, match_score, priority, email, created_at")
       .in("campaign_id", campIds)
       .order("match_score", { ascending: false });
 
@@ -94,7 +94,7 @@ export default function DashboardPage() {
         campIds.slice(0, 10).map(async (cid) => {
           const { data, error } = await supabase
             .from("targets")
-            .select("id, campaign_id, username, platform, match_score, priority, email, twitter_handle, created_at")
+            .select("id, campaign_id, username, platform, match_score, priority, email, created_at")
             .eq("campaign_id", cid)
             .order("match_score", { ascending: false })
             .limit(50);
@@ -107,10 +107,9 @@ export default function DashboardPage() {
     }
 
     // Helper: check if target has real contact info
-    const hasContact = (t: { email: unknown; twitter_handle: unknown }) => {
+    const hasContact = (t: { email: unknown }) => {
       const email = t.email as string | null;
-      const tw = t.twitter_handle as string | null;
-      return (email && !email.startsWith("Twitter:")) || !!tw;
+      return email && !email.startsWith("Twitter:");
     };
 
     // Build enriched campaigns

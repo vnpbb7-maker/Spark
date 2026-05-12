@@ -50,7 +50,7 @@ export default function OutreachPage() {
     console.log("[outreach] campaignId:", campaignId, "idsParam:", idsParam);
 
     let query = supabase.from("targets")
-      .select("id, username, platform, match_score, priority, email, twitter_handle, post_content, ai_reason")
+      .select("id, username, platform, match_score, priority, email, post_content, ai_reason")
       .eq("campaign_id", campaignId)
       .order("match_score", { ascending: false });
 
@@ -64,13 +64,15 @@ export default function OutreachPage() {
     console.log("[outreach] fetched targets:", data?.length || 0, "error:", fetchErr?.message || "none");
     if (data) {
       setTargets(data.map((t: Record<string, unknown>) => {
-        const email = t.email as string | null;
-        const twitter = t.twitter_handle as string | null;
-        const hasEmail = email && !email.startsWith("Twitter:");
+        const rawEmail = (t.email as string) || "";
+        const isTwitterInEmail = rawEmail.startsWith("Twitter:");
+        const realEmail = isTwitterInEmail ? null : (rawEmail || null);
+        const twitter = isTwitterInEmail ? rawEmail.replace("Twitter: ", "").replace("Twitter:", "") : null;
+        const hasEmail = realEmail && realEmail.includes("@");
         return {
           id: t.id as string, username: t.username as string, platform: t.platform as string,
           match_score: Number(t.match_score) || 0, priority: (t.priority as string) || "C",
-          email: email, twitter_handle: twitter,
+          email: realEmail, twitter_handle: twitter,
           post_content: t.post_content as string | null, ai_reason: t.ai_reason as string | null,
           message: "", status: "pending" as const,
           sendMethod: hasEmail ? "email" : twitter ? "form" : "none",
