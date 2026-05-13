@@ -516,6 +516,10 @@ Return JSON only: { "queries": ["query1", "query2", "query3", "query4", "query5"
         `${productDescription.slice(0, 20)} どうすればいい`,
       ];
     }
+    // Safety: ensure searchQueries is always a plain string array before returning
+    if (!Array.isArray(searchQueries)) searchQueries = [];
+    searchQueries = searchQueries.filter((q: unknown) => typeof q === "string" && q.trim().length > 0);
+    console.log("[step1] searchQueries type:", typeof searchQueries, "isArray:", Array.isArray(searchQueries));
     console.log("[step1] pain context:", personaContext.slice(0, 80));
     console.log("[step1] generated queries:", searchQueries.length, searchQueries);
     console.log("[step1] returning:", { platforms, queriesCount: searchQueries.length, remaining });
@@ -524,7 +528,11 @@ Return JSON only: { "queries": ["query1", "query2", "query3", "query4", "query5"
     }); // end step 1
 
     if (!stepData.campaign) return { error: "Campaign not found or limit reached" };
-    const { campaign, platforms, productDescription, searchQueries, remaining } = stepData;
+    const { campaign, platforms, productDescription, remaining } = stepData;
+    // Safety: Inngest serializes step return values — ensure searchQueries is always an array
+    const searchQueries: string[] = Array.isArray(stepData.searchQueries)
+      ? (stepData.searchQueries as unknown[]).filter((q): q is string => typeof q === "string" && q.length > 0)
+      : [];
     const dedupSet = new Set(stepData.dedupKeys);
     const minMatchScore = stepData.minMatchScore;
 
@@ -534,7 +542,8 @@ Return JSON only: { "queries": ["query1", "query2", "query3", "query4", "query5"
     const insertedTargets: string[] = [];
     let limitReached = false;
 
-    console.log("[step2] START platforms:", platforms, "queries:", searchQueries?.length, "remaining:", remaining);
+    console.log("[step2] START platforms:", platforms, "queries:", searchQueries.length, "remaining:", remaining);
+    console.log("[step2] searchQueries isArray:", Array.isArray(searchQueries), "values:", searchQueries);
     console.log("[step2] TAVILY_KEY set:", !!process.env.TAVILY_API_KEY);
     console.log("[step2] GOOGLE_KEY set:", !!process.env.GOOGLE_PLACES_API_KEY);
     console.log("[step2] ANTHROPIC_KEY set:", !!process.env.ANTHROPIC_API_KEY);
