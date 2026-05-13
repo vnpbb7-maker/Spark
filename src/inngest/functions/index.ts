@@ -400,10 +400,12 @@ export const discoverTargets = inngest.createFunction(
   { id: "discover-targets", triggers: [{ event: "campaign/discover" }] },
   async ({ event, step }: any) => {
     const campaignId = event.data.campaign_id as string;
-    console.log("Starting discover for campaign:", campaignId);
+    // Use event.id + timestamp to guarantee unique step IDs — prevents Inngest from reusing cached results
+    const runId = `${event.id || Date.now()}-${Date.now()}`;
+    console.log("Starting discover for campaign:", campaignId, "runId:", runId);
 
     // ═══ STEP 1: Get campaign + generate queries ═══
-    const stepData = await step.run("get-campaign-and-queries", async () => {
+    const stepData = await step.run(`get-campaign-and-queries-${runId}`, async () => {
     console.log("[step1] START campaign_id:", campaignId);
     try {
 
@@ -579,7 +581,7 @@ Return ONLY this JSON format (no markdown, no explanation):
     const minMatchScore = stepData.minMatchScore;
 
     // ═══ STEP 2: Discover targets ═══
-    const discoveryResult = await step.run("discover-targets-search", async () => {
+    const discoveryResult = await step.run(`discover-targets-search-${runId}`, async () => {
 
     const insertedTargets: string[] = [];
     let limitReached = false;
@@ -904,7 +906,7 @@ Return ONLY this JSON format (no markdown, no explanation):
     }); // end step 2
 
     // ═══ STEP 3: Extract contacts ═══
-    await step.run("extract-contacts", async () => {
+    await step.run(`extract-contacts-${runId}`, async () => {
 
     // Helper: discover a user's personal website via Tavily search
     const findWebsiteForUser = async (username: string, platform: string, postUrl: string): Promise<string | null> => {
@@ -1041,7 +1043,7 @@ Return ONLY this JSON format (no markdown, no explanation):
     }); // end step 3
 
     // ═══ STEP 4: AI scoring ═══
-    await step.run("score-targets", async () => {
+    await step.run(`score-targets-${runId}`, async () => {
 
     // Firecrawl deep extraction + Multi-factor AI scoring
     try {
