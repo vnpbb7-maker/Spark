@@ -417,8 +417,8 @@ export const discoverTargets = inngest.createFunction(
     if (!campaign) return { campaign: null, platforms: [], productDescription: "", searchQueries: [], remaining: 0, dedupKeys: [] as string[], minMatchScore: 0 };
 
     // 2. Per-campaign target limit
-    // TODO: change back to 10 before production release
-    const campaignLimit = campaign.daily_limit || 30;
+    // TODO: change back to plan-based limit before production release
+    const campaignLimit = campaign.daily_limit || 50;
 
     const { count } = await getSupabase()
       .from("targets")
@@ -776,58 +776,134 @@ JSON形式で返してください: { "queries": ["クエリ1", "クエリ2", "�
     // ═══ STEP 3: Extract contacts ═══
     await step.run("extract-contacts", async () => {
 
+    // Helper: discover a user's personal website via Tavily search
+    const findWebsiteForUser = async (username: string, platform: string, postUrl: string): Promise<string | null> => {
+      if (!process.env.TAVILY_API_KEY) return null;
+      try {
+        // Search for the user's personal site / contact page
+        const queries: Record<string, string> = {
+          reddit: `reddit user u/${username} site OR contact OR email`,
+          twitter: `"${username}" twitter site OR email OR contact -site:twitter.com -site:x.com`,
+          connpass: `connpass ${username} github OR ホームページ OR email`,
+          wantedly: `wantedly "${username}" 連絡先 OR サイト OR github`,
+        };
+        const q = queries[platform] || `"${username}" ${platform} contact email site`;
+        const tavilyRes = await fetch("https://api.tavily.com/search", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${process.env.TAVILY_API_KEY}` },
+          body: JSON.stringify({ query: q, max_results: 3, search_depth: "basic", include_raw_content: false }),
+          signal: AbortSignal.timeout(6000),
+        });
+        if (!tavilyRes.ok) return null;
+        const data = await tavilyRes.json();
+        const results = (data.results || []) as Array<{ url: string }>;
+        const excludedDomains = ['reddit.com','twitter.com','x.com','connpass.com','wantedly.com','note.com','qiita.com','zenn.dev','facebook.com','instagram.com','youtube.com'];
+        for (const r of results) {
+          try {
+            const hostname = new URL(r.url).hostname.toLowerCase();
+            if (!excludedDomains.some(d => hostname.includes(d))) {
+              console.log(`[contact] Found website for ${username} via Tavily: ${r.url}`);
+              return r.url;
+            }
+          } catch { continue; }
+        }
+        return null;
+      } catch { return null; }
+    };
+
+    // Helper: run Hunter.io on a domain
+    const hunterLookup = async (websiteUrl: string, username: string): Promise<string | null> => {
+      if (!process.env.HUNTER_API_KEY) return null;
+      try {
+        const domain = new URL(websiteUrl).hostname.replace("www.", "");
+        const res = await fetch(
+          `https://api.hunter.io/v2/domain-search?domain=${domain}&limit=5&api_key=${process.env.HUNTER_API_KEY}`,
+          { signal: AbortSignal.timeout(5000) }
+        );
+        if (!res.ok) return null;
+        const data = await res.json();
+        const emails = (data.data?.emails || []) as Array<{ value: string; confidence: number }>;
+        if (emails.length > 0) {
+          emails.sort((a, b) => (b.confidence || 0) - (a.confidence || 0));
+          const best = emails[0];
+          console.log(`[contact] Hunter: ${domain} → ${best.value} (conf: ${best.confidence})`);
+          return best.value;
+        }
+        // Also try Hunter email finder if we know the name pattern
+        const hunterVerify = await fetch(
+          `https://api.hunter.io/v2/email-finder?domain=${domain}&company=${domain}&api_key=${process.env.HUNTER_API_KEY}`,
+          { signal: AbortSignal.timeout(5000) }
+        );
+        if (hunterVerify.ok) {
+          const vData = await hunterVerify.json();
+          if (vData.data?.email) {
+            console.log(`[contact] Hunter finder: ${domain} → ${vData.data.email}`);
+            return vData.data.email;
+          }
+        }
+      } catch (e) { console.error(`[contact] Hunter error for ${username}:`, e); }
+      return null;
+    };
+
     // 公開連絡先情報の抽出（プロフィールページから）
     try {
       const { data: newTargets } = await getSupabase()
         .from("targets")
-        .select("id, profile_url, platform, username, email, website")
+        .select("id, profile_url, platform, username, email, website, post_url")
         .eq("campaign_id", campaignId)
         .is("contact_url", null)
         .order("match_score", { ascending: false })
-        .limit(15);
+        .limit(50); // increased from 15
 
       if (newTargets && newTargets.length > 0) {
-        console.log(`[contact] Extracting contact info for ${newTargets.length} targets...`);
-        const contactResults = await Promise.allSettled(
-          newTargets.map(async (t: { id: string; profile_url: string | null; platform: string; username: string; email: string | null; website: string | null }) => {
-            const profileUrl = buildProfileUrl(t.profile_url || "", t.platform, t.username);
-            console.log(`[contact] Fetching profile for ${t.username} (${t.platform}): ${profileUrl}`);
-            const info = await extractContactInfo(profileUrl, t.platform);
-            console.log(`[contact] Extracted for ${t.username}:`, JSON.stringify(info));
+        console.log(`[contact] Processing ${newTargets.length} targets for contact extraction...`);
+        let emailsFound = 0;
 
+        // Process sequentially to avoid rate limits
+        for (const t of newTargets as Array<{ id: string; profile_url: string | null; platform: string; username: string; email: string | null; website: string | null; post_url: string | null }>) {
+          try {
+            const profileUrl = buildProfileUrl(t.profile_url || "", t.platform, t.username);
             const updateData: Record<string, unknown> = { contact_url: profileUrl };
 
-            if (info.email && !t.email) updateData.email = info.email;
+            // Skip if already has email
+            if (t.email && !t.email.startsWith("Twitter:")) {
+              await getSupabase().from("targets").update(updateData).eq("id", t.id);
+              continue;
+            }
+
+            // Step A: Scrape profile page via Jina
+            const info = await extractContactInfo(profileUrl, t.platform);
+            if (info.email) updateData.email = info.email;
             if (info.website) updateData.website = info.website;
             if (info.phone) updateData.phone = info.phone;
 
-            // Hunter.io: try for any target with a website (not just google_maps)
-            const websiteUrl = info.website || (t.website as string | null);
-            if (websiteUrl && process.env.HUNTER_API_KEY && !info.email && !t.email) {
-              try {
-                const domain = new URL(websiteUrl).hostname.replace("www.", "");
-                const hunterRes = await fetch(
-                  `https://api.hunter.io/v2/domain-search?domain=${domain}&limit=3&api_key=${process.env.HUNTER_API_KEY}`,
-                  { signal: AbortSignal.timeout(5000) }
-                );
-                if (hunterRes.ok) {
-                  const hunterData = await hunterRes.json();
-                  const emails = (hunterData.data?.emails || []) as Array<{ value: string; confidence: number }>;
-                  if (emails.length > 0) {
-                    emails.sort((a, b) => (b.confidence || 0) - (a.confidence || 0));
-                    updateData.email = emails[0].value;
-                    console.log(`[contact] Hunter email for ${t.username}: ${emails[0].value} (conf: ${emails[0].confidence})`);
-                  }
-                }
-              } catch (hunterErr) { console.error(`[contact] Hunter error for ${t.username}:`, hunterErr); }
+            // Step B: If no email yet, try to discover their personal website
+            let websiteUrl = info.website || (t.website as string | null);
+            if (!updateData.email && !websiteUrl) {
+              websiteUrl = await findWebsiteForUser(t.username, t.platform, t.post_url || profileUrl);
+              if (websiteUrl) updateData.website = websiteUrl;
+            }
+
+            // Step C: Run Hunter.io on discovered website
+            if (!updateData.email && websiteUrl) {
+              const hunterEmail = await hunterLookup(websiteUrl, t.username);
+              if (hunterEmail) {
+                updateData.email = hunterEmail;
+                emailsFound++;
+              }
+            }
+
+            if (updateData.email) {
+              emailsFound++;
+              console.log(`[contact] ✅ ${t.platform} @${t.username} → ${updateData.email}`);
+            } else {
+              console.log(`[contact] ❌ ${t.platform} @${t.username} → no email found`);
             }
 
             await getSupabase().from("targets").update(updateData).eq("id", t.id);
-            return info;
-          })
-        );
-        const emailFound = contactResults.filter(r => r.status === "fulfilled" && r.value && (r.value as ContactInfo).email).length;
-        console.log(`[contact] Complete: ${emailFound} emails from ${newTargets.length} targets`);
+          } catch (tErr) { console.error(`[contact] Error for ${t.username}:`, tErr); }
+        }
+        console.log(`[contact] Complete: ${emailsFound} emails found from ${newTargets.length} targets`);
       }
     } catch (e) {
       console.error("Contact extraction error:", e);
