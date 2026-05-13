@@ -7,31 +7,31 @@ import { createClient } from "@/lib/supabase/client";
 
 type PlatformDef = { id: string; name: string; icon: string; color: string; requiredPlan: string; desc?: string };
 
-const PLATFORM_GROUPS: { label: string; platforms: PlatformDef[] }[] = [
+const PLATFORM_GROUPS = [
   {
-    label: "おすすめ（無料）",
+    label: "📧 メール取得可能（推奨）",
     platforms: [
-      { id: "reddit", name: "Reddit", icon: "🤖", color: "#ff4500", requiredPlan: "free", desc: "日本語プラットフォームも検索" },
-      { id: "twitter", name: "X (Twitter)", icon: "𝕏", color: "#1d9bf0", requiredPlan: "free", desc: "リアルタイムで悩みを発見" },
-      { id: "connpass", name: "Connpass", icon: "🎪", color: "#e05048", requiredPlan: "free", desc: "技術イベント主催者・参加者" },
-      { id: "wantedly", name: "Wantedly", icon: "🤝", color: "#21bddb", requiredPlan: "free", desc: "スタートアップ人材を発見" },
-      { id: "google_maps", name: "Googleマップ", icon: "🗺️", color: "#4285f4", requiredPlan: "free", desc: "企業メールアドレスを自動取得（B2B推奨）" },
+      { id: "google_maps", name: "Googleマップ", icon: "🗺️", color: "#4285f4", requiredPlan: "free", desc: "企業メールをHunter.ioで自動取得（B2B最強）" },
+      { id: "connpass", name: "Connpass", icon: "🎪", color: "#e05048", requiredPlan: "free", desc: "技術イベント主催者 → GitHub経由でメール取得" },
+      { id: "qiita", name: "Qiita", icon: "🟩", color: "#55c500", requiredPlan: "free", desc: "エンジニア → GitHub APIでメール取得" },
+      { id: "zenn", name: "Zenn", icon: "💻", color: "#3ea8ff", requiredPlan: "free", desc: "エンジニア → GitHub APIでメール取得" },
+      { id: "note", name: "note.com", icon: "📝", color: "#41c9b4", requiredPlan: "free", desc: "個人ブロガー → プロフィールからメール取得" },
+      { id: "wantedly", name: "Wantedly", icon: "🤝", color: "#21bddb", requiredPlan: "free", desc: "スタートアップ人材 → 企業ページからメール" },
     ],
   },
   {
-    label: "日本語プラットフォーム（Starter）",
+    label: "💬 DM送信（メール取得不可）",
     platforms: [
-      { id: "note", name: "note.com", icon: "📝", color: "#41c9b4", requiredPlan: "starter", desc: "個人の課題発信を発見" },
-      { id: "qiita", name: "Qiita", icon: "🟩", color: "#55c500", requiredPlan: "starter", desc: "技術者・エンジニアに特化" },
-      { id: "zenn", name: "Zenn", icon: "💻", color: "#3ea8ff", requiredPlan: "starter", desc: "技術者・エンジニアに特化" },
-      { id: "yahoo_qa", name: "Yahoo知恵袋", icon: "🟡", color: "#ff0033", requiredPlan: "starter", desc: "質問者の悩みを直接発見" },
-      { id: "peatix", name: "Peatix", icon: "🎟️", color: "#f54b5e", requiredPlan: "starter", desc: "イベント主催者・参加者" },
-      { id: "producthunt", name: "Product Hunt", icon: "🚀", color: "#da552f", requiredPlan: "starter", desc: "アーリーアダプター発見" },
+      { id: "reddit", name: "Reddit", icon: "🤖", color: "#ff4500", requiredPlan: "free", desc: "日本語プラットフォームも検索 → ダイレクトDM" },
+      { id: "twitter", name: "X (Twitter)", icon: "𝕏", color: "#1d9bf0", requiredPlan: "free", desc: "リアルタイムで悩みを発見 → ダイレクトDM" },
     ],
   },
   {
     label: "拡張プラットフォーム（Growth）",
     platforms: [
+      { id: "yahoo_qa", name: "Yahoo知恵袋", icon: "🟡", color: "#ff0033", requiredPlan: "starter", desc: "質問者の悩みを直接発見" },
+      { id: "peatix", name: "Peatix", icon: "🎟️", color: "#f54b5e", requiredPlan: "starter", desc: "イベント主催者・参加者" },
+      { id: "producthunt", name: "Product Hunt", icon: "🚀", color: "#da552f", requiredPlan: "starter", desc: "アーリーアダプター発見" },
       { id: "linkedin", name: "LinkedIn", icon: "in", color: "#0a66c2", requiredPlan: "growth", desc: "ビジネスプロフェッショナル" },
       { id: "discord", name: "Discord / Slack", icon: "💬", color: "#5865f2", requiredPlan: "growth", desc: "コミュニティに直接アプローチ" },
       { id: "hatena", name: "はてなブログ", icon: "✏️", color: "#00a4de", requiredPlan: "growth", desc: "ブロガー・技術者" },

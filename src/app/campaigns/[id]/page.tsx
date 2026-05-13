@@ -273,14 +273,36 @@ export default function CampaignDetailPage() {
             <span style={{ fontSize: "11px", padding: "3px 10px", borderRadius: "8px", background: `${st.color}18`, color: st.color, fontWeight: 600 }}>{st.icon} {st.label}</span>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <a href={`/campaigns/${campaignId}/outreach${selectedCount > 0 ? `?ids=${[...selected].join(",")}` : ""}`} style={{
-              background: "linear-gradient(135deg, #7c5cfc, #5a3fd6)", color: "#fff", border: "none", borderRadius: "10px",
-              padding: "8px 18px", fontSize: "12px", fontWeight: 700, textDecoration: "none",
-              fontFamily: "'Space Grotesk'", boxShadow: "0 4px 16px rgba(124,92,252,0.3)",
-              display: "flex", alignItems: "center", gap: "6px",
-            }}>
-              📨 送信する{selectedCount > 0 ? ` (${selectedCount}件)` : ""}
-            </a>
+            {(() => {
+              const SNS_DM = ["reddit","twitter","wantedly"];
+              const selectedTargets = visibleTargets.filter(t => selected.has(t.id));
+              const contactable = selectedTargets.filter(t => {
+                const hasEmail = t.email && !t.email.startsWith("Twitter:") && !t.email.startsWith("DM:");
+                const hasDm = SNS_DM.includes(t.platform);
+                return hasEmail || hasDm;
+              });
+              const canSend = selectedCount > 0 && contactable.length > 0;
+              const tooltip = selectedCount === 0 ? "ターゲットを選択してください" : contactable.length === 0 ? "選択中のターゲットに連絡手段がありません" : "";
+              return (
+                <a
+                  href={canSend ? `/campaigns/${campaignId}/outreach?ids=${[...selected].join(",")}` : undefined}
+                  onClick={!canSend ? (e) => e.preventDefault() : undefined}
+                  title={tooltip}
+                  style={{
+                    background: canSend ? "linear-gradient(135deg, #7c5cfc, #5a3fd6)" : "rgba(255,255,255,0.06)",
+                    color: canSend ? "#fff" : "rgba(240,239,232,0.25)",
+                    border: "none", borderRadius: "10px",
+                    padding: "8px 18px", fontSize: "12px", fontWeight: 700, textDecoration: "none",
+                    fontFamily: "'Space Grotesk'",
+                    boxShadow: canSend ? "0 4px 16px rgba(124,92,252,0.3)" : "none",
+                    display: "flex", alignItems: "center", gap: "6px",
+                    cursor: canSend ? "pointer" : "not-allowed", pointerEvents: "auto",
+                  }}
+                >
+                  📨 送信する{selectedCount > 0 ? ` (${contactable.length}件)` : ""}
+                </a>
+              );
+            })()}
             <button onClick={() => setShowLiveLog(!showLiveLog)} style={{ background: showLiveLog ? "rgba(124,92,252,0.15)" : "rgba(255,255,255,0.04)", border: `1px solid ${showLiveLog ? "rgba(124,92,252,0.3)" : "rgba(255,255,255,0.08)"}`, borderRadius: "10px", padding: "7px 12px", fontSize: "14px", cursor: "pointer", color: showLiveLog ? "#7c5cfc" : "rgba(240,239,232,0.4)" }}>
               🔔
             </button>
@@ -295,7 +317,10 @@ export default function CampaignDetailPage() {
             { label: "発見済み", value: targets.length, icon: "🔍", color: "#ff6b35" },
             { label: "S+Aランク", value: targets.filter(t => t.priority === "S" || t.priority === "A").length, icon: "⭐", color: "#ffd60a" },
             { label: "選択中", value: selectedCount, icon: "☑️", color: "#7c5cfc" },
-            { label: "連絡先あり", value: targets.filter(t => t.email || t.twitter_handle).length, icon: "📧", color: "#2dd17a" },
+            { label: "連絡先あり", value: targets.filter(t => {
+              const snsPlatforms = ["reddit","twitter","wantedly"];
+              return t.email || snsPlatforms.includes(t.platform);
+            }).length, icon: "📧", color: "#2dd17a" },
           ].map((s) => (
             <div key={s.label} style={{ background: "#13132a", border: "1px solid rgba(255,255,255,0.07)", borderRadius: "14px", padding: "16px 18px" }}>
               <div style={{ fontSize: "11px", color: "rgba(240,239,232,0.4)", marginBottom: "6px", fontWeight: 500 }}>{s.icon} {s.label}</div>
@@ -469,7 +494,14 @@ export default function CampaignDetailPage() {
                         <span style={{ background: ps.bg, color: ps.color, fontSize: "10px", fontWeight: 900, width: "22px", height: "22px", borderRadius: "6px", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{ps.label}</span>
                         <span style={{ fontSize: "14px", fontWeight: 700, color: "#f0efe8" }}>@{t.username}</span>
                         <span style={{ fontSize: "10px", padding: "2px 8px", borderRadius: "5px", background: `${pi.color}12`, color: pi.color, fontWeight: 600, flexShrink: 0 }}>{pi.icon} {t.platform === "yahoo_qa" ? "Yahoo知恵袋" : t.platform.charAt(0).toUpperCase() + t.platform.slice(1)}</span>
-                        {contactInfo && <span style={{ fontSize: "10px", padding: "2px 8px", borderRadius: "5px", background: "rgba(29,155,240,0.1)", color: "#1d9bf0", fontWeight: 600 }}>{contactInfo.includes("@") && !contactInfo.includes(".") ? contactInfo : "✉️"}</span>}
+                        {(() => {
+                          const snsDm = ["reddit","twitter","wantedly"];
+                          const hasEmail = t.email && !t.email.startsWith("Twitter:") && !t.email.startsWith("DM:");
+                          const isDmOnly = !hasEmail && snsDm.includes(t.platform);
+                          if (hasEmail) return <span style={{ fontSize: "10px", padding: "2px 8px", borderRadius: "5px", background: "rgba(45,209,122,0.12)", color: "#2dd17a", fontWeight: 600 }}>✉️ メール</span>;
+                          if (isDmOnly) return <span style={{ fontSize: "10px", padding: "2px 8px", borderRadius: "5px", background: "rgba(29,155,240,0.1)", color: "#1d9bf0", fontWeight: 600 }}>💬 DM可能</span>;
+                          return null;
+                        })()}
                         {t.estimated_role && <span style={{ fontSize: "10px", color: "rgba(240,239,232,0.3)" }}>{t.estimated_role}</span>}
                         <span style={{ marginLeft: "auto", fontSize: "20px", fontWeight: 800, fontFamily: "'Space Grotesk'", color: t.match_score >= 75 ? "#ffd60a" : t.match_score >= 55 ? "#2dd17a" : "rgba(240,239,232,0.4)" }}>{t.match_score}%</span>
                       </div>

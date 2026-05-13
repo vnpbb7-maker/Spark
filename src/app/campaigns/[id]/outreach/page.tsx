@@ -21,13 +21,21 @@ const PRIORITY_STYLE: Record<string, { bg: string; color: string }> = {
 
 type OutreachTarget = {
   id: string; username: string; platform: string; match_score: number;
-  priority: string; email: string | null; twitter_handle: string | null;
+  priority: string; email: string | null; profile_url: string | null;
   post_content: string | null; ai_reason: string | null;
   message: string; status: "pending" | "sent" | "skipped";
-  sendMethod: "email" | "form" | "none";
+  sendMethod: "email" | "dm" | "none";
 };
 
-type Tab = "all" | "email" | "form" | "sent" | "skipped";
+const SNS_DM_PLATFORMS = ["reddit","twitter","wantedly"];
+
+const DM_URLS: Record<string, (username: string) => string> = {
+  twitter: (u) => `https://twitter.com/messages/compose?recipient_id=${u}`,
+  reddit:  (u) => `https://www.reddit.com/message/compose/?to=${u}`,
+  wantedly:(u) => `https://www.wantedly.com/users/${u}`,
+};
+
+type Tab = "all" | "email" | "dm" | "sent" | "skipped";
 
 export default function OutreachPage() {
   const { id: campaignId } = useParams<{ id: string }>();
@@ -50,7 +58,7 @@ export default function OutreachPage() {
     console.log("[outreach] campaignId:", campaignId, "idsParam:", idsParam);
 
     let query = supabase.from("targets")
-      .select("id, username, platform, match_score, priority, email, post_content, ai_reason")
+      .select("id, username, platform, match_score, priority, email, profile_url, post_content, ai_reason")
       .eq("campaign_id", campaignId)
       .order("match_score", { ascending: false });
 
@@ -58,24 +66,23 @@ export default function OutreachPage() {
       const ids = idsParam.split(",").filter(Boolean);
       if (ids.length > 0) query = query.in("id", ids);
     }
-    // No filter when no ids — show all targets (S+A will be prioritized by sort order)
 
     const { data, error: fetchErr } = await query.limit(50);
     console.log("[outreach] fetched targets:", data?.length || 0, "error:", fetchErr?.message || "none");
     if (data) {
       setTargets(data.map((t: Record<string, unknown>) => {
         const rawEmail = (t.email as string) || "";
-        const isTwitterInEmail = rawEmail.startsWith("Twitter:");
-        const realEmail = isTwitterInEmail ? null : (rawEmail || null);
-        const twitter = isTwitterInEmail ? rawEmail.replace("Twitter: ", "").replace("Twitter:", "") : null;
+        const realEmail = rawEmail && !rawEmail.startsWith("Twitter:") && !rawEmail.startsWith("DM:") ? rawEmail : null;
         const hasEmail = realEmail && realEmail.includes("@");
+        const isDmPlatform = SNS_DM_PLATFORMS.includes(t.platform as string);
         return {
           id: t.id as string, username: t.username as string, platform: t.platform as string,
           match_score: Number(t.match_score) || 0, priority: (t.priority as string) || "C",
-          email: realEmail, twitter_handle: twitter,
+          email: realEmail,
+          profile_url: (t.profile_url as string | null),
           post_content: t.post_content as string | null, ai_reason: t.ai_reason as string | null,
           message: "", status: "pending" as const,
-          sendMethod: hasEmail ? "email" : twitter ? "form" : "none",
+          sendMethod: hasEmail ? "email" : isDmPlatform ? "dm" : "none",
         };
       }));
     }
@@ -133,14 +140,14 @@ export default function OutreachPage() {
   const filtered = targets.filter(t => {
     if (activeTab === "all") return t.status === "pending";
     if (activeTab === "email") return t.sendMethod === "email" && t.status === "pending";
-    if (activeTab === "form") return t.sendMethod === "form" && t.status === "pending";
+    if (activeTab === "dm") return t.sendMethod === "dm" && t.status === "pending";
     if (activeTab === "sent") return t.status === "sent";
     if (activeTab === "skipped") return t.status === "skipped";
     return true;
   });
 
   const emailCount = targets.filter(t => t.sendMethod === "email" && t.status === "pending").length;
-  const formCount = targets.filter(t => t.sendMethod === "form" && t.status === "pending").length;
+  const dmCount = targets.filter(t => t.sendMethod === "dm" && t.status === "pending").length;
   const sentCount = targets.filter(t => t.status === "sent").length;
 
   if (loading) return <div style={{ minHeight: "100vh", background: "#0d0d1a", display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(240,239,232,0.3)" }}>読み込み中...</div>;
@@ -181,7 +188,7 @@ export default function OutreachPage() {
           {[
             { label: "送信対象", value: targets.filter(t => t.status === "pending").length, icon: "📋", color: "#ff6b35" },
             { label: "メール", value: emailCount, icon: "📧", color: "#2dd17a" },
-            { label: "フォーム", value: formCount, icon: "📝", color: "#1d9bf0" },
+            { label: "DM", value: dmCount, icon: "💬", color: "#1d9bf0" },
             { label: "送信済み", value: sentCount, icon: "✅", color: "#7c5cfc" },
           ].map(s => (
             <div key={s.label} style={{ background: "#13132a", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "14px", padding: "14px 16px" }}>
@@ -196,7 +203,7 @@ export default function OutreachPage() {
           {([
             { key: "all" as Tab, label: "全て", count: targets.filter(t => t.status === "pending").length },
             { key: "email" as Tab, label: "メール", count: emailCount },
-            { key: "form" as Tab, label: "フォーム", count: formCount },
+            { key: "dm" as Tab, label: "DM", count: dmCount },
             { key: "sent" as Tab, label: "送信済み", count: sentCount },
             { key: "skipped" as Tab, label: "スキップ", count: targets.filter(t => t.status === "skipped").length },
           ]).map(tab => (
@@ -290,14 +297,32 @@ export default function OutreachPage() {
                       {isEditing ? "✅ 完了" : "✏️ 編集"}
                     </button>
                   )}
-                  {t.status === "pending" && t.sendMethod !== "none" && (
-                    <button onClick={() => setStatus(t.id, "sent")} style={{
-                      background: "rgba(45,209,122,0.1)", border: "1px solid rgba(45,209,122,0.2)",
-                      borderRadius: "7px", padding: "5px 12px", fontSize: "10px", fontWeight: 600,
-                      color: "#2dd17a", cursor: "pointer",
-                    }}>
-                      📨 送信する（準備中）
-                    </button>
+                  {t.status === "pending" && t.sendMethod === "email" && t.email && t.message && (
+                    <a
+                      href={`mailto:${t.email}?subject=${encodeURIComponent("βテスト参加のご案内")}&body=${encodeURIComponent(t.message)}`}
+                      onClick={() => setStatus(t.id, "sent")}
+                      style={{
+                        background: "rgba(45,209,122,0.1)", border: "1px solid rgba(45,209,122,0.2)",
+                        borderRadius: "7px", padding: "5px 12px", fontSize: "10px", fontWeight: 600,
+                        color: "#2dd17a", cursor: "pointer", textDecoration: "none",
+                      }}
+                    >
+                      ✉️ メールを開く
+                    </a>
+                  )}
+                  {t.status === "pending" && t.sendMethod === "dm" && (
+                    <a
+                      href={DM_URLS[t.platform] ? DM_URLS[t.platform](t.username) : `${t.profile_url || "#"}`}
+                      target="_blank" rel="noopener noreferrer"
+                      onClick={() => setStatus(t.id, "sent")}
+                      style={{
+                        background: "rgba(29,155,240,0.1)", border: "1px solid rgba(29,155,240,0.2)",
+                        borderRadius: "7px", padding: "5px 12px", fontSize: "10px", fontWeight: 600,
+                        color: "#1d9bf0", cursor: "pointer", textDecoration: "none",
+                      }}
+                    >
+                      💬 DMを開く →
+                    </a>
                   )}
                   {t.status === "pending" && (
                     <button onClick={() => setStatus(t.id, "skipped")} style={{
