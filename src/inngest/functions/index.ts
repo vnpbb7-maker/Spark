@@ -810,8 +810,8 @@ Return ONLY this JSON format (no markdown, no explanation):
         console.error("[google_maps] GOOGLE_PLACES_API_KEY is not set — skipping");
       } else {
       try {
-        // Use persona pain_scene as keyword (not raw productDescription which may be a URL)
-        const kw = (painSummary || productDescription).replace(/^https?:\/\/[^\s]+\s*/, "").slice(0, 25).trim() || "プロダクト";
+        // Use productDescription (URL-stripped) as keyword for B2B search
+        const kw = productDescription.replace(/^https?:\/\/[^\s]+\s*/, "").slice(0, 25).trim() || "プロダクト";
         const b2bQueries = [
           `${kw} 会社`,
           `${kw} IT企業`,
