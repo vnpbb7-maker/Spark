@@ -458,29 +458,43 @@ export const discoverTargets = inngest.createFunction(
     // 3. Generate problem-focused search queries via Claude
     const platforms = (campaign.platforms || []) as string[];
     const productDescription = (campaign.product_description as string) || "";
+    const targetPersonas = (campaign.target_personas || []) as Array<Record<string, unknown>>;
     console.log("[discovery] User selected platforms:", JSON.stringify(platforms));
 
-    // Generate search queries focused on PEOPLE WITH PROBLEMS
+    // Extract pain_scene and discovery_signals from personas
+    const painScenes = targetPersonas
+      .map(p => p.pain_scene as string || "")
+      .filter(Boolean)
+      .join(" / ");
+    const discoverySignals = targetPersonas
+      .flatMap(p => (p.discovery_signals as string[] || []))
+      .filter(Boolean)
+      .slice(0, 5)
+      .join(", ");
+    const personaContext = painScenes || productDescription;
+
+    // Generate search queries focused on PEOPLE WITH PROBLEMS (not product descriptions)
     let searchQueries: string[] = [];
     try {
       const queryGenRes = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-api-key": process.env.ANTHROPIC_API_KEY || "", "anthropic-version": "2023-06-01" },
         body: JSON.stringify({
-          model: "claude-3-5-haiku-20241022", max_tokens: 500, temperature: 0.7,
-          messages: [{ role: "user", content: `あなたは検索クエリ生成の専門家です。
+          model: "claude-3-5-haiku-20241022", max_tokens: 600, temperature: 0.8,
+          messages: [{ role: "user", content: `Generate 6 Japanese search queries to find people who are CURRENTLY STRUGGLING with:
+${personaContext}
 
-このプロダクトが解決する課題を「今まさに抱えている個人」を見つけるための検索クエリを生成してください。
+They are looking for solutions like: ${productDescription}
+${discoverySignals ? `Discovery signals (what they say/post): ${discoverySignals}` : ""}
 
-プロダクト: ${productDescription}
+Rules:
+- Queries must sound like REAL PEOPLE'S complaints, questions or cries for help
+- NOT product descriptions or feature lists
+- Use expressions like: 「〜で困ってる」「〜どうすればいい」「〜時間かかりすぎ」「〜いい方法ない？」「〜しんどい」「〜疲れた」
+- Vary formats: some as questions, some as complaints, some as "searching for"
+- Examples for a "find beta testers" product: "βテスター どこで募集すればいい", "初期ユーザー集めるの時間かかりすぎ", "プロダクト検証 ユーザー 見つからない"
 
-ルール:
-- 全て日本語で生成
-- 記事やブログではなく、「困っている人」「探している人」を見つけるクエリ
-- 「〜で困っている」「〜のツール探してる」「〜を自動化したい」「〜しんどい」「〜いい方法ない？」のような表現を使う
-- 5つのクエリを返す
-
-JSON形式で返してください: { "queries": ["クエリ1", "クエリ2", "クエリ3", "クエリ4", "クエリ5"] }` }],
+Return JSON only: { "queries": ["query1", "query2", "query3", "query4", "query5", "query6"] }` }],
         }),
       });
       if (queryGenRes.ok) {
@@ -489,20 +503,20 @@ JSON形式で返してください: { "queries": ["クエリ1", "クエリ2", "�
         const jsonMatch = text.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
           const parsed = JSON.parse(jsonMatch[0]);
-          searchQueries = parsed.queries || [];
+          searchQueries = (parsed.queries || []).filter((q: unknown) => typeof q === "string" && q.length > 0);
         }
       }
     } catch (e) { console.error("[discovery] Query generation error:", e); }
 
     // Fallback if Claude fails
     if (searchQueries.length === 0) {
-      const keywords = productDescription.split(/\s+/).filter(Boolean).slice(0, 3);
       searchQueries = [
-        `${keywords[0] || ""} 困っている 解決策`,
-        `${keywords[0] || ""} ツール 探している`,
-        `${keywords.join(" ")} 自動化したい`,
+        `${personaContext.slice(0, 25)} 困っている`,
+        `${personaContext.slice(0, 25)} 解決策 探してる`,
+        `${productDescription.slice(0, 20)} どうすればいい`,
       ];
     }
+    console.log("[step1] pain context:", personaContext.slice(0, 80));
     console.log("[step1] generated queries:", searchQueries.length, searchQueries);
     console.log("[step1] returning:", { platforms, queriesCount: searchQueries.length, remaining });
 
@@ -579,6 +593,62 @@ JSON形式で返してください: { "queries": ["クエリ1", "クエリ2", "�
             }
           }
         }
+        continue;
+      }
+
+      // "web" platform: cycle through multiple Japanese community site prefixes
+      if (platform === "web") {
+        const webSites = [
+          "site:note.com",
+          "site:qiita.com",
+          "site:zenn.dev",
+          "site:reddit.com",
+          "site:detail.chiebukuro.yahoo.co.jp",
+        ];
+        let webInserted = 0;
+        for (const sitePfx of webSites) {
+          if (limitReached || webInserted >= 4) break;
+          for (const query of searchQueries.slice(0, 2)) {
+            if (limitReached) break;
+            const fullQuery = `${sitePfx} ${query}`;
+            try {
+              const tavilyResponse = await fetch("https://api.tavily.com/search", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "Authorization": `Bearer ${process.env.TAVILY_API_KEY}` },
+                body: JSON.stringify({ query: fullQuery, max_results: 8, search_depth: "basic", topic: "general", include_raw_content: false, start_date: startDate }),
+              });
+              if (!tavilyResponse.ok) { console.error(`[web] Tavily error for "${fullQuery}":`, tavilyResponse.status); continue; }
+              const tavilyData = await tavilyResponse.json();
+              const results = filterFreshResults((tavilyData.results || []) as Record<string, unknown>[], sixMonthsAgo);
+              console.log(`[web] ${sitePfx}: ${results.length} results for "${query.slice(0, 40)}"`);
+              for (const result of results) {
+                const url = (result.url as string) || "";
+                const content = String((result.content as string) || "").slice(0, 500);
+                if (!url) continue;
+                if (isCompanyUrl(url, content)) continue;
+                if (insertedTargets.length >= remaining) { limitReached = true; break; }
+                const detectedPlatform = detectPlatformFromUrl(url);
+                const actualPlatform = detectedPlatform !== "web" ? detectedPlatform : "web";
+                const username = extractUsername(url, actualPlatform);
+                if (username && username !== "unknown") {
+                  const dedupKey = `${actualPlatform}::${username.toLowerCase()}`;
+                  if (dedupSet.has(dedupKey)) continue;
+                  dedupSet.add(dedupKey);
+                  const profileUrl = buildProfileUrl(url, actualPlatform, username);
+                  const social = extractSocialFromContent(content);
+                  const { error: insertErr } = await getSupabase().from("targets").insert({
+                    campaign_id: campaignId, platform: actualPlatform, username,
+                    profile_url: profileUrl, post_url: url, post_content: content,
+                    match_score: 52, match_reason: `Web検索: ${query.slice(0, 30)}`, status: "pending",
+                    ...(social.found_email ? { email: social.found_email } : {}),
+                  });
+                  if (!insertErr) { insertedTargets.push(username); webInserted++; console.log(`[web] Inserted: ${actualPlatform} @${username}`); }
+                }
+              }
+            } catch (err) { console.error("[web] Tavily error:", err); }
+          }
+        }
+        console.log(`[web] total inserted: ${webInserted}`);
         continue;
       }
 
