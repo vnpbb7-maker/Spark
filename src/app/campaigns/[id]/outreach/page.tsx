@@ -242,10 +242,10 @@ export default function OutreachPage() {
                   <span style={{ fontSize: "16px", fontWeight: 800, fontFamily: "'Space Grotesk'", color: t.match_score >= 65 ? "#ffd60a" : "#2dd17a" }}>{t.match_score}%</span>
                   <span style={{
                     marginLeft: "auto", fontSize: "10px", padding: "3px 10px", borderRadius: "6px", fontWeight: 600,
-                    background: t.sendMethod === "email" ? "rgba(45,209,122,0.1)" : t.sendMethod === "form" ? "rgba(29,155,240,0.1)" : "rgba(255,255,255,0.04)",
-                    color: t.sendMethod === "email" ? "#2dd17a" : t.sendMethod === "form" ? "#1d9bf0" : "rgba(240,239,232,0.3)",
+                    background: t.sendMethod === "email" ? "rgba(45,209,122,0.1)" : t.sendMethod === "dm" ? "rgba(29,155,240,0.1)" : "rgba(255,255,255,0.04)",
+                    color: t.sendMethod === "email" ? "#2dd17a" : t.sendMethod === "dm" ? "#1d9bf0" : "rgba(240,239,232,0.3)",
                   }}>
-                    {t.sendMethod === "email" ? `📧 ${t.email}` : t.sendMethod === "form" ? `📝 ${t.twitter_handle || "フォーム"}` : "❌ 送信不可"}
+                    {t.sendMethod === "email" ? `📧 ${t.email}` : t.sendMethod === "dm" ? `💬 DM` : "❌ 送信不可"}
                   </span>
                 </div>
 

@@ -106,10 +106,13 @@ export default function DashboardPage() {
       console.log("[dashboard] Fallback fetched:", tgts.length, "targets");
     }
 
-    // Helper: check if target has real contact info
-    const hasContact = (t: { email: unknown }) => {
+    // Helper: check if target has real contact info (email OR DM-capable SNS platform)
+    const SNS_DM = ["reddit", "twitter", "wantedly"];
+    const hasContact = (t: { email: unknown; platform?: string }) => {
       const email = t.email as string | null;
-      return email && !email.startsWith("Twitter:");
+      const hasEmail = email && !email.startsWith("Twitter:") && !email.startsWith("DM:") && email.includes("@");
+      const hasDm = SNS_DM.includes((t.platform as string) || "");
+      return hasEmail || hasDm;
     };
 
     // Build enriched campaigns
