@@ -458,7 +458,6 @@ export const discoverTargets = inngest.createFunction(
 
     // 3. Generate problem-focused search queries via Claude
     const platforms: string[] = Array.isArray(campaign.platforms) ? (campaign.platforms as string[]) : [];
-    const productDescription = (campaign.product_description as string) || "";
 
     // target_personas may be stored as array OR as object { personas: [...] }
     const rawPersonas = campaign.target_personas;
@@ -469,7 +468,17 @@ export const discoverTargets = inngest.createFunction(
       targetPersonas = (rawPersonas as Record<string, unknown>).personas as Array<Record<string, unknown>>;
     }
     console.log("[step1] platforms:", platforms, "personas count:", targetPersonas.length);
-    console.log("[discovery] User selected platforms:", JSON.stringify(platforms));
+
+    // Fix: productDescription might be a URL — prefer personas data instead
+    let productDescription = (campaign.product_description as string) || "";
+    const isUrl = productDescription.startsWith("http");
+    if (isUrl) {
+      const rawP = campaign.target_personas as Record<string, unknown> | null;
+      const positioning = rawP?.positioning as string || "";
+      const firstPainScene = (targetPersonas[0]?.pain_scene as string) || "";
+      productDescription = positioning || firstPainScene || productDescription;
+      console.log("[step1] productDescription was URL, using personas fallback:", productDescription.slice(0, 80));
+    }
 
     // Extract pain_scene and discovery_signals from personas (guarded)
     const painScenes = Array.isArray(targetPersonas)
@@ -478,7 +487,12 @@ export const discoverTargets = inngest.createFunction(
     const discoverySignals = Array.isArray(targetPersonas)
       ? targetPersonas.flatMap(p => Array.isArray(p.discovery_signals) ? (p.discovery_signals as string[]) : []).filter(Boolean).slice(0, 5).join(", ")
       : "";
-    const personaContext = painScenes || productDescription;
+    // Limit context length to avoid truncation in Claude prompt
+    const painSummary = painScenes.substring(0, 200);
+    const personaContext = painSummary || productDescription.substring(0, 200);
+    console.log("[step1] personaContext:", personaContext.slice(0, 100), "| signals:", discoverySignals.slice(0, 80));
+    console.log("[discovery] User selected platforms:", JSON.stringify(platforms));
+
 
     // Generate search queries focused on PEOPLE WITH PROBLEMS (not product descriptions)
     let searchQueries: string[] = [];
@@ -491,7 +505,7 @@ export const discoverTargets = inngest.createFunction(
           messages: [{ role: "user", content: `Generate 6 Japanese search queries to find people who are CURRENTLY STRUGGLING with:
 ${personaContext}
 
-They are looking for solutions like: ${productDescription}
+They are looking for solutions like: ${productDescription.substring(0, 150)}
 ${discoverySignals ? `Discovery signals (what they say/post): ${discoverySignals}` : ""}
 
 Rules:
