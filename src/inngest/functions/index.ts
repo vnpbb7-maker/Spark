@@ -508,7 +508,7 @@ export const discoverTargets = inngest.createFunction(
         method: "POST",
         headers: { "Content-Type": "application/json", "x-api-key": process.env.ANTHROPIC_API_KEY || "", "anthropic-version": "2023-06-01" },
         body: JSON.stringify({
-          model: "claude-3-5-haiku-20241022", max_tokens: 400, temperature: 0.8,
+          model: "claude-haiku-4-5-20251001", max_tokens: 400, temperature: 0.8,
           system: "You generate Japanese search queries. Return ONLY a JSON array of 5 short Japanese strings. No explanation, no other text.",
           messages: [{ role: "user", content:
 `Product solves: ${productDescription.substring(0, 100)}
