@@ -110,29 +110,28 @@ export default function CampaignDetailPage() {
   routerRef.current = router;
 
   const fetchData = useCallback(async () => {
-    const supabase = createClient();
+    try {
+      // Use API route (service role) to bypass RLS
+      const res = await fetch(`/api/campaigns/${campaignId}/targets`, { credentials: "include" });
+      if (res.status === 404) { routerRef.current.push("/dashboard"); return; }
+      if (!res.ok) { setLoading(false); return; }
 
-    // Parallel DB queries
-    const [campResult, tgtsResult] = await Promise.all([
-      supabase.from("campaigns").select("*").eq("id", campaignId).single(),
-      supabase.from("targets").select("*, comments(*)").eq("campaign_id", campaignId).order("match_score", { ascending: false }).limit(50),
-    ]);
+      const data = await res.json();
+      const campData = data.campaign;
+      const tgtsData: Record<string, unknown>[] = data.targets || [];
 
-    if (!campResult.data) { routerRef.current.push("/dashboard"); return; }
-    setCampaign(campResult.data);
-    // Set minimum score filter from campaign settings ONCE (never override user's manual selection)
-    if (!minScoreInitRef.current) {
-      const campaignMinScore = (campResult.data as Record<string, unknown>).min_match_score as number;
-      if (campaignMinScore && campaignMinScore > 0) {
-        setMinScore(Math.min(campaignMinScore, 50));
+      setCampaign(campData);
+
+      // Set minimum score filter from campaign settings ONCE
+      if (!minScoreInitRef.current) {
+        const campaignMinScore = campData.min_match_score as number;
+        if (campaignMinScore && campaignMinScore > 0) {
+          setMinScore(Math.min(campaignMinScore, 50));
+        }
+        minScoreInitRef.current = true;
       }
-      minScoreInitRef.current = true;
-    }
 
-    const enriched: TargetRow[] = (tgtsResult.data || []).map((t: Record<string, unknown>) => {
-      const comments = (t.comments as Array<Record<string, unknown>>) || [];
-      const comment = comments[0];
-      return {
+      const enriched: TargetRow[] = tgtsData.map((t) => ({
         id: t.id as string, platform: t.platform as string, username: t.username as string,
         post_url: t.post_url as string | null, post_content: t.post_content as string | null,
         match_score: Number(t.match_score) || 0, match_reason: t.match_reason as string | null,
@@ -147,18 +146,22 @@ export default function CampaignDetailPage() {
         q1_score: t.q1_score as number | null,
         q2_score: t.q2_score as number | null,
         q3_score: t.q3_score as number | null,
-        comment: comment ? { id: comment.id as string, content: comment.content as string, approach: comment.approach as string | null } : undefined,
-      };
-    });
-    setTargets(enriched);
+        comment: undefined, // comments not needed on this page
+      }));
+      setTargets(enriched);
 
-
-
-    // Build logs from same data (no extra queries)
-    const logTargets = enriched.map(t => ({ id: t.id, platform: t.platform, username: t.username, match_score: t.match_score, created_at: (tgtsResult.data?.find((d: any) => d.id === t.id) as any)?.created_at || "", priority: t.priority || undefined }));
-    const logComments = enriched.filter(t => t.comment).map(t => ({ id: t.comment!.id, platform: t.platform, created_at: (tgtsResult.data?.find((d: any) => d.id === t.id)?.comments as any)?.[0]?.created_at || "" }));
-    const builtLogs = buildLogsFromData(logTargets, logComments);
-    setInitialLogs([...builtLogs]);
+      // Build logs from fetched data
+      const logTargets = tgtsData.map(t => ({
+        id: t.id as string, platform: t.platform as string, username: t.username as string,
+        match_score: Number(t.match_score) || 0,
+        created_at: (t.created_at as string) || "",
+        priority: (t.priority as string) || undefined,
+      }));
+      const builtLogs = buildLogsFromData(logTargets, []);
+      setInitialLogs([...builtLogs]);
+    } catch (err) {
+      console.error("[campaign page] fetchData error:", err);
+    }
     setLoading(false);
   }, [campaignId, buildLogsFromData]);
 
