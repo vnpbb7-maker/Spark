@@ -496,46 +496,63 @@ export const discoverTargets = inngest.createFunction(
 
     // Generate search queries focused on PEOPLE WITH PROBLEMS (not product descriptions)
     let searchQueries: string[] = [];
+    const fallbackQueries = [
+      "βテスター 募集 方法",
+      "初期ユーザー 獲得 難しい",
+      "プロダクト ユーザー 見つからない",
+      "スタートアップ 最初のユーザー",
+      "新サービス テスター 探してる",
+    ];
     try {
       const queryGenRes = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-api-key": process.env.ANTHROPIC_API_KEY || "", "anthropic-version": "2023-06-01" },
         body: JSON.stringify({
-          model: "claude-3-5-haiku-20241022", max_tokens: 600, temperature: 0.8,
-          messages: [{ role: "user", content: `Generate 6 Japanese search queries to find people who are CURRENTLY STRUGGLING with:
-${personaContext}
+          model: "claude-3-5-haiku-20241022", max_tokens: 400, temperature: 0.8,
+          system: "You generate Japanese search queries. Return ONLY a JSON array of 5 short Japanese strings. No explanation, no other text.",
+          messages: [{ role: "user", content:
+`Product solves: ${productDescription.substring(0, 100)}
+Target pain: ${painSummary.substring(0, 100)}
 
-They are looking for solutions like: ${productDescription.substring(0, 150)}
-${discoverySignals ? `Discovery signals (what they say/post): ${discoverySignals}` : ""}
+Generate 5 short Japanese search queries (5-15 words each) that find people WHO HAVE THIS PROBLEM RIGHT NOW.
+Queries must be natural Japanese phrases, NOT copied from the pain description above.
+Examples: "βテスター どこで募集すればいい" / "初期ユーザー集めるの時間かかりすぎ" / "新サービス 使ってくれる人 見つからない"
 
-Rules:
-- Queries must sound like REAL PEOPLE'S complaints, questions or cries for help
-- NOT product descriptions or feature lists
-- Use expressions like: 「〜で困ってる」「〜どうすればいい」「〜時間かかりすぎ」「〜いい方法ない？」「〜しんどい」「〜疲れた」
-- Vary formats: some as questions, some as complaints, some as "searching for"
-- Examples for a "find beta testers" product: "βテスター どこで募集すればいい", "初期ユーザー集めるの時間かかりすぎ", "プロダクト検証 ユーザー 見つからない"
-
-Return JSON only: { "queries": ["query1", "query2", "query3", "query4", "query5", "query6"] }` }],
+Return ONLY this JSON format (no markdown, no explanation):
+["query1", "query2", "query3", "query4", "query5"]` }],
         }),
       });
       if (queryGenRes.ok) {
         const queryGenData = await queryGenRes.json();
-        const text = queryGenData.content?.[0]?.text || "";
-        const jsonMatch = text.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          const parsed = JSON.parse(jsonMatch[0]);
-          searchQueries = (parsed.queries || []).filter((q: unknown) => typeof q === "string" && q.length > 0);
+        const text = (queryGenData.content?.[0]?.text || "").trim();
+        console.log("[step1] Claude raw response:", text.slice(0, 200));
+        // Try parsing as bare array first, then as {queries:[]} object
+        try {
+          const arrMatch = text.match(/\[[\s\S]*\]/);
+          if (arrMatch) {
+            const parsed = JSON.parse(arrMatch[0]);
+            if (Array.isArray(parsed)) {
+              searchQueries = parsed.filter((q: unknown) => typeof q === "string" && q.trim().length > 0);
+            }
+          }
+        } catch { /* try object format below */ }
+        if (searchQueries.length === 0) {
+          const objMatch = text.match(/\{[\s\S]*\}/);
+          if (objMatch) {
+            const parsed = JSON.parse(objMatch[0]);
+            const arr = parsed.queries || parsed.results || [];
+            searchQueries = arr.filter((q: unknown) => typeof q === "string" && q.trim().length > 0);
+          }
         }
+      } else {
+        console.error("[step1] Claude API error:", queryGenRes.status, await queryGenRes.text().catch(() => ""));
       }
     } catch (e) { console.error("[discovery] Query generation error:", e); }
 
-    // Fallback if Claude fails
+    // Fallback if Claude fails or returns empty
     if (searchQueries.length === 0) {
-      searchQueries = [
-        `${personaContext.slice(0, 25)} 困っている`,
-        `${personaContext.slice(0, 25)} 解決策 探してる`,
-        `${productDescription.slice(0, 20)} どうすればいい`,
-      ];
+      console.log("[step1] Claude returned no queries, using fallbacks");
+      searchQueries = fallbackQueries;
     }
     // Safety: ensure searchQueries is always a plain string array before returning
     if (!Array.isArray(searchQueries)) searchQueries = [];
@@ -793,27 +810,26 @@ Return JSON only: { "queries": ["query1", "query2", "query3", "query4", "query5"
         console.error("[google_maps] GOOGLE_PLACES_API_KEY is not set — skipping");
       } else {
       try {
-        // Use productDescription keywords directly — more relevant than area-based queries
-        const kw = productDescription.slice(0, 30).trim();
+        // Use persona pain_scene as keyword (not raw productDescription which may be a URL)
+        const kw = (painSummary || productDescription).replace(/^https?:\/\/[^\s]+\s*/, "").slice(0, 25).trim() || "プロダクト";
         const b2bQueries = [
-          kw,                              // raw product keyword
-          `${kw} 会社`,                    // + 会社
-          `${kw} IT企業`,                  // + IT企業
-          `${kw} スタートアップ`,            // + startup
+          `${kw} 会社`,
+          `${kw} IT企業`,
+          `${kw} スタートアップ`,
+          kw,
         ];
-        console.log(`[google_maps] B2B queries:`, b2bQueries);
+        console.log(`[google_maps] kw: "${kw}" | B2B queries:`, b2bQueries);
         for (const query of b2bQueries.slice(0, 3)) {
           if (limitReached || insertedTargets.length >= remaining) break;
-          console.log(`[google_maps] Searching: ${query}`);
-          const placesRes = await fetch(
-            `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(query)}&language=ja&key=${process.env.GOOGLE_PLACES_API_KEY}`,
-            { signal: AbortSignal.timeout(10000) }
-          );
+          const fullUrl = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(query)}&language=ja&key=${process.env.GOOGLE_PLACES_API_KEY}`;
+          console.log(`[google_maps] calling Places API with query: "${query}"`);
+          const placesRes = await fetch(fullUrl, { signal: AbortSignal.timeout(10000) });
+          console.log(`[google_maps] Places API response status: ${placesRes.status}`);
           if (!placesRes.ok) { console.error(`[google_maps] Places API error: ${placesRes.status} for "${query}"`); continue; }
           const placesData = await placesRes.json();
           console.log(`[google_maps] API status: ${placesData.status} for "${query}"`);
           const places = (placesData.results || []) as Array<Record<string, unknown>>;
-          console.log(`[google_maps] Found ${places.length} businesses for "${query}"`);
+          console.log(`[google_maps] Places API places count: ${places.length} for "${query}"`);
           if (places.length === 0) continue;
           for (const place of places.slice(0, 8)) {
             if (insertedTargets.length >= remaining) { limitReached = true; break; }
