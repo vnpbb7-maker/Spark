@@ -405,6 +405,7 @@ export const discoverTargets = inngest.createFunction(
     // ═══ STEP 1: Get campaign + generate queries ═══
     const stepData = await step.run("get-campaign-and-queries", async () => {
     console.log("[step1] START campaign_id:", campaignId);
+    try {
 
     // 1. キャンペーン取得
     const { data: campaign, error: campErr } = await getSupabase()
@@ -456,21 +457,27 @@ export const discoverTargets = inngest.createFunction(
     console.log(`[dedup] Loaded ${dedupSet.size} existing targets from last 7 days across ${userCampaignIds.length} campaigns`);
 
     // 3. Generate problem-focused search queries via Claude
-    const platforms = (campaign.platforms || []) as string[];
+    const platforms: string[] = Array.isArray(campaign.platforms) ? (campaign.platforms as string[]) : [];
     const productDescription = (campaign.product_description as string) || "";
-    const targetPersonas = (campaign.target_personas || []) as Array<Record<string, unknown>>;
+
+    // target_personas may be stored as array OR as object { personas: [...] }
+    const rawPersonas = campaign.target_personas;
+    let targetPersonas: Array<Record<string, unknown>> = [];
+    if (Array.isArray(rawPersonas)) {
+      targetPersonas = rawPersonas as Array<Record<string, unknown>>;
+    } else if (rawPersonas && typeof rawPersonas === "object" && Array.isArray((rawPersonas as Record<string, unknown>).personas)) {
+      targetPersonas = (rawPersonas as Record<string, unknown>).personas as Array<Record<string, unknown>>;
+    }
+    console.log("[step1] platforms:", platforms, "personas count:", targetPersonas.length);
     console.log("[discovery] User selected platforms:", JSON.stringify(platforms));
 
-    // Extract pain_scene and discovery_signals from personas
-    const painScenes = targetPersonas
-      .map(p => p.pain_scene as string || "")
-      .filter(Boolean)
-      .join(" / ");
-    const discoverySignals = targetPersonas
-      .flatMap(p => (p.discovery_signals as string[] || []))
-      .filter(Boolean)
-      .slice(0, 5)
-      .join(", ");
+    // Extract pain_scene and discovery_signals from personas (guarded)
+    const painScenes = Array.isArray(targetPersonas)
+      ? targetPersonas.map(p => (p.pain_scene as string) || "").filter(Boolean).join(" / ")
+      : "";
+    const discoverySignals = Array.isArray(targetPersonas)
+      ? targetPersonas.flatMap(p => Array.isArray(p.discovery_signals) ? (p.discovery_signals as string[]) : []).filter(Boolean).slice(0, 5).join(", ")
+      : "";
     const personaContext = painScenes || productDescription;
 
     // Generate search queries focused on PEOPLE WITH PROBLEMS (not product descriptions)
@@ -525,6 +532,10 @@ Return JSON only: { "queries": ["query1", "query2", "query3", "query4", "query5"
     console.log("[step1] returning:", { platforms, queriesCount: searchQueries.length, remaining });
 
     return { campaign, platforms, productDescription, searchQueries, remaining, dedupKeys: [...dedupSet], minMatchScore };
+    } catch (err) {
+      console.error("[step1] ERROR:", err);
+      throw err;
+    }
     }); // end step 1
 
     if (!stepData.campaign) return { error: "Campaign not found or limit reached" };
