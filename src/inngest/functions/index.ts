@@ -880,8 +880,15 @@ Return ONLY this JSON format (no markdown, no explanation):
               campaign_id: campaignId, platform: "google_maps", username: name,
               profile_url: mapsUrl || website, post_url: mapsUrl || website,
               post_content: `${address} ${phone ? `📞 ${phone}` : ""}`.slice(0, 500),
-              match_score: email ? 70 : phone ? 55 : 45,
-              match_reason: `Googleマップ B2B: ${query.slice(0, 40)}`, status: "pending",
+              // B2B リードはスコアリング不要—固定Aランクで表示
+              match_score: email ? 80 : website ? 75 : 65,
+              priority: "A",
+              relevance_score: 0,   // skip AI scoring (non-null = already scored)
+              intent_score: 0,
+              influence_score: 0,
+              accessibility_score: 0,
+              status: "scored",      // mark scored so Phase 4 skips it
+              match_reason: `Googleマップ B2B: ${query.slice(0, 40)}`,
               ...(email ? { email } : {}),
               ...(phone ? { phone } : {}),
               ...(website ? { website, contact_url: website } : {}),
@@ -1038,11 +1045,13 @@ Return ONLY this JSON format (no markdown, no explanation):
     // Firecrawl deep extraction + Multi-factor AI scoring
     try {
       // Find targets that haven't been scored yet (no relevance_score)
+      // Exclude google_maps targets — they are B2B leads, not individuals, no AI scoring needed
       const { data: scoringTargets, error: scoringQueryErr } = await getSupabase()
         .from("targets")
         .select("id, username, platform, post_url, post_content, profile_url")
         .eq("campaign_id", campaignId)
         .is("relevance_score", null)
+        .neq("platform", "google_maps")
         .order("created_at", { ascending: false })
         .limit(15);
 

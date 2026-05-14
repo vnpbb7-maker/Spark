@@ -533,7 +533,11 @@ export default function CampaignDetailPage() {
                         }}>
                           {isSelected && <span style={{ fontSize: "10px", color: "#000", fontWeight: 900 }}>✓</span>}
                         </div>
-                        <span style={{ background: ps.bg, color: ps.color, fontSize: "10px", fontWeight: 900, width: "22px", height: "22px", borderRadius: "6px", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{ps.label}</span>
+                        {t.platform === "google_maps" ? (
+                          <span style={{ fontSize: "10px", fontWeight: 900, padding: "2px 6px", borderRadius: "6px", background: "rgba(66,133,244,0.15)", color: "#4285f4", flexShrink: 0, whiteSpace: "nowrap" }}>🏢 企業</span>
+                        ) : (
+                          <span style={{ background: ps.bg, color: ps.color, fontSize: "10px", fontWeight: 900, width: "22px", height: "22px", borderRadius: "6px", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{ps.label}</span>
+                        )}
                         <span style={{ fontSize: "14px", fontWeight: 700, color: "#f0efe8" }}>@{t.username}</span>
                         <span style={{ fontSize: "10px", padding: "2px 8px", borderRadius: "5px", background: `${pi.color}12`, color: pi.color, fontWeight: 600, flexShrink: 0 }}>{pi.icon} {t.platform === "yahoo_qa" ? "Yahoo知恵袋" : t.platform.charAt(0).toUpperCase() + t.platform.slice(1)}</span>
                         {(() => {
@@ -545,7 +549,13 @@ export default function CampaignDetailPage() {
                           return null;
                         })()}
                         {t.estimated_role && <span style={{ fontSize: "10px", color: "rgba(240,239,232,0.3)" }}>{t.estimated_role}</span>}
-                        <span style={{ marginLeft: "auto", fontSize: "20px", fontWeight: 800, fontFamily: "'Space Grotesk'", color: t.match_score >= 75 ? "#ffd60a" : t.match_score >= 55 ? "#2dd17a" : "rgba(240,239,232,0.4)" }}>{t.match_score}%</span>
+                        {t.platform === "google_maps" && (t.website || t.contact_url) ? (
+                          <a href={t.website || t.contact_url || ""} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} style={{ marginLeft: "auto", fontSize: "11px", color: "#4285f4", textDecoration: "none", maxWidth: "160px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexShrink: 0 }}>
+                            🌐 {(t.website || t.contact_url || "").replace(/^https?:\/\/(www\.)?/, "").split("/")[0]}
+                          </a>
+                        ) : (
+                          <span style={{ marginLeft: "auto", fontSize: "20px", fontWeight: 800, fontFamily: "'Space Grotesk'", color: t.match_score >= 75 ? "#ffd60a" : t.match_score >= 55 ? "#2dd17a" : "rgba(240,239,232,0.4)" }}>{t.match_score}%</span>
+                        )}
                       </div>
 
                       {/* Hit reason box */}
@@ -555,8 +565,8 @@ export default function CampaignDetailPage() {
                         </div>
                       )}
 
-                      {/* Score bars */}
-                      <div style={{ display: "flex", gap: "16px", marginBottom: "10px" }}>
+                      {/* Score bars — hidden for B2B google_maps leads */}
+                      {t.platform !== "google_maps" && <div style={{ display: "flex", gap: "16px", marginBottom: "10px" }}>
                         {[
                           { label: "課題の深さ", score: t.q1_score ?? t.relevance_score ?? 0, max: 10, color: "#ff6b35" },
                           { label: "試す意欲", score: t.q2_score ?? t.intent_score ?? 0, max: 10, color: "#2dd17a" },
