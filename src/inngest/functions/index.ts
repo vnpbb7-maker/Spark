@@ -1218,6 +1218,13 @@ JSONのみ:
     // ユーザーがキャンペーンページで個別or一括でコメント生成ボタンを押す
     }); // end step 4
 
+    // ═══ FINAL: Mark campaign as completed ═══
+    await getSupabase()
+      .from("campaigns")
+      .update({ status: "completed" })
+      .eq("id", campaignId);
+    console.log(`[discover] Campaign ${campaignId} marked as completed. Targets found: ${discoveryResult?.targetsFound || 0}`);
+
     return { success: true, campaignId, targetsFound: discoveryResult?.targetsFound || 0 };
   }
 );

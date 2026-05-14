@@ -165,12 +165,25 @@ export default function CampaignDetailPage() {
     setLoading(false);
   }, [campaignId, buildLogsFromData]);
 
-  // Single effect: initial fetch + polling interval
+  // Polling: stop when campaign is done or after 10min timeout
   useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchData, 10000);
-    return () => clearInterval(interval);
-  }, [fetchData]);
+    let stopped = false;
+    const startTime = Date.now();
+    const MAX_POLL_MS = 10 * 60 * 1000; // 10 minutes
+
+    const poll = async () => {
+      if (stopped) return;
+      await fetchData();
+      // Stop polling if campaign finished or timed out
+      const status = (campaign as Record<string, unknown> | null)?.status as string;
+      if (status === "completed" || status === "paused") { stopped = true; return; }
+      if (Date.now() - startTime > MAX_POLL_MS) { stopped = true; return; }
+    };
+
+    poll();
+    const interval = setInterval(poll, 10000);
+    return () => { stopped = true; clearInterval(interval); };
+  }, [fetchData]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const logs = [...realtimeLogs, ...initialLogs.filter((il) => !realtimeLogs.some((rl) => rl.text === il.text))].slice(0, 20);
   const hasData = targets.length > 0 || initialLogs.length > 0;
