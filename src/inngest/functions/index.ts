@@ -572,7 +572,12 @@ Return ONLY this JSON format (no markdown, no explanation):
     }); // end step 1
 
     if (!stepData.campaign) return { error: "Campaign not found or limit reached" };
-    const { campaign, platforms, productDescription, remaining } = stepData;
+    const { campaign, productDescription, remaining } = stepData;
+    // Re-validate platforms as string[] (Inngest serialization can lose types)
+    const platforms: string[] = Array.isArray(stepData.platforms)
+      ? (stepData.platforms as unknown[]).filter((p): p is string => typeof p === "string")
+      : [];
+    console.log("[step2-outer] platforms after re-validation:", platforms, "remaining:", remaining);
     // Safety: Inngest serializes step return values — ensure searchQueries is always an array
     const searchQueries: string[] = Array.isArray(stepData.searchQueries)
       ? (stepData.searchQueries as unknown[]).filter((q): q is string => typeof q === "string" && q.length > 0)
@@ -805,9 +810,11 @@ Return ONLY this JSON format (no markdown, no explanation):
     }
 
     // Google Places API discovery (if "google_maps" is in selected platforms)
-    // Required env vars: GOOGLE_PLACES_API_KEY, HUNTER_API_KEY (optional)
+    console.log(`[google_maps] PRE-CHECK: platforms=${JSON.stringify(platforms)} limitReached=${limitReached} remaining=${remaining - insertedTargets.length}`);
     if (platforms.includes("google_maps") && !limitReached) {
-      console.log(`[google_maps] Starting. GOOGLE_KEY set: ${!!process.env.GOOGLE_PLACES_API_KEY}`);
+      console.log("[google_maps] ENTERING google_maps handler");
+      console.log("[google_maps] GOOGLE_PLACES_API_KEY set:", !!process.env.GOOGLE_PLACES_API_KEY);
+      console.log("[google_maps] searchQueries:", searchQueries);
       if (!process.env.GOOGLE_PLACES_API_KEY) {
         console.error("[google_maps] GOOGLE_PLACES_API_KEY is not set — skipping");
       } else {
