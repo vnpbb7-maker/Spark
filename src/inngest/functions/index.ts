@@ -593,6 +593,7 @@ Return ONLY this JSON format (no markdown, no explanation):
     // Process each platform the user selected (HARD BLOCK: skip anything not selected)
     for (const platform of platforms) {
       if (limitReached) break;
+      console.log(`[phase2] user selected platforms: ${JSON.stringify(platforms)}`);
       console.log(`[step2] processing platform: ${platform} (inserted: ${insertedTargets.length}/${remaining})`);
 
       // Skip platforms handled separately below (connpass, google_maps)
@@ -623,21 +624,34 @@ Return ONLY this JSON format (no markdown, no explanation):
         continue;
       }
 
-      // "web" platform: cycle through multiple Japanese community site prefixes
+      // "web" platform: only search sites the user has also selected (or core web platforms)
       if (platform === "web") {
-        const webSites = [
-          "site:note.com",
-          "site:qiita.com",
-          "site:zenn.dev",
-          "site:reddit.com",
-          "site:detail.chiebukuro.yahoo.co.jp",
-        ];
+        // Build allowed site prefixes: only include community sites if that platform is selected
+        const ALL_WEB_SITES: Record<string, string> = {
+          note:      "site:note.com",
+          qiita:     "site:qiita.com",
+          zenn:      "site:zenn.dev",
+          reddit:    "site:reddit.com",
+          yahoo_qa:  "site:detail.chiebukuro.yahoo.co.jp",
+          hatena:    "site:hatenablog.com OR site:hatenadiary.com",
+          wantedly:  "site:wantedly.com",
+        };
+        // Only search sites the user explicitly selected; always allow yahoo_qa for web
+        const webSites: string[] = [];
+        for (const [sitePlatform, sitePrefix] of Object.entries(ALL_WEB_SITES)) {
+          if (platforms.includes(sitePlatform) || sitePlatform === "yahoo_qa") {
+            webSites.push(sitePrefix);
+          }
+        }
+        // If no community sites selected, search without site restriction
+        if (webSites.length === 0) webSites.push("");
+        console.log(`[web] searching with site prefixes: ${JSON.stringify(webSites)}`);
         let webInserted = 0;
         for (const sitePfx of webSites) {
           if (limitReached || webInserted >= 4) break;
           for (const query of searchQueries.slice(0, 2)) {
             if (limitReached) break;
-            const fullQuery = `${sitePfx} ${query}`;
+            const fullQuery = sitePfx ? `${sitePfx} ${query}` : query;
             try {
               const tavilyResponse = await fetch("https://api.tavily.com/search", {
                 method: "POST",
@@ -647,7 +661,7 @@ Return ONLY this JSON format (no markdown, no explanation):
               if (!tavilyResponse.ok) { console.error(`[web] Tavily error for "${fullQuery}":`, tavilyResponse.status); continue; }
               const tavilyData = await tavilyResponse.json();
               const results = filterFreshResults((tavilyData.results || []) as Record<string, unknown>[], sixMonthsAgo);
-              console.log(`[web] ${sitePfx}: ${results.length} results for "${query.slice(0, 40)}"`);
+              console.log(`[web] ${sitePfx || "(no site)"}:  ${results.length} results for "${query.slice(0, 40)}"`);
               for (const result of results) {
                 const url = (result.url as string) || "";
                 const content = String((result.content as string) || "").slice(0, 500);
@@ -655,6 +669,12 @@ Return ONLY this JSON format (no markdown, no explanation):
                 if (isCompanyUrl(url, content)) continue;
                 if (insertedTargets.length >= remaining) { limitReached = true; break; }
                 const detectedPlatform = detectPlatformFromUrl(url);
+                console.log(`[web] detected platform for ${url.slice(0, 60)}: ${detectedPlatform}`);
+                // STRICT FILTER: if result is from a specific platform the user did NOT select, skip it
+                if (detectedPlatform !== "web" && !platforms.includes(detectedPlatform)) {
+                  console.log(`[web] Skipping ${url.slice(0, 60)} — platform "${detectedPlatform}" not in user selection ${JSON.stringify(platforms)}`);
+                  continue;
+                }
                 const actualPlatform = detectedPlatform !== "web" ? detectedPlatform : "web";
                 const username = extractUsername(url, actualPlatform);
                 if (username && username !== "unknown") {
