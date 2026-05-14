@@ -124,14 +124,8 @@ export default function CampaignDetailPage() {
 
       setCampaign(campData);
 
-      // Set minimum score filter from campaign settings ONCE
-      if (!minScoreInitRef.current) {
-        const campaignMinScore = campData.min_match_score as number;
-        if (campaignMinScore && campaignMinScore > 0) {
-          setMinScore(Math.min(campaignMinScore, 50));
-        }
-        minScoreInitRef.current = true;
-      }
+      // Always start with minScore=0 (show all targets) — user applies filter manually
+      minScoreInitRef.current = true;
 
       const enriched: TargetRow[] = tgtsData.map((t) => ({
         id: t.id as string, platform: t.platform as string, username: t.username as string,
