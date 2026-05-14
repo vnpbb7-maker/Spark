@@ -399,16 +399,12 @@ function extractUsername(url: string, platform: string): string {
 
 export const discoverTargets = inngest.createFunction(
   { id: "discover-targets", triggers: [{ event: "campaign/discover" }] },
-  async ({ event, step }: any) => {
+  async ({ event }: any) => {
     const campaignId = event.data.campaign_id as string;
-    // Use event.id + timestamp to guarantee unique step IDs — prevents Inngest from reusing cached results
-    const runId = `${event.id || Date.now()}-${Date.now()}`;
-    console.log("Starting discover for campaign:", campaignId, "runId:", runId);
+    console.log("[discover] START campaign_id:", campaignId);
 
-    // ═══ STEP 1: Get campaign + generate queries ═══
-    const stepData = await step.run(`get-campaign-and-queries-${runId}`, async () => {
+    // ═══ PHASE 1: Get campaign + generate queries (inline, no step caching) ═══
     console.log("[step1] START campaign_id:", campaignId);
-    try {
 
     // 1. キャンペーン取得
     const { data: campaign, error: campErr } = await getSupabase()
@@ -418,7 +414,11 @@ export const discoverTargets = inngest.createFunction(
       .single();
     console.log("[step1] campaign found:", !!campaign, "error:", campErr?.message || "none", "platforms:", campaign?.platforms);
 
-    if (!campaign) return { campaign: null, platforms: [], productDescription: "", searchQueries: [], remaining: 0, dedupKeys: [] as string[], minMatchScore: 0 };
+    if (!campaign) {
+      console.log("[step1] campaign not found, aborting");
+      await getSupabase().from("campaigns").update({ status: "completed" }).eq("id", campaignId);
+      return { error: "Campaign not found" };
+    }
 
     // 2. Per-campaign target limit
     // TODO: change back to plan-based limit before production release
@@ -428,13 +428,13 @@ export const discoverTargets = inngest.createFunction(
       .from("targets")
       .select("*", { count: "exact", head: true })
       .eq("campaign_id", campaignId);
-
     const existingCount = count || 0;
+    const remaining = campaignLimit - existingCount;
     if (existingCount >= campaignLimit) {
       console.log(`Campaign limit reached: ${existingCount}/${campaignLimit}`);
-      return { campaign: null, platforms: [], productDescription: "", searchQueries: [], remaining: 0, dedupKeys: [] as string[], minMatchScore: 0 };
+      await getSupabase().from("campaigns").update({ status: "completed" }).eq("id", campaignId);
+      return { error: "Campaign limit reached" };
     }
-    const remaining = campaignLimit - existingCount;
     const minMatchScore = (campaign.min_match_score as number) || 50;
     console.log(`Campaign ${campaignId}: ${existingCount}/${campaignLimit} targets, remaining: ${remaining}, minMatchScore: ${minMatchScore}`);
 
@@ -563,45 +563,13 @@ Return ONLY this JSON format (no markdown, no explanation):
     console.log("[step1] searchQueries type:", typeof searchQueries, "isArray:", Array.isArray(searchQueries));
     console.log("[step1] pain context:", personaContext.slice(0, 80));
     console.log("[step1] generated queries:", searchQueries.length, searchQueries);
-    console.log("[step1] returning:", { platforms, queriesCount: searchQueries.length, remaining });
-
-    return { campaign, platforms, productDescription, searchQueries, remaining, dedupKeys: [...dedupSet], minMatchScore };
-    } catch (err) {
-      console.error("[step1] ERROR:", err);
-      throw err;
-    }
-    }); // end step 1
-
-    if (!stepData.campaign) return { error: "Campaign not found or limit reached" };
-    const { campaign, productDescription, remaining } = stepData;
-    // Re-validate platforms as string[] (Inngest serialization can lose types)
-    const platforms: string[] = Array.isArray(stepData.platforms)
-      ? (stepData.platforms as unknown[]).filter((p): p is string => typeof p === "string")
-      : [];
-    console.log("[step2-outer] platforms after re-validation:", platforms, "remaining:", remaining);
-    // Safety: Inngest serializes step return values — ensure searchQueries is always an array
-    const searchQueries: string[] = Array.isArray(stepData.searchQueries)
-      ? (stepData.searchQueries as unknown[]).filter((q): q is string => typeof q === "string" && q.length > 0)
-      : [];
-    const dedupSet = new Set(stepData.dedupKeys);
-    const minMatchScore = stepData.minMatchScore;
-
-    // ═══ STEP 2: Discover targets ═══
-    const discoveryResult = await step.run(`discover-targets-search-${runId}`, async () => {
-
+    console.log("[phase2] START platforms:", platforms, "queries:", searchQueries.length, "remaining:", remaining);
     const insertedTargets: string[] = [];
     let limitReached = false;
 
-    console.log("[step2] START platforms:", platforms, "queries:", searchQueries.length, "remaining:", remaining);
-    console.log("[step2] searchQueries isArray:", Array.isArray(searchQueries), "values:", searchQueries);
-    console.log("[step2] TAVILY_KEY set:", !!process.env.TAVILY_API_KEY);
-    console.log("[step2] GOOGLE_KEY set:", !!process.env.GOOGLE_PLACES_API_KEY);
-    console.log("[step2] ANTHROPIC_KEY set:", !!process.env.ANTHROPIC_API_KEY);
-    // Legacy logs (kept for compatibility)
-    console.log("[search] TAVILY_API_KEY set:", !!process.env.TAVILY_API_KEY);
-    console.log("[search] platforms:", platforms);
-    console.log("[search] searchQueries:", searchQueries);
-    console.log("[search] remaining slots:", remaining, "dedup keys:", dedupSet.size);
+    console.log("[phase2] START platforms:", platforms, "queries:", searchQueries.length, "remaining:", remaining);
+    console.log("[phase2] TAVILY_KEY set:", !!process.env.TAVILY_API_KEY);
+    console.log("[phase2] GOOGLE_KEY set:", !!process.env.GOOGLE_PLACES_API_KEY);
 
     // 6-month freshness
     const sixMonthsAgo = new Date();
@@ -909,12 +877,10 @@ Return ONLY this JSON format (no markdown, no explanation):
       } // end GOOGLE_PLACES_API_KEY check
     }
 
-    console.log(`[step2] Discovery complete: ${insertedTargets.length} targets found`);
-    return { targetsFound: insertedTargets.length };
-    }); // end step 2
+    console.log(`[discover] Phase 2 complete: ${insertedTargets.length} targets inserted`);
+    const discoveryResult = { targetsFound: insertedTargets.length };
 
-    // ═══ STEP 3: Extract contacts ═══
-    await step.run(`extract-contacts-${runId}`, async () => {
+    // ═══ PHASE 3: Extract contacts (inline) ═══
 
     // Helper: discover a user's personal website via Tavily search
     const findWebsiteForUser = async (username: string, platform: string, postUrl: string): Promise<string | null> => {
@@ -1048,10 +1014,9 @@ Return ONLY this JSON format (no markdown, no explanation):
     } catch (e) {
       console.error("Contact extraction error:", e);
     }
-    }); // end step 3
+    console.log("[discover] Phase 3 complete — contacts extracted");
 
-    // ═══ STEP 4: AI scoring ═══
-    await step.run(`score-targets-${runId}`, async () => {
+    // ═══ PHASE 4: AI scoring (inline) ═══
 
     // Firecrawl deep extraction + Multi-factor AI scoring
     try {
@@ -1216,7 +1181,7 @@ JSONのみ:
 
     // コメント生成は手動トリガーに変更（自動生成を停止）
     // ユーザーがキャンペーンページで個別or一括でコメント生成ボタンを押す
-    }); // end step 4
+    console.log("[discover] Phase 4 complete — scoring done");
 
     // ═══ FINAL: Mark campaign as completed ═══
     await getSupabase()
