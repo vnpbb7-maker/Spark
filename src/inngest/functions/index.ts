@@ -791,51 +791,49 @@ Return ONLY this JSON format (no markdown, no explanation):
         // Use productDescription (URL-stripped) as keyword for B2B search
         const kw = productDescription.replace(/^https?:\/\/[^\s]+\s*/, "").slice(0, 25).trim() || "プロダクト";
         const b2bQueries = [
-          `${kw} 会社`,
+          `${kw} スタートアップ 東京`,
           `${kw} IT企業`,
-          `${kw} スタートアップ`,
-          kw,
+          `${kw} 会社`,
         ];
         console.log(`[google_maps] kw: "${kw}" | B2B queries:`, b2bQueries);
         for (const query of b2bQueries.slice(0, 3)) {
           if (limitReached || insertedTargets.length >= remaining) break;
-          const fullUrl = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(query)}&language=ja&key=${process.env.GOOGLE_PLACES_API_KEY}`;
-          console.log(`[google_maps] calling Places API with query: "${query}"`);
-          const placesRes = await fetch(fullUrl, { signal: AbortSignal.timeout(10000) });
-          console.log(`[google_maps] Places API response status: ${placesRes.status}`);
-          if (!placesRes.ok) { console.error(`[google_maps] Places API error: ${placesRes.status} for "${query}"`); continue; }
+          console.log(`[google_maps] calling Places API v1 with query: "${query}"`);
+          const placesRes = await fetch("https://places.googleapis.com/v1/places:searchText", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Goog-Api-Key": process.env.GOOGLE_PLACES_API_KEY || "",
+              "X-Goog-FieldMask": "places.displayName,places.websiteUri,places.formattedAddress,places.nationalPhoneNumber,places.id",
+            },
+            body: JSON.stringify({ textQuery: query, languageCode: "ja", maxResultCount: 10 }),
+            signal: AbortSignal.timeout(10000),
+          });
+          console.log(`[google_maps] Places API v1 response status: ${placesRes.status}`);
+          if (!placesRes.ok) {
+            const errText = await placesRes.text().catch(() => "");
+            console.error(`[google_maps] Places API v1 error: ${placesRes.status} — ${errText.slice(0, 200)}`);
+            continue;
+          }
           const placesData = await placesRes.json();
-          console.log(`[google_maps] API status: ${placesData.status} for "${query}"`);
-          const places = (placesData.results || []) as Array<Record<string, unknown>>;
-          console.log(`[google_maps] Places API places count: ${places.length} for "${query}"`);
+          const places = (placesData.places || []) as Array<Record<string, unknown>>;
+          console.log(`[google_maps] Places API v1 count: ${places.length} for "${query}"`);
           if (places.length === 0) continue;
           for (const place of places.slice(0, 8)) {
             if (insertedTargets.length >= remaining) { limitReached = true; break; }
-            const name = (place.name as string) || "";
+            // New Places API v1 field names
+            const displayName = (place.displayName as Record<string, unknown>) || {};
+            const name = (displayName.text as string) || "";
             if (!name) continue;
             const dedupKey = `google_maps::${name.toLowerCase()}`;
             if (dedupSet.has(dedupKey)) continue;
             dedupSet.add(dedupKey);
-            const placeId = place.place_id as string || "";
-            const mapsUrl = `https://www.google.com/maps/place/?q=place_id:${placeId}`;
-            const address = (place.formatted_address as string) || "";
-            // Get details (phone/website)
-            let phone = "";
-            let website = "";
-            if (placeId) {
-              try {
-                const detailRes = await fetch(
-                  `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=formatted_phone_number,website&key=${process.env.GOOGLE_PLACES_API_KEY}`,
-                  { signal: AbortSignal.timeout(5000) }
-                );
-                if (detailRes.ok) {
-                  const detail = await detailRes.json();
-                  phone = (detail.result?.formatted_phone_number as string) || "";
-                  website = (detail.result?.website as string) || "";
-                  if (website) console.log(`[google_maps] ${name} → website: ${website}`);
-                }
-              } catch { /* skip details */ }
-            }
+            const placeId = (place.id as string) || "";
+            const mapsUrl = placeId ? `https://www.google.com/maps/place/?q=place_id:${placeId}` : "";
+            const address = (place.formattedAddress as string) || "";
+            const phone = (place.nationalPhoneNumber as string) || "";
+            const website = (place.websiteUri as string) || "";
+            if (website) console.log(`[google_maps] ${name} → website: ${website}`);
             // Hunter.io email finder
             let email = "";
             if (website && process.env.HUNTER_API_KEY) {
@@ -860,18 +858,17 @@ Return ONLY this JSON format (no markdown, no explanation):
             }
             const { error: mapsInsertErr } = await getSupabase().from("targets").insert({
               campaign_id: campaignId, platform: "google_maps", username: name,
-              profile_url: mapsUrl, post_url: mapsUrl,
+              profile_url: mapsUrl || website, post_url: mapsUrl || website,
               post_content: `${address} ${phone ? `📞 ${phone}` : ""}`.slice(0, 500),
               match_score: email ? 70 : phone ? 55 : 45,
               match_reason: `Googleマップ B2B: ${query.slice(0, 40)}`, status: "pending",
               ...(email ? { email } : {}),
               ...(phone ? { phone } : {}),
-              ...(website ? { website } : {}),
+              ...(website ? { website, contact_url: website } : {}),
             });
             if (mapsInsertErr) { console.error(`[google_maps] Insert error: ${mapsInsertErr.message}`); continue; }
             insertedTargets.push(name);
-            console.log(`[google_maps] ✅ Inserted: ${name} email=${email || "none"} phone=${phone || "none"}`);
-          }
+            console.log(`[google_maps] ✅ Inserted: ${name} email=${email || "none"} phone=${phone || "none"} website=${website || "none"}`);          }
         } // end B2B queries loop
       } catch (err) { console.error("[google_maps] error:", err); }
       } // end GOOGLE_PLACES_API_KEY check

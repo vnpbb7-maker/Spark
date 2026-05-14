@@ -9,20 +9,29 @@ export async function GET() {
   }
 
   const query = "スタートアップ 東京 採用";
-  const url = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(query)}&language=ja&key=${apiKey}`;
+  console.log("[test] calling Places API v1 (New) with query:", query);
 
-  console.log("[test] calling Places API:", url.replace(apiKey, "REDACTED"));
+  const res = await fetch("https://places.googleapis.com/v1/places:searchText", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Goog-Api-Key": apiKey,
+      "X-Goog-FieldMask":
+        "places.displayName,places.websiteUri,places.formattedAddress,places.nationalPhoneNumber,places.id",
+    },
+    body: JSON.stringify({ textQuery: query, languageCode: "ja", maxResultCount: 10 }),
+  });
 
-  const res = await fetch(url);
+  console.log("[test] Places API v1 HTTP status:", res.status);
   const data = await res.json();
-
-  console.log("[test] Places API status:", data.status);
-  console.log("[test] Places API results:", data.results?.length);
+  console.log("[test] Places API v1 places count:", data.places?.length ?? 0);
 
   return NextResponse.json({
-    status: data.status,
-    resultsCount: data.results?.length || 0,
-    firstResult: data.results?.[0]?.name,
-    error: data.error_message,
+    httpStatus: res.status,
+    placesCount: data.places?.length ?? 0,
+    firstPlace: data.places?.[0]?.displayName?.text ?? null,
+    firstWebsite: data.places?.[0]?.websiteUri ?? null,
+    error: data.error?.message ?? null,
+    rawError: res.ok ? undefined : data,
   });
 }
