@@ -399,12 +399,12 @@ function extractUsername(url: string, platform: string): string {
 
 export const discoverTargets = inngest.createFunction(
   { id: "discover-targets", triggers: [{ event: "campaign/discover" }] },
-  async ({ event }: any) => {
+  async ({ event, step }: any) => {
     const campaignId = event.data.campaign_id as string;
     console.log("[discover] START campaign_id:", campaignId);
 
-    // ═══ PHASE 1: Get campaign + generate queries (inline, no step caching) ═══
-    console.log("[step1] START campaign_id:", campaignId);
+    return await step.run("run-full-discovery", async () => {
+    console.log("[discover] step.run ENTERED campaign_id:", campaignId);
 
     // 1. キャンペーン取得
     const { data: campaign, error: campErr } = await getSupabase()
@@ -1191,6 +1191,7 @@ JSONのみ:
     console.log(`[discover] Campaign ${campaignId} marked as completed. Targets found: ${discoveryResult?.targetsFound || 0}`);
 
     return { success: true, campaignId, targetsFound: discoveryResult?.targetsFound || 0 };
+    }); // end step.run("run-full-discovery")
   }
 );
 

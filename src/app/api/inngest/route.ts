@@ -7,6 +7,8 @@ import {
   monitorReplies,
 } from "@/inngest/functions/index";
 
+export const maxDuration = 300; // Allow up to 5 minutes for Inngest step execution
+
 export const { GET, POST, PUT } = serve({
   client: inngest,
   functions: [
