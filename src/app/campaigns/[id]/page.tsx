@@ -71,6 +71,10 @@ export default function CampaignDetailPage() {
   const [submittingFormIds, setSubmittingFormIds] = useState<Set<string>>(new Set());
   const [contactFilter, setContactFilter] = useState(false);
   const [showLiveLog, setShowLiveLog] = useState(false);
+  // Form submission preview modal
+  const [formModal, setFormModal] = useState<{ targetId: string; websiteUrl: string; message: string; senderName: string; senderEmail: string } | null>(null);
+  const [formModalMsg, setFormModalMsg] = useState("");
+  const [formSubmitting, setFormSubmitting] = useState(false);
   const minScoreInitRef = useRef(false);
 
   // Reset ALL state when campaignId changes (prevents stale data from previous campaign)
@@ -228,26 +232,19 @@ export default function CampaignDetailPage() {
     setTimeout(() => setToast(""), 3000);
   };
 
-  const handleDraftEmail = async (targetId: string) => {
-    setDraftingIds((prev) => { const n = new Set(prev); n.add(targetId); return n; });
-    try {
-      const res = await fetch(`/api/targets/${targetId}/draft-email`, { method: "POST" });
-      if (!res.ok) {
-        const err = await res.json();
-        setToast(`❌ ${err.error || "メール下書き作成に失敗"}`); setTimeout(() => setToast(""), 3000);
-        return;
-      }
-      const data = await res.json();
-      window.open(data.draft_url, "_blank");
-      setToast(`✅ Gmail下書きを開きました (${data.email_to})`); setTimeout(() => setToast(""), 4000);
-    } catch {
-      setToast("❌ エラーが発生しました"); setTimeout(() => setToast(""), 3000);
-    }
-    setDraftingIds((prev) => { const n = new Set(prev); n.delete(targetId); return n; });
+  const handleDraftEmail = async (target: TargetRow) => {
+    setDraftingIds((prev) => { const n = new Set(prev); n.add(target.id); return n; });
+    // Build Gmail compose URL directly with generated comment as body
+    const comment = target.comment?.content || "";
+    const campaignTitle = (campaign?.product_url as string || campaign?.product_description as string || "SPARK").slice(0, 40);
+    const subject = encodeURIComponent(`【ご提案】${campaignTitle}`);
+    const body = encodeURIComponent(comment || "");
+    const gmailUrl = `https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(target.email || "")}&su=${subject}&body=${body}`;
+    window.open(gmailUrl, "_blank");
+    setDraftingIds((prev) => { const n = new Set(prev); n.delete(target.id); return n; });
   };
 
-  const handleSubmitForm = async (targetId: string) => {
-    // 送信者情報を localStorage から取得
+  const handleSubmitForm = async (target: TargetRow) => {
     const senderName = typeof window !== "undefined" ? localStorage.getItem("spark_sender_name") || "" : "";
     const senderEmail = typeof window !== "undefined" ? localStorage.getItem("spark_sender_email") || "" : "";
     if (!senderEmail) {
@@ -255,23 +252,43 @@ export default function CampaignDetailPage() {
       setTimeout(() => setToast(""), 4000);
       return;
     }
-    setSubmittingFormIds((prev) => { const n = new Set(prev); n.add(targetId); return n; });
+    const websiteUrl = target.contact_url || target.website || "";
+    if (!websiteUrl) { setToast("⚠️ ウェブサイトURLが見つかりません"); setTimeout(() => setToast(""), 3000); return; }
+    // Show modal: first generate the message via Claude
+    setSubmittingFormIds((prev) => { const n = new Set(prev); n.add(target.id); return n; });
+    setFormModal(null);
     try {
-      const res = await fetch(`/api/targets/${targetId}/submit-form`, {
+      const res = await fetch(`/api/targets/${target.id}/submit-form`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sender_name: senderName, sender_email: senderEmail }),
+        body: JSON.stringify({ sender_name: senderName, sender_email: senderEmail, preview_only: true }),
       });
       const data = await res.json();
+      const generatedMsg = data.generatedMessage || "";
+      setFormModalMsg(generatedMsg);
+      setFormModal({ targetId: target.id, websiteUrl, message: generatedMsg, senderName, senderEmail });
+    } catch { setToast("❌ メッセージ生成に失敗しました"); }
+    setSubmittingFormIds((prev) => { const n = new Set(prev); n.delete(target.id); return n; });
+  };
+
+  const handleConfirmSubmit = async () => {
+    if (!formModal) return;
+    setFormSubmitting(true);
+    try {
+      const res = await fetch(`/api/targets/${formModal.targetId}/submit-form`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sender_name: formModal.senderName, sender_email: formModal.senderEmail, override_message: formModalMsg }),
+      });
+      const data = await res.json();
+      setFormModal(null);
       if (data.success || data.submitted) {
         setToast("✅ フォーム送信完了！");
-      } else if (data.queued) {
-        setToast("⚠️ Playwrightサーバー未設定 — メッセージは生成済み");
       } else {
         setToast(`❌ ${data.error || "フォーム送信に失敗"}`);
       }
-    } catch { setToast("❌ エラーが発生しました"); }
-    setSubmittingFormIds((prev) => { const n = new Set(prev); n.delete(targetId); return n; });
+    } catch { setToast("❌ エラーが発生しました"); setFormModal(null); }
+    setFormSubmitting(false);
     setTimeout(() => setToast(""), 4000);
   };
 
@@ -580,7 +597,7 @@ export default function CampaignDetailPage() {
                             <span style={{ fontSize: "9px", color: s.color, fontWeight: 700, width: "24px", textAlign: "right" }}>{s.score}/{s.max}</span>
                           </div>
                         ))}
-                      </div>
+                      </div>}
 
                       {/* Action row */}
                       <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
@@ -604,7 +621,7 @@ export default function CampaignDetailPage() {
                           </button>
                         )}
                         {t.email && !t.email.startsWith("Twitter:") && (
-                          <button onClick={() => handleDraftEmail(t.id)} disabled={draftingIds.has(t.id)} style={{
+                          <button onClick={() => handleDraftEmail(t)} disabled={draftingIds.has(t.id)} style={{
                             background: "rgba(45,209,122,0.08)", border: "1px solid rgba(45,209,122,0.15)", borderRadius: "7px",
                             padding: "4px 10px", fontSize: "10px", fontWeight: 600, color: "#2dd17a",
                             cursor: draftingIds.has(t.id) ? "wait" : "pointer", flexShrink: 0,
@@ -615,7 +632,7 @@ export default function CampaignDetailPage() {
                         {(t.contact_url || t.website) && (() => {
                           const siteUrl = t.contact_url || t.website || "";
                           return siteUrl.startsWith("http") ? (
-                            <button onClick={(e) => { e.stopPropagation(); handleSubmitForm(t.id); }} disabled={submittingFormIds.has(t.id)} style={{
+                            <button onClick={(e) => { e.stopPropagation(); handleSubmitForm(t); }} disabled={submittingFormIds.has(t.id)} style={{
                               background: "rgba(255,107,53,0.08)", border: "1px solid rgba(255,107,53,0.18)", borderRadius: "7px",
                               padding: "4px 10px", fontSize: "10px", fontWeight: 600, color: "#ff6b35",
                               cursor: submittingFormIds.has(t.id) ? "wait" : "pointer", flexShrink: 0,
@@ -658,6 +675,38 @@ export default function CampaignDetailPage() {
           </div>
           <div style={{ flex: 1, overflow: "auto" }}>
             <DashboardLiveLog logs={logs} platforms={(campaign?.platforms as string[]) || []} campaignCreatedAt={campaign?.created_at as string} hasData={hasData} />
+          </div>
+        </div>
+      )}
+
+      {/* Form submission preview modal */}
+      {formModal && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 2000, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px" }}>
+          <div style={{ background: "#13132a", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "20px", padding: "28px", width: "100%", maxWidth: "540px" }}>
+            <h3 style={{ fontFamily: "'Space Grotesk'", fontWeight: 700, fontSize: "18px", marginBottom: "20px" }}>📨 フォーム送信の確認</h3>
+            <div style={{ marginBottom: "12px" }}>
+              <div style={{ fontSize: "11px", color: "rgba(240,239,232,0.4)", marginBottom: "4px" }}>送信先URL</div>
+              <div style={{ fontSize: "12px", color: "#4285f4", wordBreak: "break-all" }}>{formModal.websiteUrl}</div>
+            </div>
+            <div style={{ marginBottom: "12px" }}>
+              <div style={{ fontSize: "11px", color: "rgba(240,239,232,0.4)", marginBottom: "4px" }}>送信者</div>
+              <div style={{ fontSize: "12px", color: "rgba(240,239,232,0.7)" }}>{formModal.senderName} &lt;{formModal.senderEmail}&gt;</div>
+            </div>
+            <div style={{ marginBottom: "20px" }}>
+              <div style={{ fontSize: "11px", color: "rgba(240,239,232,0.4)", marginBottom: "4px" }}>送信メッセージ（編集可）</div>
+              <textarea
+                value={formModalMsg}
+                onChange={(e) => setFormModalMsg(e.target.value)}
+                rows={6}
+                style={{ width: "100%", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "10px", padding: "12px", color: "#f0efe8", fontSize: "13px", lineHeight: 1.6, resize: "vertical", outline: "none", boxSizing: "border-box", fontFamily: "DM Sans" }}
+              />
+            </div>
+            <div style={{ display: "flex", gap: "10px" }}>
+              <button onClick={() => setFormModal(null)} style={{ flex: 1, padding: "12px", background: "transparent", border: "1px solid rgba(255,255,255,0.12)", borderRadius: "10px", color: "rgba(240,239,232,0.5)", fontSize: "14px", cursor: "pointer", fontWeight: 600 }}>キャンセル</button>
+              <button onClick={handleConfirmSubmit} disabled={formSubmitting} style={{ flex: 2, padding: "12px", background: formSubmitting ? "rgba(255,107,53,0.4)" : "#ff6b35", border: "none", borderRadius: "10px", color: "#fff", fontSize: "14px", cursor: formSubmitting ? "wait" : "pointer", fontWeight: 700 }}>
+                {formSubmitting ? "⏳ 送信中..." : "📨 送信する"}
+              </button>
+            </div>
           </div>
         </div>
       )}

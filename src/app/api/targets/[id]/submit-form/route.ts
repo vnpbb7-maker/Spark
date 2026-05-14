@@ -14,7 +14,7 @@ export async function POST(
   { params }: { params: { id: string } }
 ) {
   const targetId = params.id;
-  const { sender_name, sender_email } = await req.json().catch(() => ({}));
+  const { sender_name, sender_email, preview_only, override_message } = await req.json().catch(() => ({}));
 
   const supabase = getSupabase();
 
@@ -108,6 +108,14 @@ export async function POST(
     const productDescription =
       (campaign.product_description as string) || "新しいプロダクト";
     message = `はじめまして。${productDescription.substring(0, 50)}の開発をしているものです。βテスターとしてご協力いただける方を探しており、ぜひ一度試していただければ幸いです。`;
+  }
+
+  // If caller provided an override message (user edited in modal), use it
+  if (override_message) message = override_message;
+
+  // preview_only: return message without submitting
+  if (preview_only) {
+    return NextResponse.json({ generatedMessage: message, preview: true });
   }
 
   // 3. Railway Playwright サーバーにフォーム送信を依頼

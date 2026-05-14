@@ -45,21 +45,26 @@ export async function POST(
         : campaign?.target_language === "en" ? "英語で書く"
           : "投稿と同じ言語で書く";
 
-    // Generate comment via Claude
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": process.env.ANTHROPIC_API_KEY!,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: "claude-haiku-4-5-20251001",
-        max_tokens: 300,
-        messages: [
-          {
-            role: "user",
-            content: `あなたは共感力の高いGrowthハッカーです。
+    // B2B business email for google_maps targets
+    const isB2B = target.platform === "google_maps";
+    const promptContent = isB2B
+      ? `あなたはスタートアップの代表者です。以下の企業へ送る営業メールを書いてください。
+
+プロダクト：${campaign?.product_description || campaign?.product_url}
+送信先企業名：${target.username}
+企業の住所・情報：${target.post_content || ""}
+
+【ルール】
+・丁寧なビジネス日本語（敬語）
+・まず自己紹介（会社名・プロダクト名）
+・プロダクトが相手のビジネスにどう役立つかを1〜2文で説明
+・βテスターとして試していただきたい旨を伝える
+・200〜300文字以内
+・件名なし・本文のみ${keywordInstruction}
+
+JSONのみ返してください：
+{"comment": "メール本文", "approach": "このアプローチにした理由1文"}`
+      : `あなたは共感力の高いGrowthハッカーです。
 以下の情報を元に自然なコメントを生成してください。
 
 プロダクト：${campaign?.product_description || campaign?.product_url}
@@ -77,8 +82,19 @@ export async function POST(
 ・プロダクトについて最後に1文だけ自然に触れる
 
 JSONのみ返してください：
-{"comment": "コメント本文", "approach": "このアプローチにした理由1文"}`,
-          },
+{"comment": "コメント本文", "approach": "このアプローチにした理由1文"}`;
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": process.env.ANTHROPIC_API_KEY!,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 400,
+        messages: [
+          { role: "user", content: promptContent },
           { role: "assistant", content: "{" },
         ],
       }),
