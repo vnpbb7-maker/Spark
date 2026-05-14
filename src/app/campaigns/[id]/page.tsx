@@ -485,7 +485,7 @@ export default function CampaignDetailPage() {
             {/* Selection bar */}
             <div style={{ display: "flex", gap: "6px", marginBottom: "12px", alignItems: "center" }}>
               <button onClick={selectAll} style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "7px", padding: "5px 12px", fontSize: "11px", fontWeight: 600, color: "rgba(240,239,232,0.5)", cursor: "pointer" }}>全選択</button>
-              <button onClick={selectSA} style={{ background: "rgba(255,214,0,0.06)", border: "1px solid rgba(255,214,0,0.15)", borderRadius: "7px", padding: "5px 12px", fontSize: "11px", fontWeight: 600, color: "#ffd60a", cursor: "pointer" }}>S+Aのみ</button>
+              <button onClick={selectSA} title="S・AランクターゲットのチェックボックスをONにする（表示フィルターは変わりません）" style={{ background: "transparent", border: "1px solid rgba(255,214,0,0.2)", borderRadius: "7px", padding: "5px 12px", fontSize: "11px", fontWeight: 600, color: "rgba(255,214,10,0.6)", cursor: "pointer" }}>☑ S+A選択</button>
               <button onClick={() => setSelected(new Set())} style={{ background: "transparent", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "7px", padding: "5px 12px", fontSize: "11px", fontWeight: 600, color: "rgba(240,239,232,0.3)", cursor: "pointer" }}>解除</button>
               <span style={{ marginLeft: "auto", fontSize: "11px", color: "rgba(240,239,232,0.35)" }}>{selectedCount > 0 ? `${selectedCount}件選択中` : `${visibleTargets.length}件表示`}</span>
             </div>
