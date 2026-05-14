@@ -26,6 +26,9 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState<string | null>(null);
   const [delayPreset, setDelayPreset] = useState("balanced");
   const [loading, setLoading] = useState(true);
+  const [senderName, setSenderName] = useState("");
+  const [senderEmail, setSenderEmail] = useState("");
+  const [senderSaved, setSenderSaved] = useState(false);
 
   const fetchCreds = useCallback(async () => {
     const supabase = createClient();
@@ -44,6 +47,13 @@ export default function SettingsPage() {
   }, [router]);
 
   useEffect(() => { fetchCreds(); }, [fetchCreds]);
+
+  // Load sender info from localStorage on mount
+  useEffect(() => {
+    setSenderName(localStorage.getItem("spark_sender_name") || "");
+    setSenderEmail(localStorage.getItem("spark_sender_email") || "");
+    if (localStorage.getItem("spark_sender_email")) setSenderSaved(true);
+  }, []);
 
   const updateField = (platform: string, field: string, value: string) => {
     setCreds((prev) => ({ ...prev, [platform]: { ...(prev[platform] || {}), [field]: value } }));
@@ -139,6 +149,36 @@ export default function SettingsPage() {
               </div>
             );
           })}
+        </div>
+
+        {/* Sender info for contact form submissions */}
+        <h2 style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: "18px", marginBottom: "20px" }}>📨 送信者情報</h2>
+        <p style={{ fontSize: "13px", color: "rgba(240,239,232,0.4)", marginBottom: "16px" }}>お問い合わせフォーム送信時に使用される送信者情報です。</p>
+        <div style={{ background: "#13132a", border: `1px solid ${senderSaved ? "rgba(45,209,122,0.3)" : "rgba(255,255,255,0.07)"}`, borderRadius: "16px", padding: "24px", marginBottom: "40px" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+            <div>
+              <label style={{ display: "block", fontSize: "12px", color: "rgba(240,239,232,0.4)", marginBottom: "4px" }}>送信者名</label>
+              <input
+                type="text" placeholder="例: 山田 太郎"
+                value={senderName} onChange={(e) => { setSenderName(e.target.value); setSenderSaved(false); }}
+                style={{ width: "100%", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "8px", padding: "10px 12px", color: "#f0efe8", fontSize: "13px", outline: "none", boxSizing: "border-box" }}
+              />
+            </div>
+            <div>
+              <label style={{ display: "block", fontSize: "12px", color: "rgba(240,239,232,0.4)", marginBottom: "4px" }}>送信メールアドレス <span style={{ color: "#ff6b35" }}>*必須</span></label>
+              <input
+                type="email" placeholder="例: taro@example.com"
+                value={senderEmail} onChange={(e) => { setSenderEmail(e.target.value); setSenderSaved(false); }}
+                style={{ width: "100%", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "8px", padding: "10px 12px", color: "#f0efe8", fontSize: "13px", outline: "none", boxSizing: "border-box" }}
+              />
+            </div>
+            <button
+              onClick={() => { localStorage.setItem("spark_sender_name", senderName); localStorage.setItem("spark_sender_email", senderEmail); setSenderSaved(true); }}
+              style={{ padding: "10px", background: senderSaved ? "rgba(45,209,122,0.2)" : "#ff6b35", color: senderSaved ? "#2dd17a" : "#fff", border: "none", borderRadius: "10px", fontSize: "13px", fontWeight: 600, cursor: "pointer", width: "100%" }}
+            >
+              {senderSaved ? "✅ 保存済み" : "保存"}
+            </button>
+          </div>
         </div>
 
         {/* Safety settings */}

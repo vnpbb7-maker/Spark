@@ -42,6 +42,7 @@ type TargetRow = {
   relevance_score: number | null; intent_score: number | null;
   influence_score: number | null; accessibility_score: number | null;
   q1_score: number | null; q2_score: number | null; q3_score: number | null;
+  contact_url: string | null; website: string | null;
   comment?: { id: string; content: string; approach: string | null };
 };
 
@@ -67,6 +68,7 @@ export default function CampaignDetailPage() {
   const [generatingIds, setGeneratingIds] = useState<Set<string>>(new Set());
   const [bulkGenerating, setBulkGenerating] = useState(false);
   const [draftingIds, setDraftingIds] = useState<Set<string>>(new Set());
+  const [submittingFormIds, setSubmittingFormIds] = useState<Set<string>>(new Set());
   const [contactFilter, setContactFilter] = useState(false);
   const [showLiveLog, setShowLiveLog] = useState(false);
   const minScoreInitRef = useRef(false);
@@ -133,6 +135,7 @@ export default function CampaignDetailPage() {
 
       const enriched: TargetRow[] = tgtsData.map((t) => ({
         id: t.id as string, platform: t.platform as string, username: t.username as string,
+        contact_url: t.contact_url as string | null, website: t.website as string | null,
         post_url: t.post_url as string | null, post_content: t.post_content as string | null,
         match_score: Number(t.match_score) || 0, match_reason: t.match_reason as string | null,
         email: t.email as string | null, twitter_handle: t.twitter_handle as string | null,
@@ -247,6 +250,35 @@ export default function CampaignDetailPage() {
       setToast("❌ エラーが発生しました"); setTimeout(() => setToast(""), 3000);
     }
     setDraftingIds((prev) => { const n = new Set(prev); n.delete(targetId); return n; });
+  };
+
+  const handleSubmitForm = async (targetId: string) => {
+    // 送信者情報を localStorage から取得
+    const senderName = typeof window !== "undefined" ? localStorage.getItem("spark_sender_name") || "" : "";
+    const senderEmail = typeof window !== "undefined" ? localStorage.getItem("spark_sender_email") || "" : "";
+    if (!senderEmail) {
+      setToast("⚠️ 設定ページで送信者メールアドレスを登録してください");
+      setTimeout(() => setToast(""), 4000);
+      return;
+    }
+    setSubmittingFormIds((prev) => { const n = new Set(prev); n.add(targetId); return n; });
+    try {
+      const res = await fetch(`/api/targets/${targetId}/submit-form`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sender_name: senderName, sender_email: senderEmail }),
+      });
+      const data = await res.json();
+      if (data.success || data.submitted) {
+        setToast("✅ フォーム送信完了！");
+      } else if (data.queued) {
+        setToast("⚠️ Playwrightサーバー未設定 — メッセージは生成済み");
+      } else {
+        setToast(`❌ ${data.error || "フォーム送信に失敗"}`);
+      }
+    } catch { setToast("❌ エラーが発生しました"); }
+    setSubmittingFormIds((prev) => { const n = new Set(prev); n.delete(targetId); return n; });
+    setTimeout(() => setToast(""), 4000);
   };
 
   const st = STATUS_MAP[campaign?.status as string] || STATUS_MAP.running;
@@ -576,6 +608,18 @@ export default function CampaignDetailPage() {
                             {draftingIds.has(t.id) ? "⏳" : "📧 メール"}
                           </button>
                         )}
+                        {(t.contact_url || t.website) && (() => {
+                          const siteUrl = t.contact_url || t.website || "";
+                          return siteUrl.startsWith("http") ? (
+                            <button onClick={(e) => { e.stopPropagation(); handleSubmitForm(t.id); }} disabled={submittingFormIds.has(t.id)} style={{
+                              background: "rgba(255,107,53,0.08)", border: "1px solid rgba(255,107,53,0.18)", borderRadius: "7px",
+                              padding: "4px 10px", fontSize: "10px", fontWeight: 600, color: "#ff6b35",
+                              cursor: submittingFormIds.has(t.id) ? "wait" : "pointer", flexShrink: 0,
+                            }}>
+                              {submittingFormIds.has(t.id) ? "⏳" : "📨 フォーム送信"}
+                            </button>
+                          ) : null;
+                        })()}
                         {t.post_url && (
                           <a href={t.post_url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} style={{
                             background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "7px",

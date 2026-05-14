@@ -119,6 +119,90 @@ app.post("/post-comment", authMiddleware, async (req, res) => {
   }
 });
 
+// お問い合わせフォーム自動送信エンドポイント
+app.post("/submit-contact-form", authMiddleware, async (req, res) => {
+  const { target_id, website_url, message, sender_name, sender_email } = req.body;
+  console.log("[form] Submitting contact form for:", website_url);
+
+  const browser = await chromium.launch({
+    headless: true,
+    executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || undefined,
+    args: ["--no-sandbox","--disable-setuid-sandbox","--disable-dev-shm-usage","--disable-gpu","--no-first-run","--no-zygote","--single-process","--disable-extensions"],
+  });
+
+  try {
+    const page = await browser.newPage();
+    page.setDefaultTimeout(12000);
+
+    // 1. サイトに移動
+    await page.goto(website_url, { waitUntil: "domcontentloaded", timeout: 12000 });
+    console.log("[form] Navigated to:", page.url());
+
+    // 2. お問い合わせページリンクを探す
+    const contactLinks = await page.$$eval("a", (links) =>
+      links
+        .map((l) => ({ href: l.href, text: (l.textContent || "").toLowerCase().trim() }))
+        .filter((l) => l.href && l.href.startsWith("http") && (
+          l.text.includes("contact") || l.text.includes("お問い合わせ") ||
+          l.text.includes("連絡") || l.text.includes("問合") || l.text.includes("inquiry")
+        ))
+    ).catch(() => []);
+
+    if (contactLinks.length > 0) {
+      console.log("[form] Found contact link:", contactLinks[0].href);
+      await page.goto(contactLinks[0].href, { waitUntil: "domcontentloaded", timeout: 10000 });
+      await page.waitForTimeout(1500);
+    }
+
+    // 3. フォームフィールドを検出して入力
+    const nameSelectors = ['input[name*="name" i]','input[placeholder*="名前"]','input[placeholder*="氏名"]','input[id*="name" i]','input[autocomplete="name"]'];
+    const emailSelectors = ['input[type="email"]','input[name*="email" i]','input[placeholder*="メール"]','input[placeholder*="mail" i]'];
+    const messageSelectors = ['textarea[name*="message" i]','textarea[name*="content" i]','textarea[name*="body" i]','textarea[id*="message" i]','textarea'];
+
+    let filledName = false, filledEmail = false, filledMessage = false;
+
+    for (const sel of nameSelectors) {
+      try { await page.fill(sel, sender_name, { timeout: 2000 }); filledName = true; console.log("[form] Filled name:", sel); break; } catch {}
+    }
+    for (const sel of emailSelectors) {
+      try { await page.fill(sel, sender_email, { timeout: 2000 }); filledEmail = true; console.log("[form] Filled email:", sel); break; } catch {}
+    }
+    for (const sel of messageSelectors) {
+      try { await page.fill(sel, message, { timeout: 2000 }); filledMessage = true; console.log("[form] Filled message:", sel); break; } catch {}
+    }
+
+    console.log(`[form] Fill results — name:${filledName} email:${filledEmail} message:${filledMessage}`);
+    if (!filledMessage) {
+      throw new Error("メッセージフィールドが見つかりませんでした");
+    }
+
+    // 4. 送信ボタンをクリック
+    const submitSelectors = ['button[type="submit"]','input[type="submit"]','button:has-text("送信")','button:has-text("Submit")','button:has-text("送る")','button:has-text("確認")'];
+    let submitted = false;
+    for (const sel of submitSelectors) {
+      try {
+        await page.click(sel, { timeout: 2000 });
+        await page.waitForTimeout(2500);
+        submitted = true;
+        console.log("[form] Submitted via:", sel);
+        break;
+      } catch {}
+    }
+
+    // Update Supabase target status
+    if (target_id) {
+      await supabase.from("targets").update({ contacted_at: new Date().toISOString(), status: "contacted" }).eq("id", target_id);
+    }
+
+    res.json({ success: submitted, filled: { name: filledName, email: filledEmail, message: filledMessage }, submitted });
+  } catch (err) {
+    console.error("[form] Error:", err.message);
+    res.json({ success: false, error: err.message });
+  } finally {
+    await browser.close();
+  }
+});
+
 // 接続テストエンドポイント
 app.post("/test-connection", authMiddleware, async (req, res) => {
   const { platform, credentials } = req.body;
