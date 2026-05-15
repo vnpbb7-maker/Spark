@@ -147,9 +147,16 @@ export default function CampaignDetailPage() {
         q1_score: t.q1_score as number | null,
         q2_score: t.q2_score as number | null,
         q3_score: t.q3_score as number | null,
-        comment: undefined, // comments not needed on this page
+        comment: undefined, // populated below by merging existing state
       }));
-      setTargets(enriched);
+      // Preserve in-memory generated comments (don't wipe them on polling re-fetch)
+      setTargets((prev) => {
+        const prevMap = new Map(prev.map((t) => [t.id, t]));
+        return enriched.map((t) => ({
+          ...t,
+          comment: t.comment ?? prevMap.get(t.id)?.comment,
+        }));
+      });
 
       // Build logs from fetched data
       const logTargets = tgtsData.map(t => ({
@@ -651,10 +658,16 @@ export default function CampaignDetailPage() {
                         )}
                       </div>
 
-                      {/* Comment preview if exists */}
+                      {/* Comment preview — full text, persists across re-fetches */}
                       {t.comment && (
-                        <div style={{ marginTop: "8px", fontSize: "11px", color: "rgba(240,239,232,0.5)", lineHeight: 1.5, background: "rgba(255,214,10,0.03)", border: "1px solid rgba(255,214,10,0.06)", borderRadius: "8px", padding: "8px 10px" }}>
-                          💬 {t.comment.content.slice(0, 150)}{t.comment.content.length > 150 ? "..." : ""}
+                        <div style={{ marginTop: "8px", background: "rgba(255,214,10,0.03)", border: "1px solid rgba(255,214,10,0.08)", borderRadius: "8px", padding: "10px 12px" }}>
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "6px" }}>
+                            <span style={{ fontSize: "10px", fontWeight: 600, color: "rgba(255,214,10,0.6)" }}>💬 生成メッセージ</span>
+                            <button onClick={() => { navigator.clipboard.writeText(t.comment!.content); setToast("📋 コピーしました"); setTimeout(() => setToast(""), 2000); }} style={{ background: "transparent", border: "1px solid rgba(255,214,10,0.15)", borderRadius: "5px", padding: "2px 8px", fontSize: "10px", color: "rgba(255,214,10,0.6)", cursor: "pointer" }}>📋 コピー</button>
+                          </div>
+                          <div style={{ fontSize: "11px", color: "rgba(240,239,232,0.65)", lineHeight: 1.7, whiteSpace: "pre-wrap", wordBreak: "break-all", minHeight: "80px" }}>
+                            {t.comment.content}
+                          </div>
                         </div>
                       )}
                     </div>
