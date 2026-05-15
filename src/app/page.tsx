@@ -26,9 +26,10 @@ export default function Home() {
     const cx = cv.getContext("2d");
     if (!cx) return;
 
-    const resize = () => { cv.width = cv.offsetWidth; cv.height = cv.offsetHeight; };
+    const resize = () => { cv!.width = cv!.offsetWidth; cv!.height = cv!.offsetHeight; };
     resize();
     window.addEventListener("resize", resize);
+
 
     class Spark {
       x=0;y=0;vx=0;vy=0;life=0;decay=0;sz=0;tail:{x:number;y:number;life:number}[]=[];maxTail=0;col:[number,number,number]=[255,107,53];wobble=0;
