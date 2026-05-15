@@ -411,41 +411,40 @@ ${updated[i].platform}での投稿を拝見し、${productDesc.slice(0, 60)}${kw
           })}
         </div>
       </div>
-    </div>
 
-    {/* Settings modal */}
-    {showSettings && (
-      <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", zIndex: 2000, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px" }}>
-        <div style={{ background: "#13132a", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "20px", padding: "28px", width: "100%", maxWidth: "520px" }}>
-          <h3 style={{ fontFamily: "'Space Grotesk'", fontWeight: 700, fontSize: "18px", marginBottom: "6px" }}>✨ メッセージ設定を確認</h3>
-          <p style={{ fontSize: "12px", color: "rgba(240,239,232,0.4)", marginBottom: "24px" }}>一括生成前に送信者情報・訴求ポイントを設定してください</p>
+      {/* Settings modal */}
+      {showSettings && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", zIndex: 2000, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px" }}>
+          <div style={{ background: "#13132a", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "20px", padding: "28px", width: "100%", maxWidth: "520px" }}>
+            <h3 style={{ fontFamily: "'Space Grotesk'", fontWeight: 700, fontSize: "18px", marginBottom: "6px" }}>✨ メッセージ設定を確認</h3>
+            <p style={{ fontSize: "12px", color: "rgba(240,239,232,0.4)", marginBottom: "24px" }}>一括生成前に送信者情報・訴求ポイントを設定してください</p>
 
-          <div style={{ marginBottom: "16px" }}>
-            <label style={{ fontSize: "11px", color: "rgba(240,239,232,0.5)", display: "block", marginBottom: "6px" }}>🔗 プロダクトURL</label>
-            <input value={settingsProductUrl} onChange={e => setSettingsProductUrl(e.target.value)}
-              placeholder="https://spark-ai.jp" style={{ width: "100%", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "10px", padding: "10px 14px", color: "#f0efe8", fontSize: "13px", outline: "none", boxSizing: "border-box", fontFamily: "DM Sans" }} />
-          </div>
+            <div style={{ marginBottom: "16px" }}>
+              <label style={{ fontSize: "11px", color: "rgba(240,239,232,0.5)", display: "block", marginBottom: "6px" }}>🔗 プロダクトURL</label>
+              <input value={settingsProductUrl} onChange={e => setSettingsProductUrl(e.target.value)}
+                placeholder="https://spark-ai.jp" style={{ width: "100%", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "10px", padding: "10px 14px", color: "#f0efe8", fontSize: "13px", outline: "none", boxSizing: "border-box", fontFamily: "DM Sans" }} />
+            </div>
 
-          <div style={{ marginBottom: "16px" }}>
-            <label style={{ fontSize: "11px", color: "rgba(240,239,232,0.5)", display: "block", marginBottom: "6px" }}>👤 送信者名</label>
-            <input value={settingsSenderName} onChange={e => setSettingsSenderName(e.target.value)}
-              placeholder="山田 太郎" style={{ width: "100%", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "10px", padding: "10px 14px", color: "#f0efe8", fontSize: "13px", outline: "none", boxSizing: "border-box", fontFamily: "DM Sans" }} />
-          </div>
+            <div style={{ marginBottom: "16px" }}>
+              <label style={{ fontSize: "11px", color: "rgba(240,239,232,0.5)", display: "block", marginBottom: "6px" }}>👤 送信者名</label>
+              <input value={settingsSenderName} onChange={e => setSettingsSenderName(e.target.value)}
+                placeholder="山田 太郎" style={{ width: "100%", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "10px", padding: "10px 14px", color: "#f0efe8", fontSize: "13px", outline: "none", boxSizing: "border-box", fontFamily: "DM Sans" }} />
+            </div>
 
-          <div style={{ marginBottom: "24px" }}>
-            <label style={{ fontSize: "11px", color: "rgba(240,239,232,0.5)", display: "block", marginBottom: "6px" }}>🎯 キーワード / 訴求ポイント</label>
-            <textarea value={settingsKeywords} onChange={e => setSettingsKeywords(e.target.value)}
-              placeholder="例：AI自動化、コスト削減、β無料など"
-              rows={3} style={{ width: "100%", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "10px", padding: "10px 14px", color: "#f0efe8", fontSize: "13px", outline: "none", resize: "vertical", boxSizing: "border-box", fontFamily: "DM Sans" }} />
-          </div>
+            <div style={{ marginBottom: "24px" }}>
+              <label style={{ fontSize: "11px", color: "rgba(240,239,232,0.5)", display: "block", marginBottom: "6px" }}>🎯 キーワード / 訴求ポイント</label>
+              <textarea value={settingsKeywords} onChange={e => setSettingsKeywords(e.target.value)}
+                placeholder="例：AI自動化、コスト削減、β無料など"
+                rows={3} style={{ width: "100%", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "10px", padding: "10px 14px", color: "#f0efe8", fontSize: "13px", outline: "none", resize: "vertical", boxSizing: "border-box", fontFamily: "DM Sans" }} />
+            </div>
 
-          <div style={{ display: "flex", gap: "10px" }}>
-            <button onClick={() => setShowSettings(false)} style={{ flex: 1, padding: "12px", background: "transparent", border: "1px solid rgba(255,255,255,0.12)", borderRadius: "10px", color: "rgba(240,239,232,0.5)", fontSize: "13px", cursor: "pointer", fontWeight: 600 }}>← 戻る</button>
-            <button onClick={confirmAndGenerate} style={{ flex: 2, padding: "12px", background: "linear-gradient(135deg, #7c5cfc, #5a3fd6)", border: "none", borderRadius: "10px", color: "#fff", fontSize: "13px", cursor: "pointer", fontWeight: 700, fontFamily: "'Space Grotesk'" }}>✨ この設定で一括生成する</button>
+            <div style={{ display: "flex", gap: "10px" }}>
+              <button onClick={() => setShowSettings(false)} style={{ flex: 1, padding: "12px", background: "transparent", border: "1px solid rgba(255,255,255,0.12)", borderRadius: "10px", color: "rgba(240,239,232,0.5)", fontSize: "13px", cursor: "pointer", fontWeight: 600 }}>← 戻る</button>
+              <button onClick={confirmAndGenerate} style={{ flex: 2, padding: "12px", background: "linear-gradient(135deg, #7c5cfc, #5a3fd6)", border: "none", borderRadius: "10px", color: "#fff", fontSize: "13px", cursor: "pointer", fontWeight: 700, fontFamily: "'Space Grotesk'" }}>✨ この設定で一括生成する</button>
+            </div>
           </div>
         </div>
-      </div>
-    )}
+      )}
     </div>
   );
 }
