@@ -35,8 +35,8 @@ export default function Home() {
       x=0;y=0;vx=0;vy=0;life=0;decay=0;sz=0;tail:{x:number;y:number;life:number}[]=[];maxTail=0;col:[number,number,number]=[255,107,53];wobble=0;
       constructor(){ this.reset(true); }
       reset(init:boolean){
-        this.x=Math.random()*cv.width;
-        this.y=init?Math.random()*cv.height:cv.height+4;
+        this.x=Math.random()*cv!.width;
+        this.y=init?Math.random()*cv!.height:cv!.height+4;
         this.vx=(Math.random()-0.5)*1.8; this.vy=-(Math.random()*2.4+0.8);
         this.life=init?Math.random():1; this.decay=Math.random()*0.012+0.006;
         this.sz=Math.random()*2.2+0.4; this.tail=[]; this.maxTail=Math.floor(Math.random()*5+3);
@@ -72,8 +72,8 @@ export default function Home() {
       x=0;y=0;vx=0;vy=0;life=0;decay=0;sz=0;
       constructor(){this.reset(true);}
       reset(init:boolean){
-        this.x=Math.random()*cv.width;
-        this.y=init?Math.random()*cv.height:cv.height+2;
+        this.x=Math.random()*cv!.width;
+        this.y=init?Math.random()*cv!.height:cv!.height+2;
         this.vx=(Math.random()-0.5)*0.6; this.vy=-(Math.random()*1.1+0.3);
         this.life=init?Math.random():1; this.decay=Math.random()*0.007+0.003;
         this.sz=Math.random()*1.1+0.2;
@@ -94,7 +94,7 @@ export default function Home() {
     let raf:number;
 
     const animate=()=>{
-      cx.clearRect(0,0,cv.width,cv.height);
+      cx!.clearRect(0,0,cv!.width,cv!.height);
       embers.forEach(e=>{e.update();e.draw();});
       sparks.forEach(s=>{s.update();s.draw();});
       raf=requestAnimationFrame(animate);
