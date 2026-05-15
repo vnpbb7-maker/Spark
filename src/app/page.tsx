@@ -23,7 +23,7 @@ export default function Home() {
   useEffect(() => {
     const cv = canvasRef.current;
     if (!cv) return;
-    const cx = cv.getContext("2d");
+    const cx = cv.getContext("2d") as CanvasRenderingContext2D;
     if (!cx) return;
 
     const resize = () => { cv!.width = cv!.offsetWidth; cv!.height = cv!.offsetHeight; };
