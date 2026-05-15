@@ -46,6 +46,8 @@ export default function OutreachPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [campaign, setCampaign] = useState<Record<string, unknown> | null>(null);
   const [generating, setGenerating] = useState(false);
+  const [bulkSending, setBulkSending] = useState(false);
+  const [bulkResult, setBulkResult] = useState<{ sent: number; failed: number } | null>(null);
 
   const fetchTargets = useCallback(async () => {
     const supabase = createClient();
@@ -93,35 +95,37 @@ export default function OutreachPage() {
 
   const generateMessages = async () => {
     setGenerating(true);
-    const productDesc = (campaign?.product_description as string) || "";
+    const senderName = typeof window !== "undefined" ? localStorage.getItem("spark_sender_name") || "担当者" : "担当者";
+    const senderEmail = typeof window !== "undefined" ? localStorage.getItem("spark_sender_email") || "" : "";
     const updated = [...targets];
     for (let i = 0; i < updated.length; i++) {
       if (updated[i].message) continue;
       try {
-        const res = await fetch("https://api.anthropic.com/v1/messages", {
+        const res = await fetch(`/api/targets/${updated[i].id}/generate-comment`, {
           method: "POST",
-          headers: { "Content-Type": "application/json", "x-api-key": "", "anthropic-version": "2023-06-01" },
-          body: JSON.stringify({
-            model: "claude-3-5-haiku-20241022", max_tokens: 300, temperature: 0.6,
-            messages: [{ role: "user", content: `あなたはβテスター勧誘の専門家です。以下の情報を元に、この人にβテスト参加を依頼する短いメッセージ（3-4文）を日本語で書いてください。フレンドリーだが押しつけがましくないトーンで。
-
-プロダクト: ${productDesc}
-ターゲット: @${updated[i].username} (${updated[i].platform})
-この人の投稿: ${(updated[i].post_content || "").slice(0, 200)}
-マッチ理由: ${updated[i].ai_reason || ""}
-
-メッセージ本文のみを返してください。件名や署名は不要です。` }],
-          }),
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sender_name: senderName, sender_email: senderEmail }),
         });
         if (res.ok) {
           const data = await res.json();
-          updated[i].message = data.content?.[0]?.text || "メッセージ生成に失敗しました";
-        } else {
-          // Fallback message
-          updated[i].message = `@${updated[i].username} さん、はじめまして。${updated[i].platform}での投稿を拝見しました。現在「${productDesc.slice(0, 30)}」のβテスターを募集しています。もしご興味があれば、ぜひ一度お試しいただけませんか？`;
+          updated[i].message = data.comment?.content || data.comment || "";
         }
-      } catch {
-        updated[i].message = `@${updated[i].username} さん、はじめまして。${productDesc.slice(0, 30)}のβテスターにご興味はありませんか？`;
+      } catch { /* keep empty, user can retry */ }
+      if (!updated[i].message) {
+        // Proper business email fallback
+        const productDesc = (campaign?.product_description as string) || "";
+        const isB2B = updated[i].platform === "google_maps";
+        updated[i].message = isB2B
+          ? `${updated[i].username} ご担当者様
+
+はじめまして、${senderName}と申します。
+
+${productDesc.slice(0, 80)}を開発しております。貴社のビジネスにご活用いただけると考え、ご連絡いたしました。βテスターとしてお試しいただけませんでしょうか。
+
+ご検討のほど、よろしくお願いいたします。`
+          : `${updated[i].username} さん、はじめまして。${senderName}と申します。
+
+${updated[i].platform}での投稿を拝見し、${productDesc.slice(0, 60)}のβテスターとしてご協力いただけないかとご連絡しました。もしご興味があれば、ぜひお試しください！`;
       }
       setTargets([...updated]);
     }
@@ -135,6 +139,36 @@ export default function OutreachPage() {
   const setStatus = (id: string, status: "sent" | "skipped") => {
     setTargets(prev => prev.map(t => t.id === id ? { ...t, status } : t));
     setEditingId(null);
+  };
+
+  const handleBulkSend = async () => {
+    const senderName = typeof window !== "undefined" ? localStorage.getItem("spark_sender_name") || "" : "";
+    const senderEmail = typeof window !== "undefined" ? localStorage.getItem("spark_sender_email") || "" : "";
+    if (!senderEmail) { alert("設定ページで送信者メールを登録してください"); return; }
+    const pending = targets.filter(t => t.status === "pending" && t.sendMethod !== "none");
+    if (!pending.length) { alert("送信可能なターゲットがありません"); return; }
+    if (!confirm(`${pending.length}件を一括送信しますか？`)) return;
+    setBulkSending(true);
+    // Pre-fill messages via generate-comment if missing
+    const messages: Record<string, string> = {};
+    for (const t of pending) messages[t.id] = t.message || "";
+    try {
+      const res = await fetch(`/api/campaigns/${campaignId}/bulk-submit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetIds: pending.map(t => t.id), senderName, senderEmail, messages }),
+      });
+      const data = await res.json();
+      setBulkResult({ sent: data.sent || 0, failed: data.failed || 0 });
+      // Mark sent targets
+      if (data.results) {
+        setTargets(prev => prev.map(t => {
+          const r = data.results.find((x: { targetId: string; status: string }) => x.targetId === t.id);
+          return r && r.status !== "failed" ? { ...t, status: "sent" as const } : t;
+        }));
+      }
+    } catch (e) { alert("送信エラーが発生しました"); }
+    setBulkSending(false);
   };
 
   const filtered = targets.filter(t => {
@@ -171,13 +205,19 @@ export default function OutreachPage() {
             }}>
               {generating ? "⏳ メッセージ生成中..." : "✨ メッセージ一括生成"}
             </button>
-            <button disabled style={{
-              background: "rgba(45,209,122,0.1)", color: "#2dd17a", border: "1px solid rgba(45,209,122,0.2)",
-              borderRadius: "10px", padding: "8px 18px", fontSize: "12px", fontWeight: 700,
-              cursor: "not-allowed", fontFamily: "'Space Grotesk'", opacity: 0.6,
+            <button onClick={handleBulkSend} disabled={bulkSending} style={{
+              background: bulkSending ? "rgba(45,209,122,0.1)" : "linear-gradient(135deg, #2dd17a, #1ba360)",
+              color: "#fff", border: "none", borderRadius: "10px", padding: "8px 18px",
+              fontSize: "12px", fontWeight: 700, cursor: bulkSending ? "wait" : "pointer",
+              fontFamily: "'Space Grotesk'", opacity: bulkSending ? 0.7 : 1,
             }}>
-              🚀 一括送信（準備中）
+              {bulkSending ? "⏳ 送信中..." : "🚀 一括送信"}
             </button>
+            {bulkResult && (
+              <span style={{ fontSize: "11px", color: "rgba(240,239,232,0.5)" }}>
+                ✅{bulkResult.sent}件 / ❌{bulkResult.failed}件
+              </span>
+            )}
           </div>
         </div>
       </div>
