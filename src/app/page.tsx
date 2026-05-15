@@ -67,6 +67,35 @@ export default function Home() {
         </button>
       </nav>
 
+      {/* Spark particle animation — CSS keyframes injected via style tag */}
+      <style>{`
+        @keyframes sparkFloat {
+          0%   { transform: translateY(0) translateX(0) scale(1); opacity: 0.8; }
+          50%  { transform: translateY(-60px) translateX(20px) scale(1.2); opacity: 0.4; }
+          100% { transform: translateY(-120px) translateX(-10px) scale(0.6); opacity: 0; }
+        }
+        .spark-particle {
+          position: absolute;
+          border-radius: 50%;
+          pointer-events: none;
+          animation: sparkFloat linear infinite;
+        }
+      `}</style>
+      {/* Spark particles */}
+      {[...Array(18)].map((_, i) => (
+        <div key={i} className="spark-particle" style={{
+          left: `${5 + (i * 5.5) % 92}%`,
+          bottom: `${(i * 7) % 40}%`,
+          width: `${4 + (i % 4) * 3}px`,
+          height: `${4 + (i % 4) * 3}px`,
+          background: i % 3 === 0 ? "#ff6b35" : i % 3 === 1 ? "#ffd60a" : "#ff9500",
+          animationDuration: `${2.5 + (i % 5) * 0.7}s`,
+          animationDelay: `${(i * 0.3) % 3}s`,
+          filter: "blur(1px)",
+          zIndex: 0,
+        }} />
+      ))}
+
       {/* HERO */}
       <section
         style={{
@@ -422,49 +451,47 @@ export default function Home() {
         >
           {[
             {
-              name: "Starter",
-              price: "$99",
-              per: "/月",
+              name: "Free",
+              price: "無料",
+              per: "",
               desc: "まず試したい方へ",
               features: [
-                "ターゲット発見のみ",
-                "コメント生成（手動投稿）",
-                "月50ターゲット",
-                "X / Reddit のみ",
+                "ターゲット発見: 10件/日",
+                "Reddit, Twitter, Connpass, Wantedly",
+                "コメント生成 ✅",
+                "フォーム自動送信 ❌",
               ],
-              cta: "無料で試す",
+              cta: "無料で始める",
+              featured: false,
+            },
+            {
+              name: "Starter",
+              price: "$29",
+              per: "/月",
+              desc: "本格的に始めたい方へ",
+              features: [
+                "ターゲット発見: 100件/日",
+                "+ note, Qiita, Zenn, Yahoo知恵袋, Peatix, ProductHunt",
+                "コメント生成 ✅",
+                "フォーム自動送信 ✅",
+              ],
+              cta: "Starterを始める",
               featured: false,
             },
             {
               name: "Growth",
-              price: "$299",
+              price: "$99",
               per: "/月",
-              desc: "一番人気",
+              desc: "一番人気 🔥",
               features: [
-                "自動コメント投稿（全6プラットフォーム）",
-                "半自動→全自動切り替え",
-                "Realtimeダッシュボード",
-                "AIインサイトレポート",
-                "月200ターゲット",
-                "Bot検知回避",
+                "ターゲット発見: 1000件/日",
+                "+ LinkedIn, Googleマップ, Discord, はてな, Web全体",
+                "コメント生成 ✅",
+                "フォーム自動送信 ✅",
+                "一括送信: 1000件/日 ✅",
               ],
-              cta: "Growth を始める",
+              cta: "Growthを始める",
               featured: true,
-            },
-            {
-              name: "Agency",
-              price: "$999",
-              per: "/月",
-              desc: "代理店・大規模向け",
-              features: [
-                "Growth全機能",
-                "複数クライアント管理",
-                "ホワイトラベルUI",
-                "API直接アクセス",
-                "無制限ターゲット",
-              ],
-              cta: "お問い合わせ",
-              featured: false,
             },
           ].map((plan) => (
             <div
@@ -585,141 +612,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Agency */}
-      <section
-        style={{
-          width: "100%",
-          padding: "80px 24px",
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-        }}
-      >
-        <div
-          style={{
-            fontSize: 11,
-            color: "#ff6b35",
-            letterSpacing: 2,
-            textTransform: "uppercase",
-            marginBottom: 12,
-            textAlign: "center",
-          }}
-        >
-          Agency プラン
-        </div>
 
-        <h2
-          style={{
-            fontFamily: "Space Grotesk",
-            fontSize: "clamp(24px, 4vw, 42px)",
-            fontWeight: 700,
-            textAlign: "center",
-            marginBottom: 16,
-          }}
-        >
-          代理店・プロ向けの
-          <span style={{ color: "#ff6b35" }}>最強プラン</span>
-        </h2>
-
-        <p
-          style={{
-            fontSize: 16,
-            color: "rgba(240,239,232,0.5)",
-            textAlign: "center",
-            maxWidth: 600,
-            margin: "0 auto 48px",
-            lineHeight: 1.7,
-          }}
-        >
-          1つの契約で無制限のクライアントを管理。
-          <br />
-          あなたのブランドでSPARKを提供できる。
-        </p>
-
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-            gap: 20,
-            width: "100%",
-            maxWidth: 1100,
-            margin: "0 auto",
-          }}
-        >
-          {[
-            {
-              icon: "🏷️",
-              title: "ホワイトラベルUI",
-              desc: "SPARKのロゴを消して自社ブランドとして提供。クライアントにはあなたのAIツールとして見える。",
-            },
-            {
-              icon: "👥",
-              title: "複数クライアント管理",
-              desc: "クライアントごとにキャンペーンを分けて管理。成果レポートをリアルタイムで確認できる。",
-            },
-            {
-              icon: "🔗",
-              title: "API直接アクセス",
-              desc: "自社システムとSPARKを連携。独自のワークフローに組み込んで完全自動化を実現。",
-            },
-            {
-              icon: "📊",
-              title: "採用・マーケに特化",
-              desc: "候補者発見・スカウト・ブランド認知まで。SNSを活用した現代型の顧客獲得を代行できる。",
-            },
-          ].map((item) => (
-            <div
-              key={item.title}
-              style={{
-                background: "#13132a",
-                border: "0.5px solid rgba(255,255,255,0.07)",
-                borderRadius: 16,
-                padding: 24,
-              }}
-            >
-              <div style={{ fontSize: 32, marginBottom: 12 }}>{item.icon}</div>
-              <div
-                style={{
-                  fontFamily: "Space Grotesk",
-                  fontSize: 16,
-                  fontWeight: 600,
-                  marginBottom: 8,
-                  color: "#f0efe8",
-                }}
-              >
-                {item.title}
-              </div>
-              <div
-                style={{
-                  fontSize: 13,
-                  color: "rgba(240,239,232,0.5)",
-                  lineHeight: 1.6,
-                }}
-              >
-                {item.desc}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        <button
-          onClick={() => router.push("/auth/login")}
-          style={{
-            marginTop: 40,
-            background: "transparent",
-            color: "#ff6b35",
-            border: "1px solid #ff6b35",
-            borderRadius: 12,
-            padding: "12px 32px",
-            fontSize: 14,
-            fontWeight: 600,
-            cursor: "pointer",
-            fontFamily: "DM Sans",
-          }}
-        >
-          Agencyプランについて相談する →
-        </button>
-      </section>
 
       {/* FAQ */}
       <section
@@ -749,7 +642,7 @@ export default function Home() {
             },
             {
               q: "クレジットカードなしで試せますか？",
-              a: "はい。Freeプランはカード不要で今すぐ始められます。X・RedditでAIがターゲットを発見し、コメントを生成します（1日10件まで）。",
+              a: "はい。Freeプランはカード不要で今すぐ始められます。Reddit・TwitterでAIがターゲットを発見し、コメントを生成します（1日10件まで）。",
             },
             {
               q: "自動投稿はBANされませんか？",
@@ -757,7 +650,7 @@ export default function Home() {
             },
             {
               q: "どのプラットフォームに対応していますか？",
-              a: "X(Twitter)・RedditはFreeプランから利用可能。LinkedIn・TikTok・Instagram・FacebookはGrowthプラン（$299/月）以上でご利用いただけます。",
+              a: "Reddit・TwitterはFreeプランから利用可能。note・Qiita・ZennはStarterプラン（$29/月）から、LinkedIn・Googleマップ・Webクロール全体はGrowthプラン（$99/月）からご利用いただけます。",
             },
             {
               q: "半自動と全自動の違いは？",
@@ -770,20 +663,10 @@ export default function Home() {
             {
               q: "どのくらいで最初のユーザーが獲得できますか？",
               a: "プロダクトやターゲット層によって異なりますが、多くの場合1〜2週間で最初の反応が得られます。AIが継続的に学習・改善するため、時間とともに精度が上がります。",
-            },
-            {
-              q: "Agencyプランのホワイトラベルとは何ですか？",
-              a: "SPARKのロゴや名前を消して、あなた自身のブランドとしてクライアントに提供できる機能です。例えばマーケティング代理店がSPARKを使いながら、クライアントには「自社のAIツール」として提供できます。",
-            },
-            {
+            }{
               q: "Agencyプランはどんな人に向いていますか？",
               a: "マーケティング代理店・スタートアップ支援会社・VC・採用コンサルタントなど、複数のクライアントのユーザー獲得を支援するプロ向けです。1つの契約で無制限のクライアントを管理できます。",
-            },
-            {
-              q: "Agencyプランで複数クライアントをどう管理しますか？",
-              a: "専用の管理画面からクライアントごとにキャンペーンを分けて管理できます。各クライアントの成果をリアルタイムで確認・レポート出力でき、ホワイトラベルUIでクライアントに直接アクセス権を付与することも可能です。",
-            },
-            {
+            }{
               q: "どう活用できますか？",
               a: "需要に合った候補者をAIが自動発見し、SNSで自然なアプローチメッセージを送ります。従来のスカウトメール・求人広告と異なり、候補者が既に発信している悩みや関心に合わせて接触するため、返信率が高くなります。",
             },
