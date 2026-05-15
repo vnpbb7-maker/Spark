@@ -234,7 +234,13 @@ export default function CampaignDetailPage() {
   const handleGenerateComment = async (targetId: string) => {
     setGeneratingIds((prev) => { const n = new Set(prev); n.add(targetId); return n; });
     try {
-      const res = await fetch(`/api/targets/${targetId}/generate-comment`, { method: "POST" });
+      const sn = typeof window !== "undefined" ? localStorage.getItem("spark_sender_name") || "" : "";
+      const se = typeof window !== "undefined" ? localStorage.getItem("spark_sender_email") || "" : "";
+      const res = await fetch(`/api/targets/${targetId}/generate-comment`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sender_name: sn, sender_email: se }),
+      });
       if (!res.ok) { setToast("❌ コメント生成に失敗"); setTimeout(() => setToast(""), 3000); return; }
       const data = await res.json();
       setTargets((prev) => prev.map((t) => t.id === targetId ? { ...t, comment: { id: data.comment.id, content: data.comment.content, approach: data.comment.approach } } : t));

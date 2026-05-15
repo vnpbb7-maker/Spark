@@ -7,6 +7,8 @@ export async function POST(
 ) {
   try {
     const { id: targetId } = await params;
+    const body = await request.json().catch(() => ({}));
+    const senderName = (body.sender_name as string) || "担当者";
     const supabase = await createClient();
 
     const { data: { user } } = await supabase.auth.getUser();
@@ -56,7 +58,7 @@ export async function POST(
 
 【ルール】
 ・丁寧なビジネス日本語（敬語）
-・まず自己紹介（会社名・プロダクト名）
+・「私は${senderName}と申します」と自己紹介する
 ・プロダクトが相手のビジネスにどう役立つかを1〜2文で説明
 ・βテスターとして試していただきたい旨を伝える
 ・200〜300文字以内
@@ -74,6 +76,7 @@ JSONのみ返してください：
 
 【ルール】
 ・${languageInstruction}
+・「${senderName}と申します」と自然に名乗る
 ・売り込みから始めない
 ・対象投稿の内容に具体的に触れる
 ・自然な会話調で書く
