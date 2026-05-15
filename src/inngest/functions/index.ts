@@ -808,15 +808,48 @@ Return ONLY this JSON format (no markdown, no explanation):
         console.error("[google_maps] GOOGLE_PLACES_API_KEY is not set — skipping");
       } else {
       try {
-        // Use productDescription (URL-stripped) as keyword for B2B search
-        const kw = productDescription.replace(/^https?:\/\/[^\s]+\s*/, "").slice(0, 25).trim() || "プロダクト";
-        const b2bQueries = [
-          `${kw} スタートアップ 東京`,
-          `${kw} IT企業`,
-          `${kw} 会社`,
-        ];
-        console.log(`[google_maps] kw: "${kw}" | B2B queries:`, b2bQueries);
-        for (const query of b2bQueries.slice(0, 3)) {
+        // Generate industry + location queries via Claude based on product personas
+        let b2bQueries: string[] = [];
+        const personaLabels = Array.isArray(targetPersonas)
+          ? targetPersonas.map(p => (p.label as string) || "").filter(Boolean).join(", ")
+          : "";
+        try {
+          const b2bQueryRes = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-api-key": process.env.ANTHROPIC_API_KEY!,
+              "anthropic-version": "2023-06-01",
+            },
+            body: JSON.stringify({
+              model: "claude-haiku-4-5-20251001",
+              max_tokens: 200,
+              messages: [{
+                role: "user",
+                content: `プロダクト: ${productDescription.slice(0, 150)}
+ターゲットペルソナ: ${personaLabels || "スタートアップ創業者, マーケター"}
+
+このプロダクトを必要としている企業をGoogleマップで探すための検索クエリを5つ生成してください。
+業種と地域（東京・大阪・渋谷など）を組み合わせた短いクエリにしてください。
+例: "スタートアップ 東京", "マーケティング会社 渋谷", "IT企業 採用担当"
+JSONのみ返してください: ["query1", "query2", "query3", "query4", "query5"]`,
+              }],
+            }),
+            signal: AbortSignal.timeout(8000),
+          });
+          if (b2bQueryRes.ok) {
+            const b2bData = await b2bQueryRes.json();
+            const raw = (b2bData.content?.[0]?.text || "").trim();
+            const arrMatch = raw.match(/\[[\s\S]*\]/);
+            if (arrMatch) b2bQueries = JSON.parse(arrMatch[0]);
+          }
+        } catch (qErr) { console.error("[google_maps] Query gen error:", qErr); }
+        if (b2bQueries.length === 0) {
+          // Fallback to basic queries
+          b2bQueries = ["スタートアップ 東京", "IT企業 採用", "マーケティング会社 渋谷"];
+        }
+        console.log(`[google_maps] Claude B2B queries:`, b2bQueries);
+        for (const query of b2bQueries.slice(0, 5)) {
           if (limitReached || insertedTargets.length >= remaining) break;
           console.log(`[google_maps] calling Places API v1 with query: "${query}"`);
           const placesRes = await fetch("https://places.googleapis.com/v1/places:searchText", {
@@ -880,14 +913,11 @@ Return ONLY this JSON format (no markdown, no explanation):
               campaign_id: campaignId, platform: "google_maps", username: name,
               profile_url: mapsUrl || website, post_url: mapsUrl || website,
               post_content: `${address} ${phone ? `📞 ${phone}` : ""}`.slice(0, 500),
-              // B2B リードはスコアリング不要—固定Aランクで表示
-              match_score: email ? 80 : website ? 75 : 65,
-              priority: "A",
-              relevance_score: 0,   // skip AI scoring (non-null = already scored)
-              intent_score: 0,
-              influence_score: 0,
-              accessibility_score: 0,
-              status: "scored",      // mark scored so Phase 4 skips it
+              // B2B リード: initial score, Phase 4 will run B2B scoring
+              match_score: email ? 70 : website ? 65 : 50,
+              priority: "A", // default A; Phase 4 B2B scoring may upgrade/downgrade
+              relevance_score: null, // null = Phase 4 will score with B2B prompt
+              status: "pending",
               match_reason: `Googleマップ B2B: ${query.slice(0, 40)}`,
               ...(email ? { email } : {}),
               ...(phone ? { phone } : {}),
@@ -1051,7 +1081,6 @@ Return ONLY this JSON format (no markdown, no explanation):
         .select("id, username, platform, post_url, post_content, profile_url")
         .eq("campaign_id", campaignId)
         .is("relevance_score", null)
-        .neq("platform", "google_maps")
         .order("created_at", { ascending: false })
         .limit(15);
 
@@ -1095,31 +1124,40 @@ Return ONLY this JSON format (no markdown, no explanation):
             }
 
             const scoreProdDesc = productDescription || "";
+            const isGoogleMaps = t.platform === "google_maps";
             // Detect if this looks like a company/corporate post
             const looksLikeCompany = /株式会社|合同会社|公式|サービス|ソリューション|press|release/.test(enrichedContent.slice(0, 300));
             const isPersonalPlatform = ["note", "qiita", "zenn", "twitter", "reddit", "wantedly", "connpass"].includes(t.platform);
 
-            const scoreResponse = await fetch("https://api.anthropic.com/v1/messages", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "x-api-key": process.env.ANTHROPIC_API_KEY!,
-                "anthropic-version": "2023-06-01",
-              },
-              body: JSON.stringify({
-                model: "claude-haiku-4-5-20251001",
-                max_tokens: 300,
-                temperature: 0.3,
-                system: `You must respond with valid JSON only. No markdown, no explanation. Start with { and end with }.
-重要ルール:
-- スコアは必ず差をつけてください。全員に同じスコアをつけることは禁止です。
-- 企業ブログや会社の公式記事の場合、q3_scoreは必ず0にしてください。
-- 「困っている」「探している」の直接的表現がない限り、q1_scoreを7以上にしないでください。
-- 一般的な技術記事やノウハウ共有は q1=3, q2=3 程度です。`,
-                messages: [
-                  {
-                    role: "user",
-                    content: `βテスター候補を厳密に評価してください。${looksLikeCompany ? "\n⚠️ この投稿は企業・法人の可能性が高いです。個人でない場合はq3=0にしてください。" : ""}
+            // B2B scoring prompt for google_maps; standard individual scoring for others
+            const scorePromptContent = isGoogleMaps
+              ? `あなたはB2B営業の専門家です。以下の企業情報を見て、このプロダクトの見込み顧客として適切かを評価してください。
+
+プロダクト: ${scoreProdDesc}
+企業名: ${t.username}
+ウェブサイト: ${(t.profile_url as string) || ""}
+住所・情報: ${enrichedContent.slice(0, 400)}
+
+Q1. この企業はプロダクトのターゲット業種・規模か？ (0-10)
+  10: ターゲット業種で規模も適切
+  7: 関連業種
+  3: 間接的に関連
+  0: 全く関係ない
+
+Q2. ウェブサイトやビジネス内容からプロダクトを必要としていそうか？ (0-10)
+  10: 明らかにニーズがある
+  7: おそらくニーズあり
+  3: 可能性あり
+  0: ニーズなし
+
+Q3. 連絡先（ウェブサイト/メール）があり接触可能か？ (0-5)
+  5: ウェブサイト+メールあり
+  3: どちらかある
+  0: なし
+
+JSONのみ返してください:
+{"q1_score":0-10,"q2_score":0-10,"q3_score":0-5,"reason":"なぜこの評価か日本語1-2文","estimated_age":"不明","estimated_role":"業種"}`
+              : `βテスター候補を厳密に評価してください。${looksLikeCompany ? "\n⚠️ この投稿は企業・法人の可能性が高いです。個人でない場合はq3=0にしてください。" : ""}
 
 プロダクト: ${scoreProdDesc}
 投稿者: ${t.username} (${t.platform})
@@ -1146,9 +1184,26 @@ Q3. 接触可能性 (0-5):
   5: SNSリンクやメールが公開されている
 
 JSONのみ:
-{"q1_score":0,"q2_score":0,"q3_score":0,"reason":"日本語1文","estimated_age":"20代/30代/40代/不明","estimated_role":"職種"}`,
-                  },
-                ],
+{"q1_score":0,"q2_score":0,"q3_score":0,"reason":"日本語1文","estimated_age":"20代/30代/40代/不明","estimated_role":"職種"}`;
+
+            const scoreResponse = await fetch("https://api.anthropic.com/v1/messages", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "x-api-key": process.env.ANTHROPIC_API_KEY!,
+                "anthropic-version": "2023-06-01",
+              },
+              body: JSON.stringify({
+                model: "claude-haiku-4-5-20251001",
+                max_tokens: 300,
+                temperature: 0.3,
+                system: `You must respond with valid JSON only. No markdown, no explanation. Start with { and end with }.
+重要ルール:
+- スコアは必ず差をつけてください。全員に同じスコアをつけることは禁止です。
+- 企業ブログや会社の公式記事の場合、q3_scoreは必ず0にしてください。
+- 「困っている」「探している」の直接的表現がない限り、q1_scoreを7以上にしないでください。
+- 一般的な技術記事やノウハウ共有は q1=3, q2=3 程度です。`,
+                messages: [{ role: "user", content: scorePromptContent }],
               }),
             });
 
@@ -1165,7 +1220,9 @@ JSONのみ:
               const q3 = Math.min(5, Math.max(0, score.q3_score || 0));
               const totalScore = Math.min(100, Math.max(0, (q1 + q2 + q3) * 4));
 
-              const priority = totalScore >= 65 ? "S" : totalScore >= 50 ? "A" : totalScore >= 35 ? "B" : "C";
+              const priority = isGoogleMaps
+                ? (totalScore >= 70 ? "S" : totalScore >= 50 ? "A" : totalScore >= 30 ? "B" : "C")
+                : (totalScore >= 65 ? "S" : totalScore >= 50 ? "A" : totalScore >= 35 ? "B" : "C");
 
               const updateData = {
                 match_score: totalScore,

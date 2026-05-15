@@ -582,10 +582,12 @@ export default function CampaignDetailPage() {
                         )}
                       </div>
 
-                      {/* Hit reason box */}
+                      {/* AI reason — always visible, prominent */}
                       {(t.ai_reason || t.match_reason) && (
-                        <div style={{ background: "rgba(255,107,53,0.05)", border: "1px solid rgba(255,107,53,0.1)", borderRadius: "8px", padding: "8px 12px", marginBottom: "10px" }}>
-                          <span style={{ fontSize: "11px", color: "rgba(240,239,232,0.6)", lineHeight: 1.5 }}>💡 {t.ai_reason || t.match_reason}</span>
+                        <div style={{ background: t.platform === "google_maps" ? "rgba(66,133,244,0.06)" : "rgba(255,107,53,0.06)", border: `1px solid ${t.platform === "google_maps" ? "rgba(66,133,244,0.15)" : "rgba(255,107,53,0.12)"}`, borderRadius: "8px", padding: "8px 12px", marginBottom: "10px" }}>
+                          <span style={{ fontSize: "13px", color: t.platform === "google_maps" ? "rgba(120,180,255,0.85)" : "rgba(240,200,160,0.85)", lineHeight: 1.6, display: "block" }}>
+                            {t.platform === "google_maps" ? "🏢 " : "💡 "}{t.ai_reason || t.match_reason}
+                          </span>
                         </div>
                       )}
 
