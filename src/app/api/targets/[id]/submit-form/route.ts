@@ -46,7 +46,8 @@ export async function POST(
   const finalSenderName = sender_name || "SPARK";
   const finalSenderEmail = sender_email || "";
 
-  if (!finalSenderEmail) {
+  // preview_only doesn't need sender email — skip validation
+  if (!preview_only && !finalSenderEmail) {
     return NextResponse.json(
       { error: "送信者メールアドレスが必要です（設定ページで登録してください）" },
       { status: 400 }
@@ -118,7 +119,47 @@ export async function POST(
     return NextResponse.json({ generatedMessage: message, preview: true });
   }
 
-  // 3. Railway Playwright サーバーにフォーム送信を依頼
+  // 3a. If target has an email, try Gmail MCP first
+  const targetEmail = (target.email as string) || "";
+  const hasDirectEmail = targetEmail && !targetEmail.startsWith("Twitter:") && !targetEmail.startsWith("DM:");
+  if (hasDirectEmail) {
+    const mcpUrl = process.env.GMAIL_MCP_URL || "";
+    const subject = `【ご提案】${(campaign.product_description as string || "プロダクト").slice(0, 40)}`;
+    let mcpSent = false;
+    if (mcpUrl && process.env.ANTHROPIC_API_KEY) {
+      try {
+        const mcpRes = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": process.env.ANTHROPIC_API_KEY,
+            "anthropic-version": "2023-06-01",
+          },
+          body: JSON.stringify({
+            model: "claude-haiku-4-5-20251001",
+            max_tokens: 200,
+            messages: [{ role: "user", content: `Send an email to ${targetEmail} with subject "${subject}" and body: ${message}. Use the Gmail tool. Reply only {"sent": true}.` }],
+            mcp_servers: [{ type: "url", url: mcpUrl, name: "gmail-mcp" }],
+          }),
+          signal: AbortSignal.timeout(15000),
+        });
+        if (mcpRes.ok) {
+          const d = await mcpRes.json();
+          const txt = (d.content?.[0]?.text || "").toLowerCase();
+          mcpSent = txt.includes("sent") || txt.includes("true");
+        }
+      } catch (e) { console.error("[submit-form] Gmail MCP error:", e); }
+    }
+    if (mcpSent) {
+      await supabase.from("targets").update({ contacted_at: new Date().toISOString(), status: "contacted" }).eq("id", targetId);
+      return NextResponse.json({ success: true, submitted: true, generatedMessage: message, method: "email_mcp" });
+    }
+    // MCP not configured or failed — return Gmail compose URL
+    const gmailUrl = `https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(targetEmail)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(message)}`;
+    return NextResponse.json({ success: true, submitted: false, generatedMessage: message, gmailUrl, method: "gmail_compose" });
+  }
+
+  // 3b. Railway Playwright サーバーにフォーム送信を依頼
   const playwrightUrl = process.env.PLAYWRIGHT_SERVER_URL;
   const playwrightKey = process.env.PLAYWRIGHT_API_KEY;
 

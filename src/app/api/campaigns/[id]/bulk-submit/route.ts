@@ -79,6 +79,57 @@ async function generateMessage(
   return `はじめまして。${pd}の開発をしているものです。βテスターとしてお試しいただけないかとご連絡しました。ご検討いただけますと幸いです。`;
 }
 
+// Attempt to send email via Gmail MCP (Claude integration)
+// Falls back to returning Gmail compose URL if MCP fails or is unconfigured
+async function sendViaGmailMcp(
+  toEmail: string,
+  subject: string,
+  body: string
+): Promise<{ sent: boolean; gmailUrl: string }> {
+  const gmailUrl = `https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(toEmail)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  const mcpUrl = process.env.GMAIL_MCP_URL || "";
+
+  if (!mcpUrl || !process.env.ANTHROPIC_API_KEY) {
+    return { sent: false, gmailUrl };
+  }
+
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": process.env.ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 200,
+        messages: [{
+          role: "user",
+          content: `Send an email to ${toEmail} with subject "${subject}" and body: ${body}. Use the Gmail tool to send it. Reply only with {"sent": true} after sending.`,
+        }],
+        mcp_servers: [{
+          type: "url",
+          url: mcpUrl,
+          name: "gmail-mcp",
+        }],
+      }),
+      signal: AbortSignal.timeout(15000),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const text = (data.content?.[0]?.text || "").toLowerCase();
+      if (text.includes("sent") || text.includes("true")) {
+        console.log("[bulk-submit] Gmail MCP sent email to:", toEmail);
+        return { sent: true, gmailUrl };
+      }
+    }
+  } catch (e) {
+    console.error("[bulk-submit] Gmail MCP error:", e);
+  }
+  return { sent: false, gmailUrl };
+}
+
 export async function POST(
   req: NextRequest,
   { params }: { params: { id: string } }
@@ -176,10 +227,14 @@ export async function POST(
 
       if (hasEmail) {
         const campaignTitle = productDescription.slice(0, 40);
-        const subject = encodeURIComponent(`【ご提案】${campaignTitle}`);
-        const bodyEnc = encodeURIComponent(message);
-        const gmailUrl = `https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(email)}&su=${subject}&body=${bodyEnc}`;
-        results.push({ targetId: target.id, username: target.username as string, status: "gmail", method: "gmail", gmailUrl });
+        const subject = `【ご提案】${campaignTitle}`;
+        const { sent: mcpSent, gmailUrl } = await sendViaGmailMcp(email, subject, message);
+        if (mcpSent) {
+          results.push({ targetId: target.id, username: target.username as string, status: "sent", method: "gmail" });
+          await supabase.from("targets").update({ contacted_at: new Date().toISOString(), status: "contacted" }).eq("id", target.id);
+        } else {
+          results.push({ targetId: target.id, username: target.username as string, status: "gmail", method: "gmail", gmailUrl });
+        }
         sent++;
       } else if (hasForm && playwrightUrl) {
         const formRes = await fetch(`${playwrightUrl}/submit-contact-form`, {
