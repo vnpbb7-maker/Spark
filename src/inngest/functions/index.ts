@@ -885,8 +885,16 @@ JSONのみ返してください: ["query1", "query2", "query3", "query4", "query
             const mapsUrl = placeId ? `https://www.google.com/maps/place/?q=place_id:${placeId}` : "";
             const address = (place.formattedAddress as string) || "";
             const phone = (place.nationalPhoneNumber as string) || "";
-            const website = (place.websiteUri as string) || "";
-            if (website) console.log(`[google_maps] ${name} → website: ${website}`);
+            // Strip Google Maps tracking params (utm_source=G_Business etc.) before storing
+            const rawWebsite = (place.websiteUri as string) || "";
+            let website = rawWebsite;
+            if (rawWebsite) {
+              try {
+                const wu = new URL(rawWebsite);
+                if (wu.searchParams.has("utm_source")) website = wu.origin;
+              } catch { /* keep raw */ }
+              console.log(`[google_maps] ${name} → website: ${website}`);
+            }
             // Hunter.io email finder
             let email = "";
             if (website && process.env.HUNTER_API_KEY) {
