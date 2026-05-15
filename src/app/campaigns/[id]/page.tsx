@@ -659,17 +659,29 @@ export default function CampaignDetailPage() {
                       </div>
 
                       {/* Comment preview — full text, persists across re-fetches */}
-                      {t.comment && (
+                      {t.comment ? (
                         <div style={{ marginTop: "8px", background: "rgba(255,214,10,0.03)", border: "1px solid rgba(255,214,10,0.08)", borderRadius: "8px", padding: "10px 12px" }}>
                           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "6px" }}>
-                            <span style={{ fontSize: "10px", fontWeight: 600, color: "rgba(255,214,10,0.6)" }}>💬 生成メッセージ</span>
+                            <span style={{ fontSize: "10px", fontWeight: 600, color: "rgba(255,214,10,0.6)" }}>{t.platform === "google_maps" ? "📧 ビジネスメール" : "💬 生成メッセージ"}</span>
                             <button onClick={() => { navigator.clipboard.writeText(t.comment!.content); setToast("📋 コピーしました"); setTimeout(() => setToast(""), 2000); }} style={{ background: "transparent", border: "1px solid rgba(255,214,10,0.15)", borderRadius: "5px", padding: "2px 8px", fontSize: "10px", color: "rgba(255,214,10,0.6)", cursor: "pointer" }}>📋 コピー</button>
                           </div>
-                          <div style={{ fontSize: "11px", color: "rgba(240,239,232,0.65)", lineHeight: 1.7, whiteSpace: "pre-wrap", wordBreak: "break-all", minHeight: "80px" }}>
+                          <div style={{ fontSize: "11px", color: "rgba(240,239,232,0.65)", lineHeight: 1.7, whiteSpace: "pre-wrap", wordBreak: "break-all", minHeight: "100px" }}>
                             {t.comment.content}
                           </div>
                         </div>
-                      )}
+                      ) : t.platform === "google_maps" ? (
+                        <div style={{ marginTop: "8px", background: "rgba(66,133,244,0.03)", border: "1px dashed rgba(66,133,244,0.15)", borderRadius: "8px", padding: "10px 12px" }}>
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "6px" }}>
+                            <span style={{ fontSize: "10px", fontWeight: 600, color: "rgba(66,133,244,0.6)" }}>🏢 ビジネスメールテンプレート</span>
+                            <span style={{ fontSize: "9px", color: "rgba(240,239,232,0.25)" }}>「メール生成」でパーソナライズ</span>
+                          </div>
+                          <div style={{ fontSize: "11px", color: "rgba(240,239,232,0.25)", lineHeight: 1.7, whiteSpace: "pre-wrap", minHeight: "100px", fontStyle: "italic" }}>
+                            {`はじめまして。${(campaign?.product_description as string || campaign?.product_url as string || "弊社プロダクト").slice(0, 40)}の開発をしているものです。
+${t.username}様のビジネスにお役立ていただけるかと存じまして、初期ユーザーとしてお試しいただけないかとご連絡しました。
+ご検討いただけますと幸いです。`}
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
                   );
                 })}
