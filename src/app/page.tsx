@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 export default function Home() {
   const [url, setUrl] = useState("");
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [openIndex, setOpenIndex] = useState<number | null>(null);
   const router = useRouter();
@@ -20,100 +21,86 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    const cv = document.getElementById("spark-canvas") as HTMLCanvasElement;
+    const cv = canvasRef.current;
     if (!cv) return;
     const cx = cv.getContext("2d");
     if (!cx) return;
 
-    function rsz() { cv.width = cv.offsetWidth; cv.height = cv.offsetHeight; }
-    rsz();
-    window.addEventListener("resize", rsz);
+    const resize = () => { cv.width = cv.offsetWidth; cv.height = cv.offsetHeight; };
+    resize();
+    window.addEventListener("resize", resize);
 
     class Spark {
-      x=0; y=0; vx=0; vy=0; life=0; decay=0; sz=0; wobble=0;
-      col: [number,number,number] = [255,107,53];
-      tail: {x:number;y:number;life:number}[] = [];
-      maxTail=0;
-      constructor() { this.reset(true); }
-      reset(init: boolean) {
-        this.x = Math.random() * cv.width;
-        this.y = init ? Math.random() * cv.height : cv.height + 4;
-        this.vx = (Math.random() - 0.5) * 1.8;
-        this.vy = -(Math.random() * 2.4 + 0.8);
-        this.life = init ? Math.random() : 1;
-        this.decay = Math.random() * 0.012 + 0.006;
-        this.sz = Math.random() * 2.2 + 0.4;
-        this.tail = [];
-        this.maxTail = Math.floor(Math.random() * 5 + 3);
-        const r = Math.random();
-        this.col = r < 0.45 ? [255,107,53] : r < 0.78 ? [255,214,10] : [255,160,60];
-        this.wobble = Math.random() * 0.08 - 0.04;
+      x=0;y=0;vx=0;vy=0;life=0;decay=0;sz=0;tail:{x:number;y:number;life:number}[]=[];maxTail=0;col:[number,number,number]=[255,107,53];wobble=0;
+      constructor(){ this.reset(true); }
+      reset(init:boolean){
+        this.x=Math.random()*cv.width;
+        this.y=init?Math.random()*cv.height:cv.height+4;
+        this.vx=(Math.random()-0.5)*1.8; this.vy=-(Math.random()*2.4+0.8);
+        this.life=init?Math.random():1; this.decay=Math.random()*0.012+0.006;
+        this.sz=Math.random()*2.2+0.4; this.tail=[]; this.maxTail=Math.floor(Math.random()*5+3);
+        const r=Math.random();
+        this.col=r<0.45?[255,107,53]:r<0.78?[255,214,10]:[255,160,60];
+        this.wobble=Math.random()*0.08-0.04;
       }
-      u() {
-        this.tail.unshift({ x: this.x, y: this.y, life: this.life });
-        if (this.tail.length > this.maxTail) this.tail.pop();
-        this.x += this.vx; this.y += this.vy;
-        this.vy += 0.025; this.vx += this.wobble; this.vx *= 0.992;
-        this.life -= this.decay;
-        if (this.life <= 0 || this.y < -10) this.reset(false);
+      update(){
+        this.tail.unshift({x:this.x,y:this.y,life:this.life});
+        if(this.tail.length>this.maxTail)this.tail.pop();
+        this.x+=this.vx; this.y+=this.vy;
+        this.vy+=0.025; this.vx+=this.wobble; this.vx*=0.992;
+        this.life-=this.decay;
+        if(this.life<=0||this.y<-10)this.reset(false);
       }
-      d() {
-        const [r,g,b] = this.col;
-        for (let i = 0; i < this.tail.length; i++) {
-          const t = this.tail[i];
-          const a = t.life * (1 - i / this.tail.length) * 0.45;
-          const s = this.sz * (1 - i / this.tail.length) * 0.7;
-          cx!.beginPath(); cx!.arc(t.x, t.y, Math.max(s, 0.2), 0, Math.PI*2);
-          cx!.fillStyle = `rgba(${r},${g},${b},${a})`; cx!.fill();
+      draw(){
+        const [r,g,b]=this.col;
+        for(let i=0;i<this.tail.length;i++){
+          const t=this.tail[i],a=t.life*(1-i/this.tail.length)*0.45,s=this.sz*(1-i/this.tail.length)*0.7;
+          cx.beginPath();cx.arc(t.x,t.y,Math.max(s,0.2),0,Math.PI*2);
+          cx.fillStyle=`rgba(${r},${g},${b},${a})`;cx.fill();
         }
-        cx!.beginPath(); cx!.arc(this.x, this.y, this.sz, 0, Math.PI*2);
-        cx!.fillStyle = `rgba(${r},${g},${b},${this.life * 0.85})`; cx!.fill();
-        if (this.sz > 1.2 && this.life > 0.4) {
-          cx!.beginPath(); cx!.arc(this.x, this.y, this.sz * 0.45, 0, Math.PI*2);
-          cx!.fillStyle = `rgba(255,240,200,${this.life * 0.6})`; cx!.fill();
+        cx.beginPath();cx.arc(this.x,this.y,this.sz,0,Math.PI*2);
+        cx.fillStyle=`rgba(${r},${g},${b},${this.life*0.85})`;cx.fill();
+        if(this.sz>1.2&&this.life>0.4){
+          cx.beginPath();cx.arc(this.x,this.y,this.sz*0.45,0,Math.PI*2);
+          cx.fillStyle=`rgba(255,240,200,${this.life*0.6})`;cx.fill();
         }
       }
     }
 
     class Ember {
-      x=0; y=0; vx=0; vy=0; life=0; decay=0; sz=0;
-      constructor() { this.reset(true); }
-      reset(init: boolean) {
-        this.x = Math.random() * cv.width;
-        this.y = init ? Math.random() * cv.height : cv.height + 2;
-        this.vx = (Math.random() - 0.5) * 0.6;
-        this.vy = -(Math.random() * 1.1 + 0.3);
-        this.life = init ? Math.random() : 1;
-        this.decay = Math.random() * 0.007 + 0.003;
-        this.sz = Math.random() * 1.1 + 0.2;
+      x=0;y=0;vx=0;vy=0;life=0;decay=0;sz=0;
+      constructor(){this.reset(true);}
+      reset(init:boolean){
+        this.x=Math.random()*cv.width;
+        this.y=init?Math.random()*cv.height:cv.height+2;
+        this.vx=(Math.random()-0.5)*0.6; this.vy=-(Math.random()*1.1+0.3);
+        this.life=init?Math.random():1; this.decay=Math.random()*0.007+0.003;
+        this.sz=Math.random()*1.1+0.2;
       }
-      u() {
-        this.x += this.vx + Math.sin(Date.now() * 0.001 + this.x) * 0.15;
-        this.y += this.vy; this.vy += 0.008; this.life -= this.decay;
-        if (this.life <= 0 || this.y < -5) this.reset(false);
+      update(){
+        this.x+=this.vx+Math.sin(Date.now()*0.001+this.x)*0.15;
+        this.y+=this.vy; this.vy+=0.008; this.life-=this.decay;
+        if(this.life<=0||this.y<-5)this.reset(false);
       }
-      d() {
-        cx!.beginPath(); cx!.arc(this.x, this.y, this.sz, 0, Math.PI*2);
-        cx!.fillStyle = `rgba(255,180,60,${this.life * 0.35})`; cx!.fill();
+      draw(){
+        cx.beginPath();cx.arc(this.x,this.y,this.sz,0,Math.PI*2);
+        cx.fillStyle=`rgba(255,180,60,${this.life*0.35})`;cx.fill();
       }
     }
 
-    const pts = Array.from({ length: 80 }, () => new Spark());
-    const embs = Array.from({ length: 50 }, () => new Ember());
-    let raf: number;
+    const sparks=Array.from({length:80},()=>new Spark());
+    const embers=Array.from({length:50},()=>new Ember());
+    let raf:number;
 
-    function anim() {
-      cx!.clearRect(0, 0, cv.width, cv.height);
-      embs.forEach(e => { e.u(); e.d(); });
-      pts.forEach(p => { p.u(); p.d(); });
-      raf = requestAnimationFrame(anim);
-    }
-    anim();
-
-    return () => {
-      window.removeEventListener("resize", rsz);
-      cancelAnimationFrame(raf);
+    const animate=()=>{
+      cx.clearRect(0,0,cv.width,cv.height);
+      embers.forEach(e=>{e.update();e.draw();});
+      sparks.forEach(s=>{s.update();s.draw();});
+      raf=requestAnimationFrame(animate);
     };
+    animate();
+
+    return ()=>{ cancelAnimationFrame(raf); window.removeEventListener("resize",resize); };
   }, []);
 
   return (
@@ -165,7 +152,7 @@ export default function Home() {
       </nav>
 
       {/* Canvas fire animation */}
-      <canvas id="spark-canvas" style={{
+      <canvas ref={canvasRef} style={{
         position: "absolute", inset: 0, width: "100%", height: "100%",
         pointerEvents: "none", zIndex: 0,
       }} />
@@ -181,6 +168,8 @@ export default function Home() {
           justifyContent: "center",
           textAlign: "center",
           padding: "120px 24px 60px",
+          position: "relative",
+          overflow: "hidden",
         }}
       >
         {/* バッジ */}

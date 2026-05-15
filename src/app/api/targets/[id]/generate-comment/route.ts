@@ -9,6 +9,8 @@ export async function POST(
     const { id: targetId } = await params;
     const body = await request.json().catch(() => ({}));
     const senderName = (body.sender_name as string) || "担当者";
+    const productUrl = (body.product_url as string) || "";
+    const keywords = (body.keywords as string) || "";
     const supabase = await createClient();
 
     const { data: { user } } = await supabase.auth.getUser();
@@ -49,27 +51,36 @@ export async function POST(
 
     // B2B business email for google_maps targets
     const isB2B = target.platform === "google_maps";
+    const productLine = campaign?.product_description || campaign?.product_url || productUrl || "プロダクト";
+    const kwLine = keywords ? `キーワード・訴求ポイント：${keywords}` : "";
     const promptContent = isB2B
-      ? `あなたはスタートアップの代表者です。以下の企業へ送る営業メールを書いてください。
+      ? `以下の情報を元に、ビジネスメール形式の日本語アウトリーチメッセージを生成してください。
 
-プロダクト：${campaign?.product_description || campaign?.product_url}
-送信先企業名：${target.username}
-企業の住所・情報：${target.post_content || ""}
+送信先企業: ${target.username}
+送信者名: ${senderName}
+プロダクト: ${productLine}
+プロダクトURL: ${productUrl || campaign?.product_url || ""}
+${kwLine}
 
-【ルール】
-・丁寧なビジネス日本語（敬語）
-・「私は${senderName}と申します」と自己紹介する
-・プロダクトが相手のビジネスにどう役立つかを1〜2文で説明
-・βテスターとして試していただきたい旨を伝える
-・200〜300文字以内
-・件名なし・本文のみ${keywordInstruction}
+メール形式（必ずこの構成）:
+1行目: ${target.username} ご担当者様
+2行目: 空行
+3行目: はじめまして、${senderName}と申します。
+4行目〜: プロダクトの説明（2〜3文、キーワードを自然に含める）
+次の段落: βテスターとしてご協力いただける企業様を探しております。
+締め: ご検討のほど、よろしくお願いいたします。
+
+文字数: 200〜280字。テンプレート感を出さず自然な文体で。
+企業情報: ${target.post_content?.slice(0, 200) || ""}${keywordInstruction}
 
 JSONのみ返してください：
 {"comment": "メール本文", "approach": "このアプローチにした理由1文"}`
       : `あなたは共感力の高いGrowthハッカーです。
 以下の情報を元に自然なコメントを生成してください。
 
-プロダクト：${campaign?.product_description || campaign?.product_url}
+プロダクト：${productLine}
+プロダクトURL：${productUrl || campaign?.product_url || ""}
+${kwLine}
 対象投稿URL：${target.post_url}
 投稿内容：${target.post_content?.slice(0, 300) || ""}
 プラットフォーム：${target.platform}
