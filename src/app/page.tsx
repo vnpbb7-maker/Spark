@@ -19,6 +19,103 @@ export default function Home() {
     checkAuth();
   }, []);
 
+  useEffect(() => {
+    const cv = document.getElementById("spark-canvas") as HTMLCanvasElement;
+    if (!cv) return;
+    const cx = cv.getContext("2d");
+    if (!cx) return;
+
+    function rsz() { cv.width = cv.offsetWidth; cv.height = cv.offsetHeight; }
+    rsz();
+    window.addEventListener("resize", rsz);
+
+    class Spark {
+      x=0; y=0; vx=0; vy=0; life=0; decay=0; sz=0; wobble=0;
+      col: [number,number,number] = [255,107,53];
+      tail: {x:number;y:number;life:number}[] = [];
+      maxTail=0;
+      constructor() { this.reset(true); }
+      reset(init: boolean) {
+        this.x = Math.random() * cv.width;
+        this.y = init ? Math.random() * cv.height : cv.height + 4;
+        this.vx = (Math.random() - 0.5) * 1.8;
+        this.vy = -(Math.random() * 2.4 + 0.8);
+        this.life = init ? Math.random() : 1;
+        this.decay = Math.random() * 0.012 + 0.006;
+        this.sz = Math.random() * 2.2 + 0.4;
+        this.tail = [];
+        this.maxTail = Math.floor(Math.random() * 5 + 3);
+        const r = Math.random();
+        this.col = r < 0.45 ? [255,107,53] : r < 0.78 ? [255,214,10] : [255,160,60];
+        this.wobble = Math.random() * 0.08 - 0.04;
+      }
+      u() {
+        this.tail.unshift({ x: this.x, y: this.y, life: this.life });
+        if (this.tail.length > this.maxTail) this.tail.pop();
+        this.x += this.vx; this.y += this.vy;
+        this.vy += 0.025; this.vx += this.wobble; this.vx *= 0.992;
+        this.life -= this.decay;
+        if (this.life <= 0 || this.y < -10) this.reset(false);
+      }
+      d() {
+        const [r,g,b] = this.col;
+        for (let i = 0; i < this.tail.length; i++) {
+          const t = this.tail[i];
+          const a = t.life * (1 - i / this.tail.length) * 0.45;
+          const s = this.sz * (1 - i / this.tail.length) * 0.7;
+          cx!.beginPath(); cx!.arc(t.x, t.y, Math.max(s, 0.2), 0, Math.PI*2);
+          cx!.fillStyle = `rgba(${r},${g},${b},${a})`; cx!.fill();
+        }
+        cx!.beginPath(); cx!.arc(this.x, this.y, this.sz, 0, Math.PI*2);
+        cx!.fillStyle = `rgba(${r},${g},${b},${this.life * 0.85})`; cx!.fill();
+        if (this.sz > 1.2 && this.life > 0.4) {
+          cx!.beginPath(); cx!.arc(this.x, this.y, this.sz * 0.45, 0, Math.PI*2);
+          cx!.fillStyle = `rgba(255,240,200,${this.life * 0.6})`; cx!.fill();
+        }
+      }
+    }
+
+    class Ember {
+      x=0; y=0; vx=0; vy=0; life=0; decay=0; sz=0;
+      constructor() { this.reset(true); }
+      reset(init: boolean) {
+        this.x = Math.random() * cv.width;
+        this.y = init ? Math.random() * cv.height : cv.height + 2;
+        this.vx = (Math.random() - 0.5) * 0.6;
+        this.vy = -(Math.random() * 1.1 + 0.3);
+        this.life = init ? Math.random() : 1;
+        this.decay = Math.random() * 0.007 + 0.003;
+        this.sz = Math.random() * 1.1 + 0.2;
+      }
+      u() {
+        this.x += this.vx + Math.sin(Date.now() * 0.001 + this.x) * 0.15;
+        this.y += this.vy; this.vy += 0.008; this.life -= this.decay;
+        if (this.life <= 0 || this.y < -5) this.reset(false);
+      }
+      d() {
+        cx!.beginPath(); cx!.arc(this.x, this.y, this.sz, 0, Math.PI*2);
+        cx!.fillStyle = `rgba(255,180,60,${this.life * 0.35})`; cx!.fill();
+      }
+    }
+
+    const pts = Array.from({ length: 80 }, () => new Spark());
+    const embs = Array.from({ length: 50 }, () => new Ember());
+    let raf: number;
+
+    function anim() {
+      cx!.clearRect(0, 0, cv.width, cv.height);
+      embs.forEach(e => { e.u(); e.d(); });
+      pts.forEach(p => { p.u(); p.d(); });
+      raf = requestAnimationFrame(anim);
+    }
+    anim();
+
+    return () => {
+      window.removeEventListener("resize", rsz);
+      cancelAnimationFrame(raf);
+    };
+  }, []);
+
   return (
     <div
       style={{
@@ -67,85 +164,10 @@ export default function Home() {
         </button>
       </nav>
 
-      {/* Campfire CSS animation */}
-      <style>{`
-        @keyframes flameRise {
-          0%   { transform: translateY(0) translateX(0) scaleX(1); opacity: 0.9; }
-          30%  { transform: translateY(-30px) translateX(6px) scaleX(0.85); opacity: 0.7; }
-          60%  { transform: translateY(-70px) translateX(-8px) scaleX(1.1); opacity: 0.4; }
-          100% { transform: translateY(-120px) translateX(4px) scaleX(0.6); opacity: 0; }
-        }
-        @keyframes emberFloat {
-          0%   { transform: translateY(0) translateX(0); opacity: 1; }
-          100% { transform: translateY(-160px) translateX(var(--dx, 20px)); opacity: 0; }
-        }
-        @keyframes glowPulse {
-          0%, 100% { opacity: 0.12; transform: scale(1); }
-          50%       { opacity: 0.22; transform: scale(1.08); }
-        }
-        .flame { position: absolute; border-radius: 50% 50% 20% 20%; pointer-events: none; animation: flameRise ease-in infinite; }
-        .ember { position: absolute; border-radius: 50%; pointer-events: none; animation: emberFloat linear infinite; }
-        .glow  { position: absolute; border-radius: 50%; pointer-events: none; animation: glowPulse ease-in-out infinite; }
-      `}</style>
-
-      {/* Campfire glow base */}
-      <div className="glow" style={{ width: 500, height: 260, bottom: "6%", left: "50%", transform: "translateX(-50%)",
-        background: "radial-gradient(ellipse, rgba(255,107,53,0.18) 0%, rgba(255,107,53,0.04) 60%, transparent 100%)",
-        animationDuration: "3s", zIndex: 0 }} />
-
-      {/* Main flames — large */}
-      {[
-        { left: "46%", w: 52, h: 100, delay: "0s",   dur: "1.8s", color: "#ff4500" },
-        { left: "49%", w: 44, h: 120, delay: "0.3s", dur: "2.1s", color: "#ff6b35" },
-        { left: "52%", w: 40, h: 90,  delay: "0.6s", dur: "1.6s", color: "#ff8c00" },
-        { left: "44%", w: 30, h: 70,  delay: "0.9s", dur: "2.4s", color: "#ff6b35" },
-        { left: "55%", w: 28, h: 65,  delay: "0.2s", dur: "2s",   color: "#ff4500" },
-      ].map((f, i) => (
-        <div key={`flame-${i}`} className="flame" style={{
-          left: f.left, bottom: "7.5%", width: f.w, height: f.h,
-          background: `radial-gradient(ellipse at 50% 80%, ${f.color}, rgba(255,180,0,0.6) 50%, transparent 100%)`,
-          animationDelay: f.delay, animationDuration: f.dur,
-          filter: "blur(3px)", zIndex: 1,
-        }} />
-      ))}
-
-      {/* Mid flames — medium */}
-      {[
-        { left: "47%", w: 22, h: 55, delay: "0.15s", dur: "1.4s", color: "#ffd60a" },
-        { left: "50%", w: 18, h: 65, delay: "0.5s",  dur: "1.9s", color: "#ffaa00" },
-        { left: "53%", w: 20, h: 50, delay: "0.8s",  dur: "1.5s", color: "#ffd60a" },
-      ].map((f, i) => (
-        <div key={`mid-${i}`} className="flame" style={{
-          left: f.left, bottom: "8%", width: f.w, height: f.h,
-          background: `radial-gradient(ellipse at 50% 70%, ${f.color}, transparent 100%)`,
-          animationDelay: f.delay, animationDuration: f.dur,
-          filter: "blur(2px)", zIndex: 2,
-        }} />
-      ))}
-
-      {/* Embers */}
-      {[...Array(14)].map((_, i) => {
-        const dx = (i % 2 === 0 ? 1 : -1) * (15 + (i * 11) % 35);
-        return (
-          <div key={`ember-${i}`} className="ember" style={{
-            ["--dx" as string]: `${dx}px`,
-            left: `${47 + (i * 3) % 8}%`,
-            bottom: `${8 + (i % 3)}%`,
-            width: `${2 + (i % 3)}px`,
-            height: `${2 + (i % 3)}px`,
-            background: i % 3 === 0 ? "#ff6b35" : i % 3 === 1 ? "#ffd60a" : "#fff",
-            animationDelay: `${(i * 0.25) % 3}s`,
-            animationDuration: `${1.5 + (i % 4) * 0.4}s`,
-            zIndex: 3,
-          }} />
-        );
-      })}
-
-      {/* Log base */}
-      <div style={{
-        position: "absolute", bottom: "6%", left: "50%", transform: "translateX(-50%)",
-        width: 90, height: 12, background: "linear-gradient(90deg, #3d1a00, #6b2d00, #3d1a00)",
-        borderRadius: "6px 6px 4px 4px", zIndex: 2, boxShadow: "0 0 20px rgba(255,107,53,0.4)",
+      {/* Canvas fire animation */}
+      <canvas id="spark-canvas" style={{
+        position: "absolute", inset: 0, width: "100%", height: "100%",
+        pointerEvents: "none", zIndex: 0,
       }} />
 
       {/* HERO */}
