@@ -79,7 +79,13 @@ export default function CampaignDetailPage() {
   const [bulkModal, setBulkModal] = useState<{
     targets: { id: string; username: string; method: "form" | "gmail" }[];
     senderName: string; senderEmail: string;
+    phase: "confirm" | "preview" | "sending" | "done";
   } | null>(null);
+  const [bulkPreviews, setBulkPreviews] = useState<{
+    targetId: string; username: string; platform: string; message: string; method: string;
+  }[]>([]);
+  const [bulkMessages, setBulkMessages] = useState<Record<string, string>>({});  // edited messages keyed by targetId
+  const [bulkPreviewLoading, setBulkPreviewLoading] = useState(false);
   const [bulkProgress, setBulkProgress] = useState<{
     done: number; total: number;
     results: { username: string; status: "sent" | "failed" | "gmail"; gmailUrl?: string; error?: string }[];
@@ -309,47 +315,95 @@ export default function CampaignDetailPage() {
     setTimeout(() => setToast(""), 4000);
   };
 
-  // Open bulk send confirmation modal
+  // Phase 1: Open confirm modal
   const handleBulkSubmit = () => {
     const senderName = typeof window !== "undefined" ? localStorage.getItem("spark_sender_name") || "" : "";
     const senderEmail = typeof window !== "undefined" ? localStorage.getItem("spark_sender_email") || "" : "";
     if (!senderEmail) { setToast("⚠️ 設定ページで送信者メールを登録してください"); setTimeout(() => setToast(""), 4000); return; }
-    // Collect targets: selected if any, else all visible — that have website or email
-    const base = selectedCount > 0
-      ? visibleTargets.filter(t => selected.has(t.id))
-      : visibleTargets;
+    const base = selectedCount > 0 ? visibleTargets.filter(t => selected.has(t.id)) : visibleTargets;
     const eligible = base.filter(t => (t.contact_url || t.website) || (t.email && !t.email.startsWith("DM:")));
     if (!eligible.length) { setToast("⚠️ 送信可能なターゲットがありません"); setTimeout(() => setToast(""), 3000); return; }
     const mapped = eligible.map(t => ({
       id: t.id, username: t.username,
       method: (t.email && !t.email.startsWith("Twitter:") && !t.email.startsWith("DM:")) ? "gmail" as const : "form" as const,
     }));
-    setBulkModal({ targets: mapped, senderName, senderEmail });
-    setBulkProgress(null);
+    setBulkModal({ targets: mapped, senderName, senderEmail, phase: "confirm" });
+    setBulkPreviews([]); setBulkMessages({}); setBulkProgress(null);
   };
 
-  // Execute bulk send — calls API sequentially in batches
+  // Phase 2: Generate previews — batches of 10 in parallel per call
+  const handleBulkPreview = async () => {
+    if (!bulkModal) return;
+    setBulkPreviewLoading(true);
+    setBulkModal(prev => prev ? { ...prev, phase: "preview" } : prev);
+    try {
+      const allIds = bulkModal.targets.map(t => t.id);
+      const BATCH = 10;
+      const allPreviews: { targetId: string; username: string; platform: string; message: string; method: string }[] = [];
+      for (let i = 0; i < allIds.length; i += BATCH) {
+        const batchIds = allIds.slice(i, i + BATCH);
+        const res = await fetch(`/api/campaigns/${campaignId}/bulk-submit`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            targetIds: batchIds,
+            senderName: bulkModal.senderName,
+            senderEmail: bulkModal.senderEmail,
+            preview: true,
+          }),
+        });
+        const data = await res.json();
+        if (data.previews) allPreviews.push(...data.previews);
+      }
+      setBulkPreviews(allPreviews);
+      const msgs: Record<string, string> = {};
+      for (const p of allPreviews) msgs[p.targetId] = p.message;
+      setBulkMessages(msgs);
+    } catch (e) { setToast("❌ メッセージ生成に失敗しました"); }
+    setBulkPreviewLoading(false);
+  };
+
+  // Phase 3: Send with edited messages — batches of 10 with live progress
   const handleBulkStart = async () => {
     if (!bulkModal) return;
-    setBulkProgress({ done: 0, total: bulkModal.targets.length, results: [], running: true, finished: false });
+    setBulkModal(prev => prev ? { ...prev, phase: "sending" } : prev);
+    const total = bulkModal.targets.length;
+    setBulkProgress({ done: 0, total, results: [], running: true, finished: false });
+    const allIds = bulkModal.targets.map(t => t.id);
+    const BATCH = 10;
+    const allResults: { username: string; status: "sent" | "failed" | "gmail"; gmailUrl?: string; error?: string }[] = [];
+    let totalSent = 0;
+    let totalFailed = 0;
     try {
-      const res = await fetch(`/api/campaigns/${campaignId}/bulk-submit`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          targetIds: bulkModal.targets.map(t => t.id),
-          senderName: bulkModal.senderName,
-          senderEmail: bulkModal.senderEmail,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) { setToast(`❌ ${data.error || "一括送信に失敗しました"}`); setBulkProgress(null); return; }
-      const results = (data.results || []).map((r: { username: string; status: string; gmailUrl?: string; error?: string }) => ({
-        username: r.username, status: r.status as "sent" | "failed" | "gmail", gmailUrl: r.gmailUrl, error: r.error,
-      }));
-      setBulkProgress({ done: data.sent + data.failed, total: bulkModal.targets.length, results, running: false, finished: true });
+      for (let i = 0; i < allIds.length; i += BATCH) {
+        const batchIds = allIds.slice(i, i + BATCH);
+        const res = await fetch(`/api/campaigns/${campaignId}/bulk-submit`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            targetIds: batchIds,
+            senderName: bulkModal.senderName,
+            senderEmail: bulkModal.senderEmail,
+            preview: false,
+            messages: bulkMessages,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) { setToast(`❌ ${data.error || "送信に失敗しました"}`); break; }
+        const batchResults = (data.results || []).map((r: { username: string; status: string; gmailUrl?: string; error?: string }) => ({
+          username: r.username, status: r.status as "sent" | "failed" | "gmail", gmailUrl: r.gmailUrl, error: r.error,
+        }));
+        allResults.push(...batchResults);
+        totalSent += data.sent || 0;
+        totalFailed += data.failed || 0;
+        // Update progress after each batch
+        setBulkProgress({ done: i + batchIds.length, total, results: [...allResults], running: i + BATCH < allIds.length, finished: i + BATCH >= allIds.length });
+      }
+      setBulkProgress(prev => prev ? { ...prev, running: false, finished: true } : prev);
+      setBulkModal(prev => prev ? { ...prev, phase: "done" } : prev);
     } catch (e) {
-      setToast("❌ エラーが発生しました"); setBulkProgress(null);
+      setToast("❌ エラーが発生しました");
+      setBulkProgress(prev => prev ? { ...prev, running: false, finished: true } : prev);
     }
   };
 
@@ -770,64 +824,114 @@ ${t.username}様のビジネスにお役立ていただけるかと存じまし�
       {/* Bulk send confirmation + progress modal */}
       {bulkModal && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", zIndex: 2100, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px" }}>
-          <div style={{ background: "#13132a", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "20px", padding: "28px", width: "100%", maxWidth: "520px", maxHeight: "80vh", display: "flex", flexDirection: "column" }}>
-            <h3 style={{ fontFamily: "'Space Grotesk'", fontWeight: 700, fontSize: "18px", marginBottom: "20px" }}>🚀 一括フォーム送信</h3>
+          <div style={{ background: "#13132a", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "20px", padding: "28px", width: "100%", maxWidth: "620px", maxHeight: "88vh", display: "flex", flexDirection: "column" }}>
 
-            {!bulkProgress ? (
+            {/* Header */}
+            <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "20px" }}>
+              <h3 style={{ fontFamily: "'Space Grotesk'", fontWeight: 700, fontSize: "18px", flex: 1, margin: 0 }}>🚀 一括フォーム送信</h3>
+              <span style={{ fontSize: "11px", padding: "3px 10px", borderRadius: "20px", background: "rgba(255,255,255,0.06)", color: "rgba(240,239,232,0.5)" }}>
+                {bulkModal.phase === "confirm" && "① 確認"}
+                {bulkModal.phase === "preview" && "② メッセージ確認・編集"}
+                {(bulkModal.phase === "sending" || bulkModal.phase === "done") && "③ 送信"}
+              </span>
+            </div>
+
+            {/* ─── Phase 1: CONFIRM ─────────────────────────────── */}
+            {bulkModal.phase === "confirm" && (
               <>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginBottom: "16px" }}>
-                  <div style={{ background: "rgba(255,255,255,0.04)", borderRadius: "10px", padding: "12px" }}>
-                    <div style={{ fontSize: "10px", color: "rgba(240,239,232,0.4)", marginBottom: "4px" }}>送信対象</div>
-                    <div style={{ fontSize: "22px", fontWeight: 800, fontFamily: "'Space Grotesk'" }}>{bulkModal.targets.length}<span style={{ fontSize: "11px", fontWeight: 400 }}>件</span></div>
-                    <div style={{ fontSize: "10px", color: "rgba(240,239,232,0.4)", marginTop: "2px" }}>
-                      フォーム{bulkModal.targets.filter(t => t.method === "form").length}件 / メール{bulkModal.targets.filter(t => t.method === "gmail").length}件
+                  <div style={{ background: "rgba(255,255,255,0.04)", borderRadius: "10px", padding: "14px" }}>
+                    <div style={{ fontSize: "10px", color: "rgba(240,239,232,0.4)", marginBottom: "6px" }}>送信対象</div>
+                    <div style={{ fontSize: "24px", fontWeight: 800, fontFamily: "'Space Grotesk'" }}>{bulkModal.targets.length}<span style={{ fontSize: "12px", fontWeight: 400 }}>件</span></div>
+                    <div style={{ fontSize: "10px", color: "rgba(240,239,232,0.4)", marginTop: "4px" }}>
+                      フォーム{bulkModal.targets.filter(t => t.method === "form").length} / メール{bulkModal.targets.filter(t => t.method === "gmail").length}
                     </div>
                   </div>
-                  <div style={{ background: "rgba(255,255,255,0.04)", borderRadius: "10px", padding: "12px" }}>
-                    <div style={{ fontSize: "10px", color: "rgba(240,239,232,0.4)", marginBottom: "4px" }}>送信者</div>
-                    <div style={{ fontSize: "12px", fontWeight: 600 }}>{bulkModal.senderName || "未設定"}</div>
-                    <div style={{ fontSize: "10px", color: "rgba(240,239,232,0.4)", marginTop: "2px", wordBreak: "break-all" }}>{bulkModal.senderEmail}</div>
+                  <div style={{ background: "rgba(255,255,255,0.04)", borderRadius: "10px", padding: "14px" }}>
+                    <div style={{ fontSize: "10px", color: "rgba(240,239,232,0.4)", marginBottom: "6px" }}>送信者</div>
+                    <div style={{ fontSize: "13px", fontWeight: 600 }}>{bulkModal.senderName || "未設定"}</div>
+                    <div style={{ fontSize: "10px", color: "rgba(240,239,232,0.4)", marginTop: "4px", wordBreak: "break-all" }}>{bulkModal.senderEmail}</div>
                   </div>
                 </div>
-                <div style={{ fontSize: "11px", color: "rgba(255,200,100,0.7)", background: "rgba(255,200,0,0.05)", border: "1px solid rgba(255,200,0,0.1)", borderRadius: "8px", padding: "8px 12px", marginBottom: "20px" }}>
-                  ⚠️ メールターゲットはGmailリンクを開きます。フォームターゲットはPlaywrightで自動送信されます。
+                <div style={{ fontSize: "11px", color: "rgba(255,214,10,0.8)", background: "rgba(255,214,10,0.04)", border: "1px solid rgba(255,214,10,0.1)", borderRadius: "8px", padding: "10px 14px", marginBottom: "20px", lineHeight: 1.6 }}>
+                  次のステップでClaude がメッセージを生成します。送信前に全件確認・編集できます。
                 </div>
                 <div style={{ display: "flex", gap: "10px" }}>
                   <button onClick={() => setBulkModal(null)} style={{ flex: 1, padding: "12px", background: "transparent", border: "1px solid rgba(255,255,255,0.12)", borderRadius: "10px", color: "rgba(240,239,232,0.5)", fontSize: "14px", cursor: "pointer", fontWeight: 600 }}>キャンセル</button>
-                  <button onClick={handleBulkStart} style={{ flex: 2, padding: "12px", background: "#ff6b35", border: "none", borderRadius: "10px", color: "#fff", fontSize: "14px", cursor: "pointer", fontWeight: 700 }}>🚀 送信開始</button>
+                  <button onClick={handleBulkPreview} style={{ flex: 2, padding: "12px", background: "#7c5cfc", border: "none", borderRadius: "10px", color: "#fff", fontSize: "14px", cursor: "pointer", fontWeight: 700 }}>
+                    ✍️ メッセージを生成して確認
+                  </button>
                 </div>
               </>
-            ) : (
+            )}
+
+            {/* ─── Phase 2: PREVIEW / EDIT ──────────────────────── */}
+            {bulkModal.phase === "preview" && (
               <>
-                {/* Progress bar */}
+                {bulkPreviewLoading ? (
+                  <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: "12px" }}>
+                    <div style={{ fontSize: "32px" }}>⏳</div>
+                    <div style={{ fontSize: "14px", color: "rgba(240,239,232,0.5)" }}>Claudeがメッセージを生成中...</div>
+                  </div>
+                ) : (
+                  <>
+                    <div style={{ flex: 1, overflow: "auto", display: "flex", flexDirection: "column", gap: "14px", marginBottom: "16px" }}>
+                      {bulkPreviews.map((p) => (
+                        <div key={p.targetId} style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)", borderRadius: "12px", padding: "14px" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
+                            <span style={{ fontSize: "13px", fontWeight: 700 }}>@{p.username}</span>
+                            <span style={{ fontSize: "10px", padding: "2px 7px", borderRadius: "5px", background: p.method === "gmail" ? "rgba(45,209,122,0.1)" : "rgba(255,107,53,0.1)", color: p.method === "gmail" ? "#2dd17a" : "#ff6b35" }}>
+                              {p.method === "gmail" ? "📧 メール" : p.method === "form" ? "📨 フォーム" : "❌ 送信不可"}
+                            </span>
+                          </div>
+                          <textarea
+                            value={bulkMessages[p.targetId] || ""}
+                            onChange={(e) => setBulkMessages(prev => ({ ...prev, [p.targetId]: e.target.value }))}
+                            rows={4}
+                            style={{ width: "100%", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "8px", padding: "10px", color: "#f0efe8", fontSize: "12px", lineHeight: 1.7, resize: "vertical", outline: "none", boxSizing: "border-box", fontFamily: "DM Sans" }}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ display: "flex", gap: "10px" }}>
+                      <button onClick={() => setBulkModal(prev => prev ? { ...prev, phase: "confirm" } : prev)} style={{ flex: 1, padding: "12px", background: "transparent", border: "1px solid rgba(255,255,255,0.12)", borderRadius: "10px", color: "rgba(240,239,232,0.5)", fontSize: "14px", cursor: "pointer", fontWeight: 600 }}>← 戻る</button>
+                      <button onClick={handleBulkStart} style={{ flex: 2, padding: "12px", background: "#ff6b35", border: "none", borderRadius: "10px", color: "#fff", fontSize: "14px", cursor: "pointer", fontWeight: 700 }}>
+                        🚀 全{bulkPreviews.length}件を送信開始
+                      </button>
+                    </div>
+                  </>
+                )}
+              </>
+            )}
+
+            {/* ─── Phase 3: SENDING / DONE ──────────────────────── */}
+            {(bulkModal.phase === "sending" || bulkModal.phase === "done") && bulkProgress && (
+              <>
                 <div style={{ marginBottom: "16px" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
-                    <span style={{ fontSize: "13px", fontWeight: 600 }}>{bulkProgress.running ? "送信中..." : "送信完了"}</span>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
+                    <span style={{ fontSize: "13px", fontWeight: 600 }}>{bulkProgress.running ? "送信中..." : "送信完了 🎉"}</span>
                     <span style={{ fontSize: "13px", color: "rgba(240,239,232,0.5)" }}>{bulkProgress.done}/{bulkProgress.total}件</span>
                   </div>
-                  <div style={{ height: "6px", background: "rgba(255,255,255,0.08)", borderRadius: "3px", overflow: "hidden" }}>
-                    <div style={{ width: `${bulkProgress.total > 0 ? (bulkProgress.done / bulkProgress.total) * 100 : 0}%`, height: "100%", background: "linear-gradient(90deg, #ff6b35, #ffd60a)", borderRadius: "3px", transition: "width 0.3s" }} />
+                  <div style={{ height: "8px", background: "rgba(255,255,255,0.08)", borderRadius: "4px", overflow: "hidden" }}>
+                    <div style={{ width: `${bulkProgress.total > 0 ? (bulkProgress.done / bulkProgress.total) * 100 : 0}%`, height: "100%", background: "linear-gradient(90deg, #ff6b35, #ffd60a)", borderRadius: "4px", transition: "width 0.5s" }} />
                   </div>
                 </div>
-                {/* Results list */}
-                <div style={{ flex: 1, overflow: "auto", marginBottom: "16px", display: "flex", flexDirection: "column", gap: "4px" }}>
+                <div style={{ flex: 1, overflow: "auto", display: "flex", flexDirection: "column", gap: "4px", marginBottom: "16px" }}>
                   {bulkProgress.results.map((r, i) => (
-                    <div key={i} style={{ display: "flex", alignItems: "center", gap: "8px", padding: "6px 10px", background: "rgba(255,255,255,0.03)", borderRadius: "7px" }}>
-                      <span style={{ fontSize: "14px" }}>{r.status === "sent" ? "✅" : r.status === "gmail" ? "📧" : "❌"}</span>
+                    <div key={i} style={{ display: "flex", alignItems: "center", gap: "8px", padding: "7px 12px", background: "rgba(255,255,255,0.03)", borderRadius: "8px" }}>
+                      <span>{r.status === "sent" ? "✅" : r.status === "gmail" ? "📧" : "❌"}</span>
                       <span style={{ fontSize: "12px", fontWeight: 600, flex: 1 }}>@{r.username}</span>
                       {r.status === "gmail" && r.gmailUrl && (
-                        <a href={r.gmailUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: "10px", color: "#2dd17a", textDecoration: "none", background: "rgba(45,209,122,0.1)", padding: "2px 8px", borderRadius: "4px" }}>Gmail開く</a>
+                        <a href={r.gmailUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: "10px", color: "#2dd17a", textDecoration: "none", background: "rgba(45,209,122,0.1)", padding: "3px 8px", borderRadius: "4px" }}>Gmail開く</a>
                       )}
-                      {r.status === "failed" && <span style={{ fontSize: "10px", color: "rgba(255,100,100,0.7)" }}>{r.error}</span>}
                       {r.status === "sent" && <span style={{ fontSize: "10px", color: "rgba(45,209,122,0.7)" }}>送信完了</span>}
+                      {r.status === "failed" && <span style={{ fontSize: "10px", color: "rgba(255,100,100,0.7)" }}>{r.error}</span>}
                     </div>
                   ))}
-                  {bulkProgress.running && (
-                    <div style={{ padding: "8px 10px", fontSize: "12px", color: "rgba(240,239,232,0.4)", textAlign: "center" }}>⏳ 処理中...</div>
-                  )}
+                  {bulkProgress.running && <div style={{ padding: "10px", fontSize: "12px", color: "rgba(240,239,232,0.4)", textAlign: "center" }}>⏳ 処理中...</div>}
                 </div>
                 {bulkProgress.finished && (
-                  <button onClick={() => { setBulkModal(null); setBulkProgress(null); }} style={{ width: "100%", padding: "12px", background: "#2dd17a", border: "none", borderRadius: "10px", color: "#fff", fontSize: "14px", cursor: "pointer", fontWeight: 700 }}>✅ 完了</button>
+                  <button onClick={() => { setBulkModal(null); setBulkProgress(null); setBulkPreviews([]); setBulkMessages({}); }} style={{ width: "100%", padding: "13px", background: "#2dd17a", border: "none", borderRadius: "10px", color: "#fff", fontSize: "14px", cursor: "pointer", fontWeight: 700 }}>✅ 完了</button>
                 )}
               </>
             )}

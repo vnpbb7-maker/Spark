@@ -7,7 +7,9 @@ const getSupabase = () =>
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
 
-export const maxDuration = 300; // 5 minutes
+export const maxDuration = 300; // 5 minutes (Vercel Pro)
+
+const BATCH_SIZE = 10; // max targets per API call
 
 interface BulkResult {
   targetId: string;
@@ -63,7 +65,7 @@ async function generateMessage(
         max_tokens: 400,
         messages: [{ role: "user", content: promptContent }],
       }),
-      signal: AbortSignal.timeout(10000),
+      signal: AbortSignal.timeout(8000), // 8s per message, fail fast
     });
     if (res.ok) {
       const data = await res.json();
@@ -82,7 +84,16 @@ export async function POST(
   { params }: { params: { id: string } }
 ) {
   const campaignId = params.id;
-  const { targetIds, senderName, senderEmail } = await req.json().catch(() => ({}));
+  const body = await req.json().catch(() => ({}));
+  const {
+    senderName,
+    senderEmail,
+    preview = false,
+    messages = {},
+  } = body;
+
+  // Hard limit: max BATCH_SIZE targets per call
+  const targetIds: string[] = (body.targetIds || []).slice(0, BATCH_SIZE);
 
   if (!targetIds?.length || !senderEmail) {
     return NextResponse.json({ error: "targetIds and senderEmail required" }, { status: 400 });
@@ -111,9 +122,7 @@ export async function POST(
   if (toProcess.length === 0) {
     return NextResponse.json({
       error: `1日の送信上限（${dailyLimit}件）に達しています`,
-      sent: 0,
-      failed: 0,
-      results: [],
+      sent: 0, failed: 0, results: [],
     });
   }
 
@@ -127,6 +136,29 @@ export async function POST(
     return NextResponse.json({ sent: 0, failed: 0, results: [] });
   }
 
+  // ── PREVIEW MODE: generate all messages in PARALLEL ──────────────────────
+  if (preview) {
+    const previews = await Promise.all(
+      targets.map(async (target) => {
+        const overrideMsg = (messages as Record<string, string>)[target.id];
+        const message = overrideMsg || await generateMessage(target as Record<string, unknown>, productDescription);
+        const email = target.email as string | null;
+        const websiteUrl = (target.contact_url as string) || (target.website as string) || "";
+        const hasEmail = email && !email.startsWith("Twitter:") && !email.startsWith("DM:");
+        const method = hasEmail ? "gmail" : websiteUrl ? "form" : "none";
+        return {
+          targetId: target.id,
+          username: target.username as string,
+          platform: target.platform as string,
+          message,
+          method,
+        };
+      })
+    );
+    return NextResponse.json({ preview: true, previews });
+  }
+
+  // ── SEND MODE ────────────────────────────────────────────────────────────
   const results: BulkResult[] = [];
   const playwrightUrl = process.env.PLAYWRIGHT_SERVER_URL;
   const playwrightKey = process.env.PLAYWRIGHT_API_KEY;
@@ -135,22 +167,21 @@ export async function POST(
 
   for (const target of targets) {
     try {
-      const message = await generateMessage(target as Record<string, unknown>, productDescription);
+      const overrideMsg = (messages as Record<string, string>)[target.id];
+      const message = overrideMsg || await generateMessage(target as Record<string, unknown>, productDescription);
       const email = target.email as string | null;
       const websiteUrl = (target.contact_url as string) || (target.website as string) || "";
       const hasEmail = email && !email.startsWith("Twitter:") && !email.startsWith("DM:");
       const hasForm = websiteUrl && websiteUrl.startsWith("http");
 
       if (hasEmail) {
-        // Build Gmail compose URL
         const campaignTitle = productDescription.slice(0, 40);
         const subject = encodeURIComponent(`【ご提案】${campaignTitle}`);
-        const body = encodeURIComponent(message);
-        const gmailUrl = `https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(email)}&su=${subject}&body=${body}`;
+        const bodyEnc = encodeURIComponent(message);
+        const gmailUrl = `https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(email)}&su=${subject}&body=${bodyEnc}`;
         results.push({ targetId: target.id, username: target.username as string, status: "gmail", method: "gmail", gmailUrl });
         sent++;
       } else if (hasForm && playwrightUrl) {
-        // Submit via Playwright
         const formRes = await fetch(`${playwrightUrl}/submit-contact-form`, {
           method: "POST",
           headers: { "Content-Type": "application/json", "x-api-key": playwrightKey || "" },
@@ -161,21 +192,19 @@ export async function POST(
             sender_name: senderName || "SPARK",
             sender_email: senderEmail,
           }),
-          signal: AbortSignal.timeout(30000),
+          signal: AbortSignal.timeout(25000), // 25s per form submission
         });
         const result = await formRes.json();
         if (result.success || result.submitted) {
           results.push({ targetId: target.id, username: target.username as string, status: "sent", method: "form" });
           sent++;
-          // Update contacted_at
           await supabase.from("targets").update({ contacted_at: new Date().toISOString(), status: "contacted" }).eq("id", target.id);
         } else {
           results.push({ targetId: target.id, username: target.username as string, status: "failed", method: "form", error: result.error || "送信失敗" });
           failed++;
         }
       } else if (hasForm) {
-        // No Playwright — return as queued
-        results.push({ targetId: target.id, username: target.username as string, status: "gmail", method: "none", error: "Playwright未設定" });
+        results.push({ targetId: target.id, username: target.username as string, status: "failed", method: "none", error: "Playwright未設定" });
         failed++;
       } else {
         results.push({ targetId: target.id, username: target.username as string, status: "failed", method: "none", error: "連絡先なし" });
@@ -187,12 +216,14 @@ export async function POST(
       failed++;
     }
 
-    // 2 second delay between submissions
-    await new Promise(r => setTimeout(r, 2000));
+    // Small delay between form submissions to avoid rate-limiting
+    await new Promise(r => setTimeout(r, 1500));
   }
 
   // Update campaign send_count
-  await supabase.from("campaigns").update({ send_count: sendCount + sent }).eq("id", campaignId);
+  if (sent > 0) {
+    await supabase.from("campaigns").update({ send_count: sendCount + sent }).eq("id", campaignId);
+  }
 
   return NextResponse.json({ sent, failed, results, limitRemaining: remaining - sent });
 }
