@@ -67,34 +67,86 @@ export default function Home() {
         </button>
       </nav>
 
-      {/* Spark particle animation — CSS keyframes injected via style tag */}
+      {/* Campfire CSS animation */}
       <style>{`
-        @keyframes sparkFloat {
-          0%   { transform: translateY(0) translateX(0) scale(1); opacity: 0.8; }
-          50%  { transform: translateY(-60px) translateX(20px) scale(1.2); opacity: 0.4; }
-          100% { transform: translateY(-120px) translateX(-10px) scale(0.6); opacity: 0; }
+        @keyframes flameRise {
+          0%   { transform: translateY(0) translateX(0) scaleX(1); opacity: 0.9; }
+          30%  { transform: translateY(-30px) translateX(6px) scaleX(0.85); opacity: 0.7; }
+          60%  { transform: translateY(-70px) translateX(-8px) scaleX(1.1); opacity: 0.4; }
+          100% { transform: translateY(-120px) translateX(4px) scaleX(0.6); opacity: 0; }
         }
-        .spark-particle {
-          position: absolute;
-          border-radius: 50%;
-          pointer-events: none;
-          animation: sparkFloat linear infinite;
+        @keyframes emberFloat {
+          0%   { transform: translateY(0) translateX(0); opacity: 1; }
+          100% { transform: translateY(-160px) translateX(var(--dx, 20px)); opacity: 0; }
         }
+        @keyframes glowPulse {
+          0%, 100% { opacity: 0.12; transform: scale(1); }
+          50%       { opacity: 0.22; transform: scale(1.08); }
+        }
+        .flame { position: absolute; border-radius: 50% 50% 20% 20%; pointer-events: none; animation: flameRise ease-in infinite; }
+        .ember { position: absolute; border-radius: 50%; pointer-events: none; animation: emberFloat linear infinite; }
+        .glow  { position: absolute; border-radius: 50%; pointer-events: none; animation: glowPulse ease-in-out infinite; }
       `}</style>
-      {/* Spark particles */}
-      {[...Array(18)].map((_, i) => (
-        <div key={i} className="spark-particle" style={{
-          left: `${5 + (i * 5.5) % 92}%`,
-          bottom: `${(i * 7) % 40}%`,
-          width: `${4 + (i % 4) * 3}px`,
-          height: `${4 + (i % 4) * 3}px`,
-          background: i % 3 === 0 ? "#ff6b35" : i % 3 === 1 ? "#ffd60a" : "#ff9500",
-          animationDuration: `${2.5 + (i % 5) * 0.7}s`,
-          animationDelay: `${(i * 0.3) % 3}s`,
-          filter: "blur(1px)",
-          zIndex: 0,
+
+      {/* Campfire glow base */}
+      <div className="glow" style={{ width: 500, height: 260, bottom: "6%", left: "50%", transform: "translateX(-50%)",
+        background: "radial-gradient(ellipse, rgba(255,107,53,0.18) 0%, rgba(255,107,53,0.04) 60%, transparent 100%)",
+        animationDuration: "3s", zIndex: 0 }} />
+
+      {/* Main flames — large */}
+      {[
+        { left: "46%", w: 52, h: 100, delay: "0s",   dur: "1.8s", color: "#ff4500" },
+        { left: "49%", w: 44, h: 120, delay: "0.3s", dur: "2.1s", color: "#ff6b35" },
+        { left: "52%", w: 40, h: 90,  delay: "0.6s", dur: "1.6s", color: "#ff8c00" },
+        { left: "44%", w: 30, h: 70,  delay: "0.9s", dur: "2.4s", color: "#ff6b35" },
+        { left: "55%", w: 28, h: 65,  delay: "0.2s", dur: "2s",   color: "#ff4500" },
+      ].map((f, i) => (
+        <div key={`flame-${i}`} className="flame" style={{
+          left: f.left, bottom: "7.5%", width: f.w, height: f.h,
+          background: `radial-gradient(ellipse at 50% 80%, ${f.color}, rgba(255,180,0,0.6) 50%, transparent 100%)`,
+          animationDelay: f.delay, animationDuration: f.dur,
+          filter: "blur(3px)", zIndex: 1,
         }} />
       ))}
+
+      {/* Mid flames — medium */}
+      {[
+        { left: "47%", w: 22, h: 55, delay: "0.15s", dur: "1.4s", color: "#ffd60a" },
+        { left: "50%", w: 18, h: 65, delay: "0.5s",  dur: "1.9s", color: "#ffaa00" },
+        { left: "53%", w: 20, h: 50, delay: "0.8s",  dur: "1.5s", color: "#ffd60a" },
+      ].map((f, i) => (
+        <div key={`mid-${i}`} className="flame" style={{
+          left: f.left, bottom: "8%", width: f.w, height: f.h,
+          background: `radial-gradient(ellipse at 50% 70%, ${f.color}, transparent 100%)`,
+          animationDelay: f.delay, animationDuration: f.dur,
+          filter: "blur(2px)", zIndex: 2,
+        }} />
+      ))}
+
+      {/* Embers */}
+      {[...Array(14)].map((_, i) => {
+        const dx = (i % 2 === 0 ? 1 : -1) * (15 + (i * 11) % 35);
+        return (
+          <div key={`ember-${i}`} className="ember" style={{
+            ["--dx" as string]: `${dx}px`,
+            left: `${47 + (i * 3) % 8}%`,
+            bottom: `${8 + (i % 3)}%`,
+            width: `${2 + (i % 3)}px`,
+            height: `${2 + (i % 3)}px`,
+            background: i % 3 === 0 ? "#ff6b35" : i % 3 === 1 ? "#ffd60a" : "#fff",
+            animationDelay: `${(i * 0.25) % 3}s`,
+            animationDuration: `${1.5 + (i % 4) * 0.4}s`,
+            zIndex: 3,
+          }} />
+        );
+      })}
+
+      {/* Log base */}
+      <div style={{
+        position: "absolute", bottom: "6%", left: "50%", transform: "translateX(-50%)",
+        width: 90, height: 12, background: "linear-gradient(90deg, #3d1a00, #6b2d00, #3d1a00)",
+        borderRadius: "6px 6px 4px 4px", zIndex: 2, boxShadow: "0 0 20px rgba(255,107,53,0.4)",
+      }} />
 
       {/* HERO */}
       <section
@@ -456,10 +508,10 @@ export default function Home() {
               per: "",
               desc: "まず試したい方へ",
               features: [
-                "ターゲット発見: 10件/日",
-                "Reddit, Twitter, Connpass, Wantedly",
-                "コメント生成 ✅",
-                "フォーム自動送信 ❌",
+                "✅ 発見数: 10件/日",
+                "✅ Reddit, Twitter, Connpass, Wantedly",
+                "✅ AIコメント生成",
+                "❌ フォーム自動送信",
               ],
               cta: "無料で始める",
               featured: false,
@@ -470,10 +522,10 @@ export default function Home() {
               per: "/月",
               desc: "本格的に始めたい方へ",
               features: [
-                "ターゲット発見: 100件/日",
-                "+ note, Qiita, Zenn, Yahoo知恵袋, Peatix, ProductHunt",
-                "コメント生成 ✅",
-                "フォーム自動送信 ✅",
+                "✅ 発見数: 100件/日",
+                "✅ + note, Qiita, Yahoo知恵袋, Peatix, ProductHunt",
+                "✅ AIコメント生成",
+                "✅ フォーム自動送信",
               ],
               cta: "Starterを始める",
               featured: false,
@@ -484,11 +536,10 @@ export default function Home() {
               per: "/月",
               desc: "一番人気 🔥",
               features: [
-                "ターゲット発見: 1000件/日",
-                "+ LinkedIn, Googleマップ, Discord, はてな, Web全体",
-                "コメント生成 ✅",
-                "フォーム自動送信 ✅",
-                "一括送信: 1000件/日 ✅",
+                "✅ 発見数: 1,000件/日",
+                "✅ + LinkedIn, Googleマップ, Discord, Web全体",
+                "✅ 一括フォーム送信（1,000件/日）",
+                "✅ 優先サポート",
               ],
               cta: "Growthを始める",
               featured: true,
@@ -584,7 +635,7 @@ export default function Home() {
                       gap: 8,
                     }}
                   >
-                    <span style={{ color: "#2dd17a" }}>✓</span> {f}
+                    {f}
                   </li>
                 ))}
               </ul>
