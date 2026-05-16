@@ -263,45 +263,58 @@ function extractSocialFromContent(content: string): { twitter_handle?: string; f
 }
 
 function buildMultiPlatformQueries(keyword: string, _language: string = ""): { query: string; targetPlatform: string }[] {
-  // Multiple query templates — shuffled each run for variety
-  const personal = [
-    "体験談 OR 困った OR 試した OR やってみた",
-    "使ってみた OR 探してる OR 乗り換え OR 比較",
-    "解決した OR 導入した OR やめた OR 失敗した",
-    "おすすめ OR レビュー OR 感想 OR 実体験",
-  ];
+  // Intent-signal word banks — pick randomly each run for variety
+  const painWords = ["困ってる", "悩んでる", "うまくいかない", "課題", "どうすれば"];
+  const discoveryWords = ["おすすめ", "探してる", "教えてください", "使ってみたい", "比較"];
+  const actionWords = ["βテスト", "試してみた", "導入したい", "検討中"];
   const exclude = "-プレスリリース -サービス紹介 -お知らせ";
 
-  // Pick a random personal keyword set for variety across runs
-  const personalIdx = Math.floor(Math.random() * personal.length);
-  const p1 = personal[personalIdx];
-  const p2 = personal[(personalIdx + 1) % personal.length];
+  // Pick random intent words each run
+  const pain1 = painWords[Math.floor(Math.random() * painWords.length)];
+  const pain2 = painWords[Math.floor(Math.random() * painWords.length)];
+  const disc1 = discoveryWords[Math.floor(Math.random() * discoveryWords.length)];
+  const disc2 = discoveryWords[Math.floor(Math.random() * discoveryWords.length)];
+  const action1 = actionWords[Math.floor(Math.random() * actionWords.length)];
 
   const queries: { query: string; targetPlatform: string }[] = [];
 
-  // Social
-  queries.push({ query: `site:twitter.com OR site:x.com ${keyword} 日本語 -is:retweet`, targetPlatform: "twitter" });
+  // Social — pain + discovery signals
+  queries.push({ query: `site:twitter.com OR site:x.com ${keyword} (${pain1} OR ${disc1}) -is:retweet`, targetPlatform: "twitter" });
 
-  // Japanese individual-focused platforms (primary) — use alternating personal phrases
-  queries.push({ query: `site:note.com ${keyword} ${p1} ${exclude}`, targetPlatform: "note" });
-  queries.push({ query: `site:zenn.dev ${keyword} ${p2}`, targetPlatform: "zenn" });
-  queries.push({ query: `site:qiita.com ${keyword} ${p1}`, targetPlatform: "qiita" });
-  queries.push({ query: `site:hatenablog.com OR site:hatena.ne.jp ${keyword} ${p2}`, targetPlatform: "hatena" });
-  queries.push({ query: `site:detail.chiebukuro.yahoo.co.jp ${keyword} おすすめ OR 困って`, targetPlatform: "yahoo_qa" });
+  // note — pain signal queries
+  queries.push({ query: `site:note.com ${keyword} ${pain1} OR ${pain2} ${exclude}`, targetPlatform: "note" });
 
-  // General web (Japanese, personal)
-  queries.push({ query: `${keyword} 個人ブログ ${p2} 日本語 ${exclude}`, targetPlatform: "web" });
+  // Zenn — discovery + action
+  queries.push({ query: `site:zenn.dev ${keyword} ${disc1} OR ${action1}`, targetPlatform: "zenn" });
 
-  // Reddit — only Japanese
-  queries.push({ query: `site:reddit.com ${keyword} 日本語 OR 日本`, targetPlatform: "reddit" });
+  // Qiita — pain signal
+  queries.push({ query: `site:qiita.com ${keyword} ${pain1} OR ${disc2}`, targetPlatform: "qiita" });
 
-  // New platforms
-  queries.push({ query: `site:wantedly.com ${keyword} 課題 OR 困っている OR 募集`, targetPlatform: "wantedly" });
-  queries.push({ query: `site:producthunt.com ${keyword} review OR comment OR alternative`, targetPlatform: "producthunt" });
-  queries.push({ query: `site:peatix.com ${keyword} イベント OR セミナー OR 勉強会`, targetPlatform: "peatix" });
-  queries.push({ query: `site:discord.gg OR site:discord.com ${keyword} community OR server OR 日本`, targetPlatform: "discord" });
+  // はてな — discovery signal
+  queries.push({ query: `site:hatenablog.com OR site:hatena.ne.jp ${keyword} ${disc1} OR ${pain2}`, targetPlatform: "hatena" });
 
-  // Shuffle array for variety
+  // Yahoo知恵袋 — naturally pain-focused
+  queries.push({ query: `site:detail.chiebukuro.yahoo.co.jp ${keyword} ${pain1} OR ${disc1} OR 困って`, targetPlatform: "yahoo_qa" });
+
+  // General web — action + discovery intent
+  queries.push({ query: `${keyword} ${disc1} OR ${action1} 日本語 ${exclude}`, targetPlatform: "web" });
+
+  // Reddit
+  queries.push({ query: `site:reddit.com ${keyword} (${pain1} OR ${disc1}) 日本`, targetPlatform: "reddit" });
+
+  // Wantedly — pain/challenge signals
+  queries.push({ query: `site:wantedly.com ${keyword} ${pain1} OR 課題 OR 困っている`, targetPlatform: "wantedly" });
+
+  // ProductHunt — action signal (English)
+  queries.push({ query: `site:producthunt.com ${keyword} (review OR alternative OR "looking for")`, targetPlatform: "producthunt" });
+
+  // Peatix — event-based discovery
+  queries.push({ query: `site:peatix.com ${keyword} ${disc1} OR イベント OR セミナー`, targetPlatform: "peatix" });
+
+  // Discord — community discovery
+  queries.push({ query: `site:discord.gg OR site:discord.com ${keyword} ${disc1} OR community OR 日本`, targetPlatform: "discord" });
+
+  // Shuffle for variety across runs
   for (let i = queries.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [queries[i], queries[j]] = [queries[j], queries[i]];
@@ -309,6 +322,7 @@ function buildMultiPlatformQueries(keyword: string, _language: string = ""): { q
 
   return queries;
 }
+
 
 function detectPlatformFromUrl(url: string): string {
   if (!url) return "web";
