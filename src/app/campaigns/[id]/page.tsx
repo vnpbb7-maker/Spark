@@ -795,12 +795,12 @@ export default function CampaignDetailPage() {
 
                       {/* Comment preview — full text, persists across re-fetches */}
                       {t.comment ? (
-                        <div style={{ marginTop: "8px", background: "rgba(255,214,10,0.03)", border: "1px solid rgba(255,214,10,0.08)", borderRadius: "8px", padding: "10px 12px" }}>
+                        <div style={{ marginTop: "8px", background: "rgba(255,214,10,0.03)", border: "1px solid rgba(255,214,10,0.08)", borderRadius: "8px", padding: "10px 12px", overflow: "hidden", minWidth: 0 }}>
                           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "6px" }}>
                             <span style={{ fontSize: "12px", fontWeight: 600, color: "rgba(255,214,10,0.6)" }}>{t.platform === "google_maps" ? "📧 ビジネスメール" : "💬 生成メッセージ"}</span>
                             <button onClick={() => { navigator.clipboard.writeText(t.comment!.content); setToast("📋 コピーしました"); setTimeout(() => setToast(""), 2000); }} style={{ background: "transparent", border: "1px solid rgba(255,214,10,0.15)", borderRadius: "5px", padding: "2px 8px", fontSize: "12px", color: "rgba(255,214,10,0.6)", cursor: "pointer" }}>📋 コピー</button>
                           </div>
-                          <div className="tc-pre" style={{ fontSize: "14px", color: "rgba(240,239,232,0.75)", lineHeight: 1.8 }}>
+                          <div className="tc-pre" style={{ fontSize: "14px", color: "rgba(240,239,232,0.75)", lineHeight: 1.8, minWidth: 0, overflowWrap: "break-word", wordBreak: "break-word" }}>
                             {t.comment.content}
                           </div>
                         </div>
@@ -811,12 +811,12 @@ export default function CampaignDetailPage() {
                              ? `${savedCompany ? savedCompany + "　" : ""}${savedName}と申します。`
                              : `〇〇株式会社　〇〇と申します。（社名とお名前はダッシュボードの設定からご入力ください）`;
                            return (
-                             <div style={{ marginTop: "8px", background: "rgba(66,133,244,0.03)", border: "1px dashed rgba(66,133,244,0.15)", borderRadius: "8px", padding: "10px 12px" }}>
+                             <div style={{ marginTop: "8px", background: "rgba(66,133,244,0.03)", border: "1px dashed rgba(66,133,244,0.15)", borderRadius: "8px", padding: "10px 12px", overflow: "hidden", minWidth: 0 }}>
                                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "6px" }}>
                                  <span style={{ fontSize: "12px", fontWeight: 600, color: "rgba(66,133,244,0.6)" }}>🏢 ビジネスメールテンプレート</span>
                                  <span style={{ fontSize: "9px", color: "rgba(240,239,232,0.25)" }}>「✉ ビジネスメール生成」でパーソナライズ</span>
                                </div>
-                               <div className="tc-pre" style={{ fontSize: "14px", color: "rgba(240,239,232,0.35)", lineHeight: 1.8 }}>
+                               <div className="tc-pre" style={{ fontSize: "14px", color: "rgba(240,239,232,0.35)", lineHeight: 1.8, minWidth: 0, overflowWrap: "break-word", wordBreak: "break-word" }}>
                                  {`${t.username} ご担当者様
 
 はじめまして、${senderLine}
