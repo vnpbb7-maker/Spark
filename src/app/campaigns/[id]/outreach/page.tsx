@@ -48,6 +48,7 @@ export default function OutreachPage() {
   const [generating, setGenerating] = useState(false);
   const [bulkSending, setBulkSending] = useState(false);
   const [bulkResult, setBulkResult] = useState<{ sent: number; failed: number } | null>(null);
+  const [sendStatus, setSendStatus] = useState<Record<string, { status: "idle" | "sending" | "success" | "error"; error?: string }>>({});
   const [showSettings, setShowSettings] = useState(false);
   const [settingsSenderName, setSettingsSenderName] = useState("");
   const [settingsProductUrl, setSettingsProductUrl] = useState("");
@@ -175,7 +176,12 @@ ${updated[i].platform}での投稿を拝見し、${productDesc.slice(0, 60)}${kw
     if (!pending.length) { alert("送信可能なターゲットがありません"); return; }
     if (!confirm(`${pending.length}件を一括送信しますか？`)) return;
     setBulkSending(true);
-    // Pre-fill messages via generate-comment if missing
+
+    // Mark all pending as "sending"
+    const initialStatus: Record<string, { status: "idle" | "sending" | "success" | "error"; error?: string }> = {};
+    for (const t of pending) initialStatus[t.id] = { status: "sending" };
+    setSendStatus(prev => ({ ...prev, ...initialStatus }));
+
     const messages: Record<string, string> = {};
     for (const t of pending) messages[t.id] = t.message || "";
     try {
@@ -186,14 +192,28 @@ ${updated[i].platform}での投稿を拝見し、${productDesc.slice(0, 60)}${kw
       });
       const data = await res.json();
       setBulkResult({ sent: data.sent || 0, failed: data.failed || 0 });
-      // Mark sent targets
+
+      // Update per-target status from results
       if (data.results) {
+        const newStatus: Record<string, { status: "idle" | "sending" | "success" | "error"; error?: string }> = {};
+        for (const r of data.results as { targetId: string; status: string; error?: string }[]) {
+          newStatus[r.targetId] = r.status === "failed"
+            ? { status: "error", error: r.error || "送信失敗" }
+            : { status: "success" };
+        }
+        setSendStatus(prev => ({ ...prev, ...newStatus }));
         setTargets(prev => prev.map(t => {
           const r = data.results.find((x: { targetId: string; status: string }) => x.targetId === t.id);
           return r && r.status !== "failed" ? { ...t, status: "sent" as const } : t;
         }));
       }
-    } catch (e) { alert("送信エラーが発生しました"); }
+    } catch (e) {
+      // Mark all as error
+      const errStatus: Record<string, { status: "error"; error: string }> = {};
+      for (const t of pending) errStatus[t.id] = { status: "error", error: "ネットワークエラー" };
+      setSendStatus(prev => ({ ...prev, ...errStatus }));
+      alert("送信エラーが発生しました");
+    }
     setBulkSending(false);
   };
 
@@ -313,6 +333,22 @@ ${updated[i].platform}での投稿を拝見し、${productDesc.slice(0, 60)}${kw
                   }}>
                     {t.sendMethod === "email" ? `📧 ${t.email}` : t.sendMethod === "dm" ? `💬 DM` : "❌ 送信不可"}
                   </span>
+                  {/* Send status badge */}
+                  {sendStatus[t.id] && sendStatus[t.id].status !== "idle" && (
+                    <span style={{
+                      fontSize: "10px", padding: "3px 10px", borderRadius: "6px", fontWeight: 700,
+                      background: sendStatus[t.id].status === "success" ? "rgba(45,209,122,0.15)"
+                        : sendStatus[t.id].status === "error" ? "rgba(255,80,80,0.15)"
+                        : "rgba(255,214,10,0.15)",
+                      color: sendStatus[t.id].status === "success" ? "#2dd17a"
+                        : sendStatus[t.id].status === "error" ? "#ff5050"
+                        : "#ffd60a",
+                    }}>
+                      {sendStatus[t.id].status === "success" ? "✅ 送信済"
+                        : sendStatus[t.id].status === "error" ? `❌ ${sendStatus[t.id].error || "エラー"}`
+                        : "⏳ 送信中..."}
+                    </span>
+                  )}
                 </div>
 
                 {/* AI Reason */}

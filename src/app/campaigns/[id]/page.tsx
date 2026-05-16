@@ -689,23 +689,23 @@ export default function CampaignDetailPage() {
                           {isSelected && <span style={{ fontSize: "10px", color: "#000", fontWeight: 900 }}>✓</span>}
                         </div>
                         {t.platform === "google_maps" ? (
-                          <span style={{ fontSize: "10px", fontWeight: 900, padding: "2px 6px", borderRadius: "6px", background: "rgba(66,133,244,0.15)", color: "#4285f4", flexShrink: 0, whiteSpace: "nowrap" }}>🏢 企業</span>
+                          <span style={{ fontSize: "12px", fontWeight: 900, padding: "2px 6px", borderRadius: "6px", background: "rgba(66,133,244,0.15)", color: "#4285f4", flexShrink: 0, whiteSpace: "nowrap" }}>🏢 企業</span>
                         ) : (
                           <span style={{ background: ps.bg, color: ps.color, fontSize: "10px", fontWeight: 900, width: "22px", height: "22px", borderRadius: "6px", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{ps.label}</span>
                         )}
-                        <span style={{ fontSize: "14px", fontWeight: 700, color: "#f0efe8" }}>@{t.username}</span>
-                        <span style={{ fontSize: "10px", padding: "2px 8px", borderRadius: "5px", background: `${pi.color}12`, color: pi.color, fontWeight: 600, flexShrink: 0 }}>{pi.icon} {t.platform === "yahoo_qa" ? "Yahoo知恵袋" : t.platform.charAt(0).toUpperCase() + t.platform.slice(1)}</span>
+                        <span style={{ fontSize: "16px", fontWeight: 700, color: "#f0efe8" }}>@{t.username}</span>
+                        <span style={{ fontSize: "12px", padding: "2px 8px", borderRadius: "5px", background: `${pi.color}12`, color: pi.color, fontWeight: 600, flexShrink: 0 }}>{pi.icon} {t.platform === "yahoo_qa" ? "Yahoo知恵袋" : t.platform.charAt(0).toUpperCase() + t.platform.slice(1)}</span>
                         {(() => {
                           const snsDm = ["reddit","twitter","wantedly"];
                           const hasEmail = t.email && !t.email.startsWith("Twitter:") && !t.email.startsWith("DM:");
                           const isDmOnly = !hasEmail && snsDm.includes(t.platform);
-                          if (hasEmail) return <span style={{ fontSize: "10px", padding: "2px 8px", borderRadius: "5px", background: "rgba(45,209,122,0.12)", color: "#2dd17a", fontWeight: 600 }}>✉️ メール</span>;
-                          if (isDmOnly) return <span style={{ fontSize: "10px", padding: "2px 8px", borderRadius: "5px", background: "rgba(29,155,240,0.1)", color: "#1d9bf0", fontWeight: 600 }}>💬 DM可能</span>;
+                          if (hasEmail) return <span style={{ fontSize: "12px", padding: "2px 8px", borderRadius: "5px", background: "rgba(45,209,122,0.12)", color: "#2dd17a", fontWeight: 600 }}>✉️ メール</span>;
+                          if (isDmOnly) return <span style={{ fontSize: "12px", padding: "2px 8px", borderRadius: "5px", background: "rgba(29,155,240,0.1)", color: "#1d9bf0", fontWeight: 600 }}>💬 DM可能</span>;
                           return null;
                         })()}
-                        {t.estimated_role && <span style={{ fontSize: "10px", color: "rgba(240,239,232,0.3)" }}>{t.estimated_role}</span>}
+                        {t.estimated_role && <span style={{ fontSize: "12px", color: "rgba(240,239,232,0.3)" }}>{t.estimated_role}</span>}
                         {t.platform === "google_maps" && (t.website || t.contact_url) ? (
-                          <a href={t.website || t.contact_url || ""} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} style={{ marginLeft: "auto", fontSize: "11px", color: "#4285f4", textDecoration: "none", maxWidth: "160px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexShrink: 0 }}>
+                          <a href={t.website || t.contact_url || ""} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} style={{ marginLeft: "auto", fontSize: "13px", color: "#4285f4", textDecoration: "none", maxWidth: "160px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flexShrink: 0 }}>
                             🌐 {(t.website || t.contact_url || "").replace(/^https?:\/\/(www\.)?/, "").split("/")[0]}
                           </a>
                         ) : (
@@ -741,12 +741,12 @@ export default function CampaignDetailPage() {
 
                       {/* Action row */}
                       <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                        {t.post_content && <span style={{ fontSize: "11px", color: "rgba(240,239,232,0.25)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.post_content.slice(0, 80)}</span>}
+                        {t.post_content && <span style={{ fontSize: "13px", color: "rgba(240,239,232,0.25)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.post_content.slice(0, 80)}</span>}
                         {!t.post_content && <span style={{ flex: 1 }} />}
                         {!t.comment ? (
                           <button onClick={() => handleGenerateComment(t.id)} disabled={generatingIds.has(t.id)} style={{
                             background: "rgba(124,92,252,0.08)", border: "1px solid rgba(124,92,252,0.15)", borderRadius: "7px",
-                            padding: "4px 10px", fontSize: "10px", fontWeight: 600, color: "#7c5cfc",
+                            padding: "4px 10px", fontSize: "12px", fontWeight: 600, color: "#7c5cfc",
                             cursor: generatingIds.has(t.id) ? "wait" : "pointer", flexShrink: 0,
                           }}>
                             {generatingIds.has(t.id) ? "⏳" : "💬 コメント生成"}
@@ -754,7 +754,7 @@ export default function CampaignDetailPage() {
                         ) : (
                           <button onClick={() => { navigator.clipboard.writeText(t.comment!.content); setToast("📋 コピーしました"); setTimeout(() => setToast(""), 2000); }} style={{
                             background: "rgba(255,214,10,0.06)", border: "1px solid rgba(255,214,10,0.12)", borderRadius: "7px",
-                            padding: "4px 10px", fontSize: "10px", fontWeight: 600, color: "#ffd60a",
+                            padding: "4px 10px", fontSize: "12px", fontWeight: 600, color: "#ffd60a",
                             cursor: "pointer", flexShrink: 0,
                           }}>
                             📋 コメントをコピー
@@ -763,7 +763,7 @@ export default function CampaignDetailPage() {
                         {t.email && !t.email.startsWith("Twitter:") && (
                           <button onClick={() => handleDraftEmail(t)} disabled={draftingIds.has(t.id)} style={{
                             background: "rgba(45,209,122,0.08)", border: "1px solid rgba(45,209,122,0.15)", borderRadius: "7px",
-                            padding: "4px 10px", fontSize: "10px", fontWeight: 600, color: "#2dd17a",
+                            padding: "4px 10px", fontSize: "12px", fontWeight: 600, color: "#2dd17a",
                             cursor: draftingIds.has(t.id) ? "wait" : "pointer", flexShrink: 0,
                           }}>
                             {draftingIds.has(t.id) ? "⏳" : "📧 メール"}
@@ -774,7 +774,7 @@ export default function CampaignDetailPage() {
                           return siteUrl.startsWith("http") ? (
                             <button onClick={(e) => { e.stopPropagation(); handleSubmitForm(t); }} disabled={submittingFormIds.has(t.id)} style={{
                               background: "rgba(255,107,53,0.08)", border: "1px solid rgba(255,107,53,0.18)", borderRadius: "7px",
-                              padding: "4px 10px", fontSize: "10px", fontWeight: 600, color: "#ff6b35",
+                              padding: "4px 10px", fontSize: "12px", fontWeight: 600, color: "#ff6b35",
                               cursor: submittingFormIds.has(t.id) ? "wait" : "pointer", flexShrink: 0,
                             }}>
                               {submittingFormIds.has(t.id) ? "⏳" : "📨 フォーム送信"}
@@ -784,7 +784,7 @@ export default function CampaignDetailPage() {
                         {t.post_url && (
                           <a href={t.post_url} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} style={{
                             background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "7px",
-                            padding: "4px 8px", fontSize: "10px", color: "rgba(240,239,232,0.3)", textDecoration: "none", flexShrink: 0,
+                            padding: "4px 8px", fontSize: "12px", color: "rgba(240,239,232,0.3)", textDecoration: "none", flexShrink: 0,
                           }}>
                             🔗
                           </a>
@@ -795,8 +795,8 @@ export default function CampaignDetailPage() {
                       {t.comment ? (
                         <div style={{ marginTop: "8px", background: "rgba(255,214,10,0.03)", border: "1px solid rgba(255,214,10,0.08)", borderRadius: "8px", padding: "10px 12px" }}>
                           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "6px" }}>
-                            <span style={{ fontSize: "10px", fontWeight: 600, color: "rgba(255,214,10,0.6)" }}>{t.platform === "google_maps" ? "📧 ビジネスメール" : "💬 生成メッセージ"}</span>
-                            <button onClick={() => { navigator.clipboard.writeText(t.comment!.content); setToast("📋 コピーしました"); setTimeout(() => setToast(""), 2000); }} style={{ background: "transparent", border: "1px solid rgba(255,214,10,0.15)", borderRadius: "5px", padding: "2px 8px", fontSize: "10px", color: "rgba(255,214,10,0.6)", cursor: "pointer" }}>📋 コピー</button>
+                            <span style={{ fontSize: "12px", fontWeight: 600, color: "rgba(255,214,10,0.6)" }}>{t.platform === "google_maps" ? "📧 ビジネスメール" : "💬 生成メッセージ"}</span>
+                            <button onClick={() => { navigator.clipboard.writeText(t.comment!.content); setToast("📋 コピーしました"); setTimeout(() => setToast(""), 2000); }} style={{ background: "transparent", border: "1px solid rgba(255,214,10,0.15)", borderRadius: "5px", padding: "2px 8px", fontSize: "12px", color: "rgba(255,214,10,0.6)", cursor: "pointer" }}>📋 コピー</button>
                           </div>
                           <div style={{ fontSize: "11px", color: "rgba(240,239,232,0.65)", lineHeight: 1.7, whiteSpace: "pre-wrap", wordBreak: "break-all", minHeight: "100px" }}>
                             {t.comment.content}
@@ -805,7 +805,7 @@ export default function CampaignDetailPage() {
                       ) : t.platform === "google_maps" ? (
                         <div style={{ marginTop: "8px", background: "rgba(66,133,244,0.03)", border: "1px dashed rgba(66,133,244,0.15)", borderRadius: "8px", padding: "10px 12px" }}>
                           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "6px" }}>
-                            <span style={{ fontSize: "10px", fontWeight: 600, color: "rgba(66,133,244,0.6)" }}>🏢 ビジネスメールテンプレート</span>
+                            <span style={{ fontSize: "12px", fontWeight: 600, color: "rgba(66,133,244,0.6)" }}>🏢 ビジネスメールテンプレート</span>
                             <span style={{ fontSize: "9px", color: "rgba(240,239,232,0.25)" }}>「メール生成」でパーソナライズ</span>
                           </div>
                           <div style={{ fontSize: "11px", color: "rgba(240,239,232,0.25)", lineHeight: 1.7, whiteSpace: "pre-wrap", minHeight: "100px", fontStyle: "italic" }}>
