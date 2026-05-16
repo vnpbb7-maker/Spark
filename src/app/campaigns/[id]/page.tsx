@@ -802,28 +802,34 @@ export default function CampaignDetailPage() {
                             {t.comment.content}
                           </div>
                         </div>
-                       ) : t.platform === "google_maps" ? (() => {
-                          const senderName = typeof window !== "undefined" ? localStorage.getItem("spark_sender_name") || "[送信者名]" : "[送信者名]";
-                          const productUrl = typeof window !== "undefined" ? localStorage.getItem("spark_product_url") || "https://spark-ai.jp" : "https://spark-ai.jp";
-                          return (
-                            <div style={{ marginTop: "8px", background: "rgba(66,133,244,0.03)", border: "1px dashed rgba(66,133,244,0.15)", borderRadius: "8px", padding: "10px 12px" }}>
-                              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "6px" }}>
-                                <span style={{ fontSize: "12px", fontWeight: 600, color: "rgba(66,133,244,0.6)" }}>🏢 ビジネスメールテンプレート</span>
-                                <span style={{ fontSize: "9px", color: "rgba(240,239,232,0.25)" }}>「✉ ビジネスメール生成」でパーソナライズ</span>
-                              </div>
-                              <div style={{ fontSize: "14px", color: "rgba(240,239,232,0.35)", lineHeight: 1.8, whiteSpace: "pre-wrap" }}>
-                                {`${t.username} ご担当者様
+                        ) : t.platform === "google_maps" ? (() => {
+                           const savedName = typeof window !== "undefined" ? localStorage.getItem("spark_sender_name") || "" : "";
+                           const savedCompany = typeof window !== "undefined" ? localStorage.getItem("spark_company_name") || "" : "";
+                           const senderLine = savedName
+                             ? `${savedCompany ? savedCompany + "　" : ""}${savedName}と申します。`
+                             : `〇〇株式会社　〇〇と申します。（社名とお名前はダッシュボードの設定からご入力ください）`;
+                           return (
+                             <div style={{ marginTop: "8px", background: "rgba(66,133,244,0.03)", border: "1px dashed rgba(66,133,244,0.15)", borderRadius: "8px", padding: "10px 12px" }}>
+                               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "6px" }}>
+                                 <span style={{ fontSize: "12px", fontWeight: 600, color: "rgba(66,133,244,0.6)" }}>🏢 ビジネスメールテンプレート</span>
+                                 <span style={{ fontSize: "9px", color: "rgba(240,239,232,0.25)" }}>「✉ ビジネスメール生成」でパーソナライズ</span>
+                               </div>
+                               <div style={{ fontSize: "14px", color: "rgba(240,239,232,0.35)", lineHeight: 1.8, whiteSpace: "pre-wrap" }}>
+                                 {`${t.username} ご担当者様
 
-はじめまして、${senderName}と申します。
+はじめまして、${senderLine}
 この度は、弊社が提供するAI営業支援ツール「Spark AI」についてご案内させていただきたく、ご連絡いたしました。
 
 Spark AIは、URLを入力するだけでAIがターゲット企業を自動発見し、パーソナライズされたアウトリーチメッセージを生成・送信まで行うツールです。営業活動の効率化や新規顧客開拓にお役立ていただけると考えております。
 
-現在、βテスターとしてご協力いただける企業様を募集しております。無料でご利用いただけますので、ぜひ一度 ${productUrl} をご覧いただけますと幸いです。`}
-                              </div>
-                            </div>
-                          );
-                        })() : null}
+現在、βテスターとしてご協力いただける企業様を募集しております。無料でご利用いただけますので、ぜひ一度 https://spark-ai.jp をご覧いただけますと幸いです。
+
+ご多忙の折、誠に恐れ入りますが、ご検討いただけますと幸いです。
+どうぞよろしくお願いいたします。`}
+                               </div>
+                             </div>
+                           );
+                         })() : null}
                     </div>
                   );
                 })}
