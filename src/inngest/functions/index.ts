@@ -1151,62 +1151,49 @@ JSONのみ返してください: ["query1", "query2", "query3", "query4", "query
             const looksLikeCompany = /株式会社|合同会社|公式|サービス|ソリューション|press|release/.test(enrichedContent.slice(0, 300));
             const isPersonalPlatform = ["note", "qiita", "zenn", "twitter", "reddit", "wantedly", "connpass"].includes(t.platform);
 
-            // B2B scoring prompt for google_maps; standard individual scoring for others
-            const scorePromptContent = isGoogleMaps
-              ? `あなたはB2B営業の専門家です。以下の企業情報を見て、このプロダクトの見込み顧客として適切かを評価してください。
+            // Signal-strength scoring prompt — unified for B2B and individual
+            const scorePromptContent = `あなたはターゲット精度評価の専門家です。
+以下のコンテンツを読み、この投稿者・企業が「${scoreProdDesc}」を今まさに必要としている確率を評価してください。
 
-プロダクト: ${scoreProdDesc}
-企業名: ${t.username}
-ウェブサイト: ${(t.profile_url as string) || ""}
-住所・情報: ${enrichedContent.slice(0, 400)}
+【コンテンツ】
+${enrichedContent.slice(0, 500)}
 
-Q1. この企業はプロダクトのターゲット業種・規模か？ (0-10)
-  10: ターゲット業種で規模も適切
-  7: 関連業種
-  3: 間接的に関連
-  0: 全く関係ない
+【URL / 情報源】
+${(t.profile_url as string) || t.platform}
+${isGoogleMaps ? `【企業名】${t.username}` : `【投稿者】${t.username} (${t.platform})`}
+${looksLikeCompany && !isGoogleMaps ? "⚠️ 企業・法人アカウントの可能性あり" : ""}
 
-Q2. ウェブサイトやビジネス内容からプロダクトを必要としていそうか？ (0-10)
-  10: 明らかにニーズがある
-  7: おそらくニーズあり
-  3: 可能性あり
-  0: ニーズなし
+以下の基準でSからCの4段階で評価してください：
 
-Q3. 連絡先（ウェブサイト/メール）があり接触可能か？ (0-5)
-  5: ウェブサイト+メールあり
-  3: どちらかある
-  0: なし
+S（スコア90-100）: 課題を能動的に発信・解決策を探している
+- 「困ってる」「探してる」「どうすれば」「おすすめ教えて」などの表現がある
+- 具体的な痛みポイントが明記されている
+- 質問投稿・相談投稿である
 
-JSONのみ返してください:
-{"q1_score":0-10,"q2_score":0-10,"q3_score":0-5,"reason":"なぜこの評価か日本語1-2文","estimated_age":"不明","estimated_role":"業種"}`
-              : `βテスター候補を厳密に評価してください。${looksLikeCompany ? "\n⚠️ この投稿は企業・法人の可能性が高いです。個人でない場合はq3=0にしてください。" : ""}
+A（スコア70-89）: 関連ツールを比較・検討している
+- 競合ツールを試用・レビューしている
+- 同カテゴリの複数ツールを比較している
+- 導入を具体的に検討している様子がある
 
-プロダクト: ${scoreProdDesc}
-投稿者: ${t.username} (${t.platform})
-投稿内容: ${enrichedContent.slice(0, 500)}
+B（スコア50-69）: 課題領域に関心があるが需要は不明
+- テーマに関する情報収集をしている
+- 関連する話題を投稿しているが課題は不明確
 
-Q1. 課題の深さ (0-10):
-  0: プロダクトと全く無関係
-  2-3: 関連分野だが課題を抱えている証拠なし（ノウハウ記事、一般論）
-  5-6: 課題に言及しているが解決策を探していない
-  8-9: 「困っている」「探している」「やりたい」と明確に表現
-  10: 「今すぐ解決したい」「ツールを探している」と緊急性がある
+C（スコア0-49）: 需要シグナルなし
+- 記者・研究者・競合他社と思われる
+- キーワードが含まれるだけで課題感がない
+- 解説記事・まとめ記事の筆者
 
-Q2. 試す意欲 (0-10):
-  0: 意欲が全く読み取れない
-  2-3: 既存ツールに満足、保守的
-  5-6: 新しい技術への関心はあるが積極的ではない
-  8-9: 「試したい」「使ってみたい」と表現
-  10: βテストや新サービスに積極的に参加する人
+以下のJSON形式のみで返答してください（他の文字は一切不要）：
+{
+  "tier": "S" | "A" | "B" | "C",
+  "score": number,
+  "signal": "需要シグナルの具体的な根拠を1文で",
+  "recommended": true | false,
+  "estimated_role": "職種または業種"
+}
 
-Q3. 接触可能性 (0-5):
-  0: 企業アカウント/ボット/連絡不可${!isPersonalPlatform ? " ← 個人プラットフォームではないため注意" : ""}
-  1-2: アカウントはあるが連絡手段不明
-  3-4: 個人アカウントでアクティブ
-  5: SNSリンクやメールが公開されている
-
-JSONのみ:
-{"q1_score":0,"q2_score":0,"q3_score":0,"reason":"日本語1文","estimated_age":"20代/30代/40代/不明","estimated_role":"職種"}`;
+recommendedはS・Aの場合のみtrueにしてください。`;
 
             const scoreResponse = await fetch("https://api.anthropic.com/v1/messages", {
               method: "POST",
@@ -1219,12 +1206,13 @@ JSONのみ:
                 model: "claude-haiku-4-5-20251001",
                 max_tokens: 300,
                 temperature: 0.3,
-                system: `You must respond with valid JSON only. No markdown, no explanation. Start with { and end with }.
+                 system: `You must respond with valid JSON only. No markdown, no explanation. Start with { and end with }.
 重要ルール:
-- スコアは必ず差をつけてください。全員に同じスコアをつけることは禁止です。
-- 企業ブログや会社の公式記事の場合、q3_scoreは必ず0にしてください。
-- 「困っている」「探している」の直接的表現がない限り、q1_scoreを7以上にしないでください。
-- 一般的な技術記事やノウハウ共有は q1=3, q2=3 程度です。`,
+- tierは必ずS/A/B/Cのいずれかにしてください。
+- scoreはtierに対応した範囲内（S:90-100, A:70-89, B:50-69, C:0-49）にしてください。
+- recommendedはS・Aの場合のみtrueにしてください。
+- 「困っている」「探している」の直接的表現がない限りSにしないでください。
+- 一般的な技術記事・PR記事・公式アカウントはCにしてください。`,
                 messages: [{ role: "user", content: scorePromptContent }],
               }),
             });
@@ -1237,42 +1225,33 @@ JSONのみ:
 
             if (scoreMatch) {
               const score = JSON.parse(scoreMatch[0]);
-              const q1 = Math.min(10, Math.max(0, score.q1_score || 0));
-              const q2 = Math.min(10, Math.max(0, score.q2_score || 0));
-              const q3 = Math.min(5, Math.max(0, score.q3_score || 0));
-              const totalScore = Math.min(100, Math.max(0, (q1 + q2 + q3) * 4));
+              const tier = (score.tier || "C") as string;
+              const totalScore = Math.min(100, Math.max(0, typeof score.score === "number" ? score.score : 30));
+              const signal = (score.signal || "").slice(0, 200);
+              const recommended = score.recommended === true;
 
-              const priority = isGoogleMaps
-                ? (totalScore >= 70 ? "S" : totalScore >= 50 ? "A" : totalScore >= 30 ? "B" : "C")
-                : (totalScore >= 65 ? "S" : totalScore >= 50 ? "A" : totalScore >= 35 ? "B" : "C");
+              // Map tier to priority field (already used in UI)
+              const priority = tier as "S" | "A" | "B" | "C";
 
-              const updateData = {
-                match_score: totalScore,
-                q1_score: q1,
-                q2_score: q2,
-                q3_score: q3,
-                relevance_score: q1,
-                intent_score: q2,
-                influence_score: q3,
-                accessibility_score: q3,
-                priority,
-                ai_reason: (score.reason || "").slice(0, 200),
-                estimated_age: score.estimated_age || "不明",
-                estimated_role: (score.estimated_role || "不明").slice(0, 50),
-                status: "scored",
-              };
-
-              console.log(`[scoring] Saving scores for ${t.username}:`, JSON.stringify(updateData));
-              const { error: updateErr } = await getSupabase().from("targets").update(updateData).eq("id", t.id);
-              if (updateErr) {
-                console.error(`[scoring] DB update error for ${t.username}:`, updateErr);
+              // Filter: only save S and A tier targets (skip B and C)
+              if (!recommended) {
+                console.log(`[scoring] ⏭️ ${t.username}: ${tier} (${totalScore}%) — not recommended, skipping save`);
+                await getSupabase().from("targets").update({ priority, match_score: totalScore, ai_reason: signal, status: "scored" }).eq("id", t.id);
               } else {
-                const belowThreshold = totalScore < minMatchScore;
-                console.log(`[scoring] ✅ ${t.username}: ${priority} (${totalScore}%) [Q1:${q1} Q2:${q2} Q3:${q3}]${belowThreshold ? ` (below ${minMatchScore}%)` : ""}`);
+                const updateData = {
+                  match_score: totalScore,
+                  priority,
+                  ai_reason: signal,
+                  estimated_role: (score.estimated_role || "不明").slice(0, 50),
+                  status: "scored",
+                };
+                console.log(`[scoring] ✅ ${t.username}: ${tier} (${totalScore}%) — ${signal.slice(0, 60)}`);
+                const { error: updateErr } = await getSupabase().from("targets").update(updateData).eq("id", t.id);
+                if (updateErr) console.error(`[scoring] DB update error for ${t.username}:`, updateErr);
               }
             } else {
               console.log(`[scoring] No valid JSON in response for ${t.username}, setting C`);
-              await getSupabase().from("targets").update({ priority: "C", status: "scored", q1_score: 0, q2_score: 0, q3_score: 0, relevance_score: 0, intent_score: 0, influence_score: 0, accessibility_score: 0 }).eq("id", t.id);
+              await getSupabase().from("targets").update({ priority: "C", status: "scored", match_score: 0 }).eq("id", t.id);
             }
           } catch (scoreErr) {
             console.error(`[scoring] Error for ${t.username}:`, scoreErr);
