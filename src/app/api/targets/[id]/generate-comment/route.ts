@@ -27,16 +27,20 @@ export async function POST(
 
     const campaign = target.campaigns;
 
-    // Check if comment already exists
-    const { data: existing } = await supabase
-      .from("comments")
-      .select("id, content, approach")
-      .eq("target_id", targetId)
-      .limit(1)
-      .maybeSingle();
+    const forceRegenerate = body.force === true;
 
-    if (existing) {
-      return NextResponse.json({ comment: existing });
+    // Check if comment already exists (skip if force=true)
+    if (!forceRegenerate) {
+      const { data: existing } = await supabase
+        .from("comments")
+        .select("id, content, approach")
+        .eq("target_id", targetId)
+        .limit(1)
+        .maybeSingle();
+
+      if (existing) {
+        return NextResponse.json({ comment: existing, generatedMessage: existing.content });
+      }
     }
 
     const requiredKeywords = campaign?.required_keywords || "";
@@ -154,7 +158,7 @@ JSONのみ返してください：
       return NextResponse.json({ error: "保存に失敗しました" }, { status: 500 });
     }
 
-    return NextResponse.json({ comment: saved });
+    return NextResponse.json({ comment: saved, generatedMessage: finalContent });
   } catch (error) {
     console.error("Generate comment error:", error);
     return NextResponse.json({ error: "エラーが発生しました" }, { status: 500 });

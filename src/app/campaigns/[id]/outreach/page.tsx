@@ -122,16 +122,19 @@ export default function OutreachPage() {
     const senderEmail = typeof window !== "undefined" ? localStorage.getItem("spark_sender_email") || "" : "";
     const updated = [...targets];
     for (let i = 0; i < updated.length; i++) {
-      if (updated[i].message) continue;
       try {
+        const reqBody = { sender_name: sn, sender_email: senderEmail, product_url: pu, keywords: kw, force: true };
+        console.log("[generate] target:", updated[i].username, "body:", reqBody);
         const res = await fetch(`/api/targets/${updated[i].id}/generate-comment`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sender_name: sn, sender_email: senderEmail, product_url: pu, keywords: kw }),
+          body: JSON.stringify(reqBody),
         });
         if (res.ok) {
           const data = await res.json();
-          updated[i].message = data.comment?.content || data.comment || "";
+          console.log("[generate] response:", data);
+          // Prefer flat generatedMessage string, fall back to comment.content
+          updated[i].message = data.generatedMessage || data.comment?.content || (typeof data.comment === "string" ? data.comment : "") || "";
         }
       } catch { /* keep empty, user can retry */ }
       if (!updated[i].message) {
