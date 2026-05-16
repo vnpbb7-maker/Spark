@@ -632,7 +632,7 @@ export default function CampaignDetailPage() {
           </div>
 
           {/* Right content */}
-          <div>
+          <div style={{ minWidth: 0 }}>
             {/* Selection bar */}
             <div style={{ display: "flex", gap: "6px", marginBottom: "12px", alignItems: "center" }}>
               <button onClick={selectAll} style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "7px", padding: "5px 12px", fontSize: "11px", fontWeight: 600, color: "rgba(240,239,232,0.5)", cursor: "pointer" }}>全選択</button>
@@ -742,7 +742,7 @@ export default function CampaignDetailPage() {
                       </div>}
 
                       {/* Action row */}
-                      <div className="tc-row" style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0, overflow: "hidden" }}>
+                      <div className="tc-row" style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0, flexWrap: "wrap" }}>
                         {t.post_content && <span style={{ fontSize: "13px", color: "rgba(240,239,232,0.25)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{t.post_content.slice(0, 80)}</span>}
                         {!t.post_content && <span style={{ flex: 1 }} />}
                         {!t.comment ? (
