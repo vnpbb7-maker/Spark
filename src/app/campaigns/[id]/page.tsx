@@ -114,7 +114,7 @@ export default function CampaignDetailPage() {
     const entries: { log: LogEntry; time: string }[] = [];
     existingComments?.forEach((c) => {
       const ts = new Date(c.created_at).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-      entries.push({ log: { id: `log-c-${c.id}`, icon: "✍️", text: `コメント生成: ${c.platform}`, color: "#ffd60a", timestamp: ts, type: "generate" }, time: c.created_at });
+      entries.push({ log: { id: `log-c-${c.id}`, icon: "✍️", text: `✉ ビジネスメール生成: ${c.platform}`, color: "#ffd60a", timestamp: ts, type: "generate" }, time: c.created_at });
     });
     existingTargets?.forEach((t) => {
       // Only show scored targets in logs (skip pending/unscored)
@@ -241,7 +241,7 @@ export default function CampaignDetailPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sender_name: sn, sender_email: se }),
       });
-      if (!res.ok) { setToast("❌ コメント生成に失敗"); setTimeout(() => setToast(""), 3000); return; }
+      if (!res.ok) { setToast("❌ ✉ ビジネスメール生成に失敗"); setTimeout(() => setToast(""), 3000); return; }
       const data = await res.json();
       setTargets((prev) => prev.map((t) => t.id === targetId ? { ...t, comment: { id: data.comment.id, content: data.comment.content, approach: data.comment.approach } } : t));
       setExpanded((prev) => { const n = new Set(prev); n.add(targetId); return n; });
@@ -609,7 +609,7 @@ export default function CampaignDetailPage() {
                 borderRadius: "10px", padding: "9px 10px", fontSize: "12px", fontWeight: 700,
                 color: "#7c5cfc", cursor: bulkGenerating ? "wait" : "pointer", opacity: bulkGenerating ? 0.6 : 1,
               }}>
-                {bulkGenerating ? "⏳ 生成中..." : "💬 一括コメント生成"}
+                {bulkGenerating ? "⏳ 生成中..." : "✉ 一括メール生成"}
               </button>
               <button onClick={handleBulkSubmit} style={{
                 width: "100%", background: "rgba(255,107,53,0.1)", border: "1px solid rgba(255,107,53,0.25)",
@@ -749,7 +749,7 @@ export default function CampaignDetailPage() {
                             padding: "4px 10px", fontSize: "12px", fontWeight: 600, color: "#7c5cfc",
                             cursor: generatingIds.has(t.id) ? "wait" : "pointer", flexShrink: 0,
                           }}>
-                            {generatingIds.has(t.id) ? "⏳" : "💬 コメント生成"}
+                            {generatingIds.has(t.id) ? "⏳" : "✉ ビジネスメール生成"}
                           </button>
                         ) : (
                           <button onClick={() => { navigator.clipboard.writeText(t.comment!.content); setToast("📋 コピーしました"); setTimeout(() => setToast(""), 2000); }} style={{
