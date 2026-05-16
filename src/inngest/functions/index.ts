@@ -971,6 +971,144 @@ JSONのみ返してください: ["query1", "query2", "query3", "query4", "query
       } // end GOOGLE_PLACES_API_KEY check
     }
 
+    // ─── ProductHunt competitor comment discovery ───
+    if (!limitReached && process.env.TAVILY_API_KEY && process.env.ANTHROPIC_API_KEY) {
+      try {
+        console.log("[ph_competitor] Starting ProductHunt competitor discovery");
+        // Step 1: Extract competitor names via Claude
+        let competitorNames: string[] = [];
+        const compRes = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-api-key": process.env.ANTHROPIC_API_KEY!, "anthropic-version": "2023-06-01" },
+          body: JSON.stringify({
+            model: "claude-haiku-4-5-20251001", max_tokens: 150,
+            messages: [{ role: "user", content: `以下のプロダクト説明から、競合または類似ツールの名前を2〜3つ英語で抽出してください。\nプロダクト: ${productDescription.slice(0, 200)}\nJSONのみ返してください: ["CompetitorA", "CompetitorB"]` }],
+          }),
+          signal: AbortSignal.timeout(8000),
+        });
+        if (compRes.ok) {
+          const compData = await compRes.json();
+          const raw = (compData.content?.[0]?.text || "").trim();
+          const m = raw.match(/\[[\s\S]*\]/);
+          if (m) competitorNames = JSON.parse(m[0]).filter((n: unknown) => typeof n === "string" && n.trim());
+        }
+        if (competitorNames.length === 0) competitorNames = ["Apollo.io", "Phantombuster"];
+        console.log("[ph_competitor] Competitors:", competitorNames);
+
+        // Step 2: Search ProductHunt for dissatisfied users per competitor
+        for (const competitor of competitorNames.slice(0, 3)) {
+          if (limitReached || insertedTargets.length >= remaining) break;
+          const phQuery = `site:producthunt.com "${competitor}" (expensive OR alternative OR "wish it had" OR "looking for" OR missing)`;
+          const phRes = await fetch("https://api.tavily.com/search", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${process.env.TAVILY_API_KEY}` },
+            body: JSON.stringify({ query: phQuery, search_depth: "advanced", max_results: 8, include_answer: false, include_raw_content: false }),
+            signal: AbortSignal.timeout(12000),
+          });
+          if (!phRes.ok) continue;
+          const phData = await phRes.json();
+          const phResults = filterFreshResults((phData.results || []) as Record<string, unknown>[], sixMonthsAgo);
+          for (const result of phResults) {
+            if (insertedTargets.length >= remaining) { limitReached = true; break; }
+            const url = (result.url as string) || "";
+            const content = ((result.content as string) || "").slice(0, 500);
+            // Extract username from PH URL pattern /posts/<product>?comment_id=xxx or author name
+            const usernameMatch = url.match(/producthunt\.com\/posts\/([^/?#]+)/) || content.match(/@([a-zA-Z0-9_]+)/);
+            const username = usernameMatch ? usernameMatch[1].slice(0, 50) : `ph_${competitor.replace(/\s/g, "_").toLowerCase()}`;
+            const dedupKey = `producthunt_competitor::${url}`;
+            if (dedupSet.has(dedupKey)) continue;
+            dedupSet.add(dedupKey);
+            const { error: phInsertErr } = await getSupabase().from("targets").insert({
+              campaign_id: campaignId, platform: "producthunt_competitor",
+              username, profile_url: url, post_url: url,
+              post_content: `[${competitor}代替ユーザー] ${content}`.slice(0, 500),
+              match_score: 65, priority: "A", status: "pending",
+              match_reason: `ProductHunt: ${competitor}からの乗り換え候補`,
+            });
+            if (!phInsertErr) { insertedTargets.push(username); console.log(`[ph_competitor] ✅ ${username} (competitor: ${competitor})`); }
+          }
+        }
+      } catch (phErr) { console.error("[ph_competitor] error:", phErr); }
+    }
+
+    // ─── Google Maps competitor review discovery ───
+    if (!limitReached && process.env.TAVILY_API_KEY && process.env.ANTHROPIC_API_KEY) {
+      try {
+        console.log("[maps_review] Starting competitor review discovery");
+        // Step 1: Extract category keywords via Claude
+        let categoryKeywords: string[] = [];
+        const catRes = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-api-key": process.env.ANTHROPIC_API_KEY!, "anthropic-version": "2023-06-01" },
+          body: JSON.stringify({
+            model: "claude-haiku-4-5-20251001", max_tokens: 120,
+            messages: [{ role: "user", content: `以下のプロダクト説明から、同じカテゴリの競合サービス会社をGoogleで探すための業種キーワードを2〜3つ日本語で抽出してください。\nプロダクト: ${productDescription.slice(0, 200)}\nJSONのみ: ["キーワード1", "キーワード2"]` }],
+          }),
+          signal: AbortSignal.timeout(8000),
+        });
+        if (catRes.ok) {
+          const catData = await catRes.json();
+          const raw = (catData.content?.[0]?.text || "").trim();
+          const m = raw.match(/\[[\s\S]*\]/);
+          if (m) categoryKeywords = JSON.parse(m[0]).filter((k: unknown) => typeof k === "string" && k.trim());
+        }
+        if (categoryKeywords.length === 0) categoryKeywords = ["マーケティング支援会社", "営業代行"];
+        console.log("[maps_review] Category keywords:", categoryKeywords);
+
+        // Step 2: For each category, search for competitor negative reviews via Tavily
+        for (const keyword of categoryKeywords.slice(0, 2)) {
+          if (limitReached || insertedTargets.length >= remaining) break;
+          const reviewQuery = `${keyword} 評判 OR レビュー (高い OR 効果なし OR 解約 OR 乗り換え OR おすすめ)`;
+          const rvRes = await fetch("https://api.tavily.com/search", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${process.env.TAVILY_API_KEY}` },
+            body: JSON.stringify({ query: reviewQuery, search_depth: "basic", max_results: 5, include_answer: false, include_raw_content: false }),
+            signal: AbortSignal.timeout(12000),
+          });
+          if (!rvRes.ok) continue;
+          const rvData = await rvRes.json();
+          const rvResults = filterFreshResults((rvData.results || []) as Record<string, unknown>[], sixMonthsAgo);
+          for (const result of rvResults) {
+            if (insertedTargets.length >= remaining) { limitReached = true; break; }
+            const url = (result.url as string) || "";
+            const content = ((result.content as string) || "").slice(0, 500);
+            const title = (result.title as string) || "";
+            // Use title or domain as company name
+            const domainMatch = url.match(/https?:\/\/(?:www\.)?([^/?#]+)/);
+            const username = title.slice(0, 40) || (domainMatch ? domainMatch[1] : `review_${keyword.slice(0,10)}`);
+            const dedupKey = `google_maps_review::${url}`;
+            if (dedupSet.has(dedupKey)) continue;
+            dedupSet.add(dedupKey);
+
+            // Try Hunter.io for email if domain found
+            let email = "";
+            if (domainMatch && process.env.HUNTER_API_KEY) {
+              try {
+                const domain = domainMatch[1].replace("www.", "");
+                const hRes = await fetch(`https://api.hunter.io/v2/domain-search?domain=${domain}&limit=1&api_key=${process.env.HUNTER_API_KEY}`, { signal: AbortSignal.timeout(4000) });
+                if (hRes.ok) {
+                  const hData = await hRes.json();
+                  const emails = (hData.data?.emails || []) as Array<{ value: string }>;
+                  if (emails.length > 0) email = emails[0].value;
+                }
+              } catch { /* skip */ }
+            }
+
+            const { error: rvInsertErr } = await getSupabase().from("targets").insert({
+              campaign_id: campaignId, platform: "google_maps_review",
+              username: username.slice(0, 80), profile_url: url, post_url: url,
+              post_content: `[競合不満レビュー: ${keyword}] ${content}`.slice(0, 500),
+              match_score: 70, priority: "A", status: "pending",
+              match_reason: `競合サービス不満: ${keyword}`,
+              ai_reason: "competitor_dissatisfied",
+              ...(email ? { email } : {}),
+            });
+            if (!rvInsertErr) { insertedTargets.push(username.slice(0, 80)); console.log(`[maps_review] ✅ ${username} (keyword: ${keyword})`); }
+          }
+        }
+      } catch (rvErr) { console.error("[maps_review] error:", rvErr); }
+    }
+
     console.log(`[discover] Phase 2 complete: ${insertedTargets.length} targets inserted`);
     const discoveryResult = { targetsFound: insertedTargets.length };
 
