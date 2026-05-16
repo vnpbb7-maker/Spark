@@ -282,7 +282,8 @@ function buildMultiPlatformQueries(keyword: string, _language: string = ""): { q
   queries.push({ query: `site:twitter.com OR site:x.com ${keyword} (${pain1} OR ${disc1}) -is:retweet`, targetPlatform: "twitter" });
 
   // note — pain signal queries
-  queries.push({ query: `site:note.com ${keyword} ${pain1} OR ${pain2} ${exclude}`, targetPlatform: "note" });
+  // Noteは高品質リードが少ないため発見対象から除外
+  // queries.push({ query: `site:note.com ${keyword} ${pain1} OR ${pain2} ${exclude}`, targetPlatform: "note" });
 
   // Zenn — discovery + action
   queries.push({ query: `site:zenn.dev ${keyword} ${disc1} OR ${action1}`, targetPlatform: "zenn" });
@@ -1344,11 +1345,17 @@ C（スコア0-49）: 需要シグナルなし
 {
   "tier": "S" | "A" | "B" | "C",
   "score": number,
+  "q1_score": number,
+  "q2_score": number,
+  "q3_score": number,
   "signal": "需要シグナルの具体的な根拠を1文で",
   "recommended": true | false,
   "estimated_role": "職種または業種"
 }
 
+q1_score（課題の深さ 0-10）: 具体的な痛みポイントの明確さ
+q2_score（試す意欲 0-10）: ツール導入・試用への積極性
+q3_score（接触可能性 0-5）: DM・メール・フォームで連絡できる可能性
 recommendedはS・Aの場合のみtrueにしてください。`;
 
             const scoreResponse = await fetch("https://api.anthropic.com/v1/messages", {
@@ -1379,30 +1386,45 @@ recommendedはS・Aの場合のみtrueにしてください。`;
 
             console.log(`[scoring] Raw response for ${t.username}:`, rawScoreText.slice(0, 200));
 
+            let parsedScore: Record<string, unknown> | null = null;
             if (scoreMatch) {
-              const score = JSON.parse(scoreMatch[0]);
-              const tier = (score.tier || "C") as string;
+              try {
+                parsedScore = JSON.parse(scoreMatch[0]);
+              } catch (parseErr) {
+                console.error(`[scoring] JSON parse failed for ${t.username}:`, parseErr, "raw:", rawScoreText.slice(0, 200));
+              }
+            }
+
+            if (parsedScore) {
+              const score = parsedScore;
+              const tier = (typeof score.tier === "string" && ["S","A","B","C"].includes(score.tier) ? score.tier : "C") as "S"|"A"|"B"|"C";
               const totalScore = Math.min(100, Math.max(0, typeof score.score === "number" ? score.score : 30));
-              const signal = (score.signal || "").slice(0, 200);
+              const signal = (typeof score.signal === "string" ? score.signal : "").slice(0, 200);
               const recommended = score.recommended === true;
+              const q1 = Math.min(10, Math.max(0, typeof score.q1_score === "number" ? score.q1_score : 0));
+              const q2 = Math.min(10, Math.max(0, typeof score.q2_score === "number" ? score.q2_score : 0));
+              const q3 = Math.min(5,  Math.max(0, typeof score.q3_score === "number" ? score.q3_score : 0));
+              const priority = tier;
 
-              // Map tier to priority field (already used in UI)
-              const priority = tier as "S" | "A" | "B" | "C";
+              const baseUpdate = {
+                match_score: totalScore,
+                priority,
+                ai_reason: signal,
+                relevance_score: q1,
+                q1_score: q1,
+                q2_score: q2,
+                q3_score: q3,
+                estimated_role: (typeof score.estimated_role === "string" ? score.estimated_role : "不明").slice(0, 50),
+                status: "scored",
+              };
 
-              // Filter: only save S and A tier targets (skip B and C)
               if (!recommended) {
-                console.log(`[scoring] ⏭️ ${t.username}: ${tier} (${totalScore}%) — not recommended, skipping save`);
-                await getSupabase().from("targets").update({ priority, match_score: totalScore, ai_reason: signal, status: "scored" }).eq("id", t.id);
+                console.log(`[scoring] ⏭️ ${t.username}: ${tier} (${totalScore}% q1=${q1} q2=${q2} q3=${q3}) — not recommended`);
+                const { error: uErr } = await getSupabase().from("targets").update(baseUpdate).eq("id", t.id);
+                if (uErr) console.error(`[scoring] DB update error (non-recommended) for ${t.username}:`, uErr);
               } else {
-                const updateData = {
-                  match_score: totalScore,
-                  priority,
-                  ai_reason: signal,
-                  estimated_role: (score.estimated_role || "不明").slice(0, 50),
-                  status: "scored",
-                };
-                console.log(`[scoring] ✅ ${t.username}: ${tier} (${totalScore}%) — ${signal.slice(0, 60)}`);
-                const { error: updateErr } = await getSupabase().from("targets").update(updateData).eq("id", t.id);
+                console.log(`[scoring] ✅ ${t.username}: ${tier} (${totalScore}% q1=${q1} q2=${q2} q3=${q3}) — ${signal.slice(0, 60)}`);
+                const { error: updateErr } = await getSupabase().from("targets").update(baseUpdate).eq("id", t.id);
                 if (updateErr) console.error(`[scoring] DB update error for ${t.username}:`, updateErr);
               }
             } else {
