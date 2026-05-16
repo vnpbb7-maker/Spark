@@ -668,7 +668,7 @@ export default function CampaignDetailPage() {
                 )}
               </div>
             ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px", minWidth: 0, overflow: "hidden" }}>
                 {visibleTargets.map((t) => {
                   const pi = PLATFORM_ICONS[t.platform] || { icon: "?", color: "#888" };
                   const ps = PRIORITY_STYLE[t.priority || "C"] || PRIORITY_STYLE.C;
@@ -679,9 +679,10 @@ export default function CampaignDetailPage() {
                       background: isSelected ? "rgba(255,214,0,0.03)" : "#13132a",
                       border: `1px solid ${isSelected ? "rgba(255,214,0,0.12)" : "rgba(255,255,255,0.06)"}`,
                       borderRadius: "14px", padding: "16px 18px", transition: "all 0.15s",
+                      overflow: "hidden", minWidth: 0, width: "100%",
                     }}>
                       {/* Header row */}
-                      <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "10px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "10px", minWidth: 0, overflow: "hidden" }}>
                         <div onClick={() => toggleSelect(t.id)} style={{
                           width: "18px", height: "18px", borderRadius: "5px", flexShrink: 0,
                           border: `2px solid ${isSelected ? "#ffd60a" : "rgba(255,255,255,0.12)"}`,
@@ -695,7 +696,7 @@ export default function CampaignDetailPage() {
                         ) : (
                           <span style={{ background: ps.bg, color: ps.color, fontSize: "10px", fontWeight: 900, width: "22px", height: "22px", borderRadius: "6px", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{ps.label}</span>
                         )}
-                        <span style={{ fontSize: "16px", fontWeight: 700, color: "#f0efe8" }}>@{t.username}</span>
+                        <span style={{ fontSize: "16px", fontWeight: 700, color: "#f0efe8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0, maxWidth: "200px", flexShrink: 1 }}>@{t.username}</span>
                         <span style={{ fontSize: "12px", padding: "2px 8px", borderRadius: "5px", background: `${pi.color}12`, color: pi.color, fontWeight: 600, flexShrink: 0 }}>{pi.icon} {t.platform === "yahoo_qa" ? "Yahoo知恵袋" : t.platform.charAt(0).toUpperCase() + t.platform.slice(1)}</span>
                         {(() => {
                           const snsDm = ["reddit","twitter","wantedly"];
@@ -718,7 +719,7 @@ export default function CampaignDetailPage() {
                       {/* AI reason — always visible, prominent */}
                       {(t.ai_reason || t.match_reason) && (
                         <div style={{ background: t.platform === "google_maps" ? "rgba(66,133,244,0.06)" : "rgba(255,107,53,0.06)", border: `1px solid ${t.platform === "google_maps" ? "rgba(66,133,244,0.15)" : "rgba(255,107,53,0.12)"}`, borderRadius: "8px", padding: "8px 12px", marginBottom: "10px" }}>
-                          <span style={{ fontSize: "13px", color: t.platform === "google_maps" ? "rgba(120,180,255,0.85)" : "rgba(240,200,160,0.85)", lineHeight: 1.6, display: "block" }}>
+                          <span style={{ fontSize: "13px", color: t.platform === "google_maps" ? "rgba(120,180,255,0.85)" : "rgba(240,200,160,0.85)", lineHeight: 1.6, display: "block", wordBreak: "break-word", overflowWrap: "break-word" }}>
                             {t.platform === "google_maps" ? "🏢 " : "💡 "}{t.ai_reason || t.match_reason}
                           </span>
                         </div>
@@ -742,8 +743,8 @@ export default function CampaignDetailPage() {
                       </div>}
 
                       {/* Action row */}
-                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                        {t.post_content && <span style={{ fontSize: "13px", color: "rgba(240,239,232,0.25)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.post_content.slice(0, 80)}</span>}
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0, overflow: "hidden" }}>
+                        {t.post_content && <span style={{ fontSize: "13px", color: "rgba(240,239,232,0.25)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{t.post_content.slice(0, 80)}</span>}
                         {!t.post_content && <span style={{ flex: 1 }} />}
                         {!t.comment ? (
                           <button onClick={() => handleGenerateComment(t.id)} disabled={generatingIds.has(t.id)} style={{
@@ -816,7 +817,7 @@ export default function CampaignDetailPage() {
                                  <span style={{ fontSize: "12px", fontWeight: 600, color: "rgba(66,133,244,0.6)" }}>🏢 ビジネスメールテンプレート</span>
                                  <span style={{ fontSize: "9px", color: "rgba(240,239,232,0.25)" }}>「✉ ビジネスメール生成」でパーソナライズ</span>
                                </div>
-                               <div style={{ fontSize: "14px", color: "rgba(240,239,232,0.35)", lineHeight: 1.8, whiteSpace: "pre-wrap" }}>
+                               <div style={{ fontSize: "14px", color: "rgba(240,239,232,0.35)", lineHeight: 1.8, whiteSpace: "pre-wrap", wordBreak: "break-word", overflowWrap: "break-word", overflow: "hidden" }}>
                                  {`${t.username} ご担当者様
 
 はじめまして、${senderLine}
