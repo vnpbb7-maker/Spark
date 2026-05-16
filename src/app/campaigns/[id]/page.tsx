@@ -36,6 +36,21 @@ const PRIORITY_STYLE: Record<string, { bg: string; color: string; label: string 
   C: { bg: "rgba(255,255,255,0.08)", color: "rgba(240,239,232,0.4)", label: "C" },
 };
 
+const SNS_PLATFORMS = ["reddit", "twitter", "x", "instagram", "tiktok", "linkedin", "youtube", "discord"];
+const isSNSTarget = (platform: string) => SNS_PLATFORMS.includes((platform || "").toLowerCase());
+const getDMUrl = (t: { platform: string; username: string; profile_url?: string | null; post_url?: string | null }): string => {
+  const p = (t.platform || "").toLowerCase();
+  const clean = (t.username || "").replace(/^@/, "").split("/").pop() || "";
+  if (p === "reddit")  return `https://www.reddit.com/message/compose/?to=${clean}`;
+  if (p === "twitter" || p === "x") return `https://twitter.com/messages/compose?recipient_id=${clean}`;
+  if (p === "instagram") return `https://www.instagram.com/${clean}/`;
+  if (p === "linkedin") return t.profile_url || `https://www.linkedin.com/in/${clean}`;
+  if (p === "tiktok")   return `https://www.tiktok.com/@${clean}`;
+  if (p === "youtube")  return `https://www.youtube.com/@${clean}`;
+  if (p === "discord")  return t.profile_url || "#";
+  return t.profile_url || t.post_url || "#";
+};
+
 type TargetRow = {
   id: string; platform: string; username: string; post_url: string | null;
   post_content: string | null; match_score: number; match_reason: string | null;
@@ -771,7 +786,15 @@ export default function CampaignDetailPage() {
                             {draftingIds.has(t.id) ? "⏳" : "📧 メール"}
                           </button>
                         )}
-                        {(t.contact_url || t.website) && (() => {
+                        {isSNSTarget(t.platform) ? (
+                          <button onClick={(e) => { e.stopPropagation(); window.open(getDMUrl(t), "_blank"); }} style={{
+                            background: "rgba(99,102,241,0.12)", border: "0.5px solid rgba(99,102,241,0.35)",
+                            borderRadius: "8px", padding: "4px 12px", fontSize: "12px", fontWeight: 600,
+                            color: "#818cf8", cursor: "pointer", flexShrink: 0, whiteSpace: "nowrap",
+                          }}>
+                            💬 DMを送る
+                          </button>
+                        ) : (t.contact_url || t.website) && (() => {
                           const siteUrl = t.contact_url || t.website || "";
                           return siteUrl.startsWith("http") ? (
                             <button onClick={(e) => { e.stopPropagation(); handleSubmitForm(t); }} disabled={submittingFormIds.has(t.id)} style={{
