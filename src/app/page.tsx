@@ -26,7 +26,7 @@ export default function Home() {
     const cx = cv.getContext("2d") as CanvasRenderingContext2D;
     if (!cx) return;
 
-    const resize = () => { cv!.width = cv!.offsetWidth; cv!.height = cv!.offsetHeight; };
+    const resize = () => { cv!.width = window.innerWidth; cv!.height = window.innerHeight; };
     resize();
     window.addEventListener("resize", resize);
 
@@ -154,7 +154,7 @@ export default function Home() {
 
       {/* Canvas fire animation */}
       <canvas ref={canvasRef} style={{
-        position: "absolute", inset: 0, width: "100%", height: "100%",
+        position: "fixed", top: 0, left: 0, width: "100vw", height: "100vh",
         pointerEvents: "none", zIndex: 0,
       }} />
 
