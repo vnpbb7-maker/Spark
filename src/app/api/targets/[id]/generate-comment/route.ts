@@ -43,10 +43,7 @@ export async function POST(
       }
     }
 
-    const requiredKeywords = campaign?.required_keywords || "";
-    const keywordInstruction = requiredKeywords
-      ? `\n・必ず以下のキーワードを自然に含める：${requiredKeywords}`
-      : "";
+    // required_keywords is now used for Tavily search queries only, not comment generation
 
     const languageInstruction =
       campaign?.target_language === "ja" ? "日本語で書く"
@@ -75,7 +72,7 @@ ${kwLine}
 締め: ご検討のほど、よろしくお願いいたします。
 
 文字数: 200〜280字。テンプレート感を出さず自然な文体で。
-企業情報: ${target.post_content?.slice(0, 200) || ""}${keywordInstruction}
+企業情報: ${target.post_content?.slice(0, 200) || ""}
 
 JSONのみ返してください：
 {"comment": "メール本文", "approach": "このアプローチにした理由1文"}`
@@ -96,7 +93,7 @@ ${kwLine}
 ・対象投稿の内容に具体的に触れる
 ・自然な会話調で書く
 ・最後は問いかけで終わる
-・150文字以内${keywordInstruction}
+・150文字以内
 ・プロダクトについて最後に1文だけ自然に触れる
 
 JSONのみ返してください：

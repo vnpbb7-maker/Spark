@@ -264,15 +264,15 @@ export default function Step3Settings({ recommendedPlatforms, onSubmit, loading 
 
       {/* Required keywords */}
       <div style={{ marginBottom: "36px" }}>
-        <h3 style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600, fontSize: "15px", color: "#f0efe8", marginBottom: "4px" }}>コメントに必ず含めるキーワード</h3>
+        <h3 style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600, fontSize: "15px", color: "#f0efe8", marginBottom: "4px" }}>検索キーワード（任意）</h3>
         <div style={{ fontSize: 12, color: "rgba(240,239,232,0.4)", marginBottom: 8 }}>
-          例：SPARK, spark-ai.jp, 初期ユーザー獲得
+          ターゲット発見の精度を上げたいキーワードをカンマ区切りで入力
         </div>
         <input
           type="text"
           value={requiredKeywords}
           onChange={(e) => setRequiredKeywords(e.target.value)}
-          placeholder="カンマ区切りで入力（例：SPARK, ユーザー獲得）"
+          placeholder="例：肌, 荒れる, AI, 使い方"
           style={{
             width: "100%",
             background: "rgba(255,255,255,0.05)",

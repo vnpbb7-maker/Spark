@@ -574,6 +574,24 @@ Return ONLY this JSON format (no markdown, no explanation):
     // Safety: ensure searchQueries is always a plain string array before returning
     if (!Array.isArray(searchQueries)) searchQueries = [];
     searchQueries = searchQueries.filter((q: unknown) => typeof q === "string" && q.trim().length > 0);
+
+    // Inject user-supplied search keywords (required_keywords) into Tavily queries
+    const userKeywords = (campaign.required_keywords as string) || "";
+    if (userKeywords.trim()) {
+      const keywordList = userKeywords.split(",").map((k: string) => k.trim()).filter(Boolean);
+      if (keywordList.length > 0) {
+        const intentWords = "困ってる OR 探してる OR おすすめ OR 比較 OR 課題";
+        // Add one dedicated user-keyword query
+        searchQueries.push(`${keywordList.join(" ")} ${intentWords}`);
+        // Prepend top keyword to existing queries for bias
+        const topKw = keywordList[0];
+        searchQueries = searchQueries.map((q: string) =>
+          q.startsWith(topKw) ? q : `${topKw} ${q}`
+        );
+        console.log(`[step1] Injected user keywords: ${keywordList.join(", ")} → ${searchQueries.length} queries`);
+      }
+    }
+
     console.log("[step1] searchQueries type:", typeof searchQueries, "isArray:", Array.isArray(searchQueries));
     console.log("[step1] pain context:", personaContext.slice(0, 80));
     console.log("[step1] generated queries:", searchQueries.length, searchQueries);
@@ -1305,10 +1323,7 @@ export const generateComments = inngest.createFunction(
       try {
         const campaign = target.campaigns;
 
-        const requiredKeywords = campaign?.required_keywords || "";
-        const keywordInstruction = requiredKeywords
-          ? `\n・必ず以下のキーワードを自然に含める：${requiredKeywords}`
-          : "";
+        // required_keywords is now used for Tavily search queries only (injected above)
 
         const languageInstruction =
           campaign?.target_language === "ja"
@@ -1351,7 +1366,7 @@ export const generateComments = inngest.createFunction(
 ・対象投稿の内容に具体的に触れる
 ・自然な会話調で書く
 ・最後は問いかけで終わる
-・150文字以内${keywordInstruction}
+・150文字以内
 ・プロダクトについて最後に1文だけ自然に触れる
 
 JSONのみ返してください：
