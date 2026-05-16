@@ -675,14 +675,13 @@ export default function CampaignDetailPage() {
                   const isSelected = selected.has(t.id);
                   const contactInfo = t.email || (t.twitter_handle ? `@${t.twitter_handle}` : null);
                   return (
-                    <div key={t.id} style={{
+                    <div key={t.id} className="target-card" style={{
                       background: isSelected ? "rgba(255,214,0,0.03)" : "#13132a",
                       border: `1px solid ${isSelected ? "rgba(255,214,0,0.12)" : "rgba(255,255,255,0.06)"}`,
                       borderRadius: "14px", padding: "16px 18px", transition: "all 0.15s",
-                      overflow: "hidden", minWidth: 0, width: "100%",
                     }}>
                       {/* Header row */}
-                      <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "10px", minWidth: 0, overflow: "hidden" }}>
+                      <div className="tc-row" style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "10px", minWidth: 0, overflow: "hidden" }}>
                         <div onClick={() => toggleSelect(t.id)} style={{
                           width: "18px", height: "18px", borderRadius: "5px", flexShrink: 0,
                           border: `2px solid ${isSelected ? "#ffd60a" : "rgba(255,255,255,0.12)"}`,
@@ -692,11 +691,11 @@ export default function CampaignDetailPage() {
                           {isSelected && <span style={{ fontSize: "10px", color: "#000", fontWeight: 900 }}>✓</span>}
                         </div>
                         {t.platform === "google_maps" ? (
-                          <span style={{ fontSize: "12px", fontWeight: 900, padding: "2px 6px", borderRadius: "6px", background: "rgba(66,133,244,0.15)", color: "#4285f4", flexShrink: 0, whiteSpace: "nowrap" }}>🏢 企業</span>
+                          <span className="tc-nowrap" style={{ fontSize: "12px", fontWeight: 900, padding: "2px 6px", borderRadius: "6px", background: "rgba(66,133,244,0.15)", color: "#4285f4", flexShrink: 0, whiteSpace: "nowrap" }}>🏢 企業</span>
                         ) : (
                           <span style={{ background: ps.bg, color: ps.color, fontSize: "10px", fontWeight: 900, width: "22px", height: "22px", borderRadius: "6px", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{ps.label}</span>
                         )}
-                        <span style={{ fontSize: "16px", fontWeight: 700, color: "#f0efe8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0, maxWidth: "200px", flexShrink: 1 }}>@{t.username}</span>
+                        <span className="tc-truncate" style={{ fontSize: "16px", fontWeight: 700, color: "#f0efe8", maxWidth: "200px", flexShrink: 1 }}>@{t.username}</span>
                         <span style={{ fontSize: "12px", padding: "2px 8px", borderRadius: "5px", background: `${pi.color}12`, color: pi.color, fontWeight: 600, flexShrink: 0 }}>{pi.icon} {t.platform === "yahoo_qa" ? "Yahoo知恵袋" : t.platform.charAt(0).toUpperCase() + t.platform.slice(1)}</span>
                         {(() => {
                           const snsDm = ["reddit","twitter","wantedly"];
@@ -743,7 +742,7 @@ export default function CampaignDetailPage() {
                       </div>}
 
                       {/* Action row */}
-                      <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0, overflow: "hidden" }}>
+                      <div className="tc-row" style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0, overflow: "hidden" }}>
                         {t.post_content && <span style={{ fontSize: "13px", color: "rgba(240,239,232,0.25)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{t.post_content.slice(0, 80)}</span>}
                         {!t.post_content && <span style={{ flex: 1 }} />}
                         {!t.comment ? (
@@ -801,7 +800,7 @@ export default function CampaignDetailPage() {
                             <span style={{ fontSize: "12px", fontWeight: 600, color: "rgba(255,214,10,0.6)" }}>{t.platform === "google_maps" ? "📧 ビジネスメール" : "💬 生成メッセージ"}</span>
                             <button onClick={() => { navigator.clipboard.writeText(t.comment!.content); setToast("📋 コピーしました"); setTimeout(() => setToast(""), 2000); }} style={{ background: "transparent", border: "1px solid rgba(255,214,10,0.15)", borderRadius: "5px", padding: "2px 8px", fontSize: "12px", color: "rgba(255,214,10,0.6)", cursor: "pointer" }}>📋 コピー</button>
                           </div>
-                          <div style={{ fontSize: "14px", color: "rgba(240,239,232,0.75)", lineHeight: 1.8, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                          <div className="tc-pre" style={{ fontSize: "14px", color: "rgba(240,239,232,0.75)", lineHeight: 1.8 }}>
                             {t.comment.content}
                           </div>
                         </div>
@@ -817,7 +816,7 @@ export default function CampaignDetailPage() {
                                  <span style={{ fontSize: "12px", fontWeight: 600, color: "rgba(66,133,244,0.6)" }}>🏢 ビジネスメールテンプレート</span>
                                  <span style={{ fontSize: "9px", color: "rgba(240,239,232,0.25)" }}>「✉ ビジネスメール生成」でパーソナライズ</span>
                                </div>
-                               <div style={{ fontSize: "14px", color: "rgba(240,239,232,0.35)", lineHeight: 1.8, whiteSpace: "pre-wrap", wordBreak: "break-word", overflowWrap: "break-word", overflow: "hidden" }}>
+                               <div className="tc-pre" style={{ fontSize: "14px", color: "rgba(240,239,232,0.35)", lineHeight: 1.8 }}>
                                  {`${t.username} ご担当者様
 
 はじめまして、${senderLine}

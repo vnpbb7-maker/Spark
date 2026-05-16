@@ -170,3 +170,50 @@ h1, h2, h3, h4, h5, h6 {
     flex-direction: column;
   }
 }
+
+/* ── Target Card Overflow Fix ── */
+.target-card {
+  overflow: hidden;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* All direct flex/grid children get min-width:0 so they can shrink */
+.target-card > *,
+.target-card .tc-row,
+.target-card .tc-row > * {
+  min-width: 0;
+}
+
+/* Every text-bearing element inside cards wraps instead of overflowing */
+.target-card p,
+.target-card span:not(.tc-nowrap),
+.target-card div:not(.tc-bar) {
+  word-break: break-word;
+  overflow-wrap: break-word;
+  max-width: 100%;
+}
+
+/* Explicit pre-wrap text blocks */
+.target-card .tc-pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  overflow: hidden;
+  max-width: 100%;
+}
+
+/* Single-line truncation (username, email, etc.) */
+.target-card .tc-truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* Score bar — never shrink or wrap */
+.target-card .tc-bar {
+  flex: 1;
+  min-width: 0;
+}
