@@ -27,7 +27,8 @@ type OutreachTarget = {
   sendMethod: "email" | "dm" | "none";
 };
 
-const SNS_DM_PLATFORMS = ["reddit","twitter","wantedly"];
+const SNS_DM_PLATFORMS = ["reddit","twitter","x","instagram","tiktok","linkedin","youtube","note","wantedly","discord"];
+const isSNS = (platform: string) => SNS_DM_PLATFORMS.includes((platform || "").toLowerCase());
 
 const DM_URLS: Record<string, (username: string) => string> = {
   twitter: (u) => `https://twitter.com/messages/compose?recipient_id=${u}`,
@@ -47,7 +48,7 @@ export default function OutreachPage() {
   const [campaign, setCampaign] = useState<Record<string, unknown> | null>(null);
   const [generating, setGenerating] = useState(false);
   const [bulkSending, setBulkSending] = useState(false);
-  const [bulkResult, setBulkResult] = useState<{ sent: number; failed: number } | null>(null);
+  const [bulkResult, setBulkResult] = useState<{ sent: number; failed: number; skipped?: number } | null>(null);
   const [sendStatus, setSendStatus] = useState<Record<string, { status: "idle" | "sending" | "success" | "error"; error?: string }>>({});
   const [showSettings, setShowSettings] = useState(false);
   const [settingsSenderName, setSettingsSenderName] = useState("");
@@ -172,26 +173,44 @@ ${updated[i].platform}での投稿を拝見し、${productDesc.slice(0, 60)}${kw
     const senderName = typeof window !== "undefined" ? localStorage.getItem("spark_sender_name") || "" : "";
     const senderEmail = typeof window !== "undefined" ? localStorage.getItem("spark_sender_email") || "" : "";
     if (!senderEmail) { alert("設定ページで送信者メールを登録してください"); return; }
-    const pending = targets.filter(t => t.status === "pending" && t.sendMethod !== "none");
-    if (!pending.length) { alert("送信可能なターゲットがありません"); return; }
-    if (!confirm(`${pending.length}件を一括送信しますか？`)) return;
+    const allPending = targets.filter(t => t.status === "pending" && t.sendMethod !== "none");
+    if (!allPending.length) { alert("送信可能なターゲットがありません"); return; }
+
+    // Separate SNS targets (DM only) from email/form sendable targets
+    const snsPending = allPending.filter(t => isSNS(t.platform));
+    const sendable = allPending.filter(t => !isSNS(t.platform));
+
+    if (!confirm(`${sendable.length}件を一括送信しますか？${snsPending.length > 0 ? `（${snsPending.length}件のSNSターゲットはスキップ）` : ""}`)) return;
     setBulkSending(true);
 
-    // Mark all pending as "sending"
+    // Mark SNS targets as skipped immediately
+    if (snsPending.length > 0) {
+      const snsSkipped: Record<string, { status: "idle" | "sending" | "success" | "error"; error?: string }> = {};
+      for (const t of snsPending) snsSkipped[t.id] = { status: "error", error: "SNS: 手動DMが必要" };
+      setSendStatus(prev => ({ ...prev, ...snsSkipped }));
+    }
+
+    if (sendable.length === 0) {
+      setBulkResult({ sent: 0, failed: 0 });
+      setBulkSending(false);
+      return;
+    }
+
+    // Mark sendable as "sending"
     const initialStatus: Record<string, { status: "idle" | "sending" | "success" | "error"; error?: string }> = {};
-    for (const t of pending) initialStatus[t.id] = { status: "sending" };
+    for (const t of sendable) initialStatus[t.id] = { status: "sending" };
     setSendStatus(prev => ({ ...prev, ...initialStatus }));
 
     const messages: Record<string, string> = {};
-    for (const t of pending) messages[t.id] = t.message || "";
+    for (const t of sendable) messages[t.id] = t.message || "";
     try {
       const res = await fetch(`/api/campaigns/${campaignId}/bulk-submit`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ targetIds: pending.map(t => t.id), senderName, senderEmail, messages }),
+        body: JSON.stringify({ targetIds: sendable.map(t => t.id), senderName, senderEmail, messages }),
       });
       const data = await res.json();
-      setBulkResult({ sent: data.sent || 0, failed: data.failed || 0 });
+      setBulkResult({ sent: data.sent || 0, failed: data.failed || 0, skipped: snsPending.length });
 
       // Update per-target status from results
       if (data.results) {
@@ -208,9 +227,8 @@ ${updated[i].platform}での投稿を拝見し、${productDesc.slice(0, 60)}${kw
         }));
       }
     } catch (e) {
-      // Mark all as error
       const errStatus: Record<string, { status: "error"; error: string }> = {};
-      for (const t of pending) errStatus[t.id] = { status: "error", error: "ネットワークエラー" };
+      for (const t of sendable) errStatus[t.id] = { status: "error", error: "ネットワークエラー" };
       setSendStatus(prev => ({ ...prev, ...errStatus }));
       alert("送信エラーが発生しました");
     }
@@ -260,8 +278,8 @@ ${updated[i].platform}での投稿を拝見し、${productDesc.slice(0, 60)}${kw
               {bulkSending ? "⏳ 送信中..." : "🚀 一括送信"}
             </button>
             {bulkResult && (
-              <span style={{ fontSize: "11px", color: "rgba(240,239,232,0.5)" }}>
-                ✅{bulkResult.sent}件 / ❌{bulkResult.failed}件
+              <span style={{ fontSize: "11px", color: "rgba(240,239,232,0.5)", lineHeight: 1.5 }}>
+                ✅{bulkResult.sent}件送信完了 / ❌{bulkResult.failed}件失敗{bulkResult.skipped ? ` / 💬${bulkResult.skipped}件はDM手動送信` : ""}
               </span>
             )}
           </div>
@@ -303,6 +321,17 @@ ${updated[i].platform}での投稿を拝見し、${productDesc.slice(0, 60)}${kw
             </button>
           ))}
         </div>
+
+        {/* DM tab notice */}
+        {activeTab === "dm" && dmCount > 0 && (
+          <div style={{
+            background: "rgba(29,155,240,0.06)", border: "1px solid rgba(29,155,240,0.15)",
+            borderRadius: "10px", padding: "10px 16px", marginBottom: "8px",
+            fontSize: "12px", color: "rgba(29,155,240,0.8)", lineHeight: 1.5,
+          }}>
+            💬 DMターゲットは自動送信できません。各ターゲットの「DMを開く →」より手動でご送信ください。
+          </div>
+        )}
 
         {/* Target list */}
         <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
