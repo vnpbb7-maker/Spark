@@ -798,7 +798,7 @@ export default function CampaignDetailPage() {
                             <span style={{ fontSize: "12px", fontWeight: 600, color: "rgba(255,214,10,0.6)" }}>{t.platform === "google_maps" ? "📧 ビジネスメール" : "💬 生成メッセージ"}</span>
                             <button onClick={() => { navigator.clipboard.writeText(t.comment!.content); setToast("📋 コピーしました"); setTimeout(() => setToast(""), 2000); }} style={{ background: "transparent", border: "1px solid rgba(255,214,10,0.15)", borderRadius: "5px", padding: "2px 8px", fontSize: "12px", color: "rgba(255,214,10,0.6)", cursor: "pointer" }}>📋 コピー</button>
                           </div>
-                          <div style={{ fontSize: "11px", color: "rgba(240,239,232,0.65)", lineHeight: 1.7, whiteSpace: "pre-wrap", wordBreak: "break-all", minHeight: "100px" }}>
+                          <div style={{ fontSize: "14px", color: "rgba(240,239,232,0.75)", lineHeight: 1.8, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
                             {t.comment.content}
                           </div>
                         </div>
@@ -808,7 +808,7 @@ export default function CampaignDetailPage() {
                             <span style={{ fontSize: "12px", fontWeight: 600, color: "rgba(66,133,244,0.6)" }}>🏢 ビジネスメールテンプレート</span>
                             <span style={{ fontSize: "9px", color: "rgba(240,239,232,0.25)" }}>「メール生成」でパーソナライズ</span>
                           </div>
-                          <div style={{ fontSize: "11px", color: "rgba(240,239,232,0.25)", lineHeight: 1.7, whiteSpace: "pre-wrap", minHeight: "100px", fontStyle: "italic" }}>
+                          <div style={{ fontSize: "14px", color: "rgba(240,239,232,0.3)", lineHeight: 1.8, whiteSpace: "pre-wrap", fontStyle: "italic" }}>
                             {`はじめまして。${(campaign?.product_description as string || campaign?.product_url as string || "弊社プロダクト").slice(0, 40)}の開発をしているものです。
 ${t.username}様のビジネスにお役立ていただけるかと存じまして、初期ユーザーとしてお試しいただけないかとご連絡しました。
 ご検討いただけますと幸いです。`}
