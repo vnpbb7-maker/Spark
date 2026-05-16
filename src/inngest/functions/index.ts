@@ -996,37 +996,86 @@ JSONのみ返してください: ["query1", "query2", "query3", "query4", "query
         if (competitorNames.length === 0) competitorNames = ["Apollo.io", "Phantombuster"];
         console.log("[ph_competitor] Competitors:", competitorNames);
 
-        // Step 2: Search ProductHunt for dissatisfied users per competitor
+        // Step 2: Search for Japanese-language complaints about each competitor
+        // Use Japanese complaint keywords to surface JP users switching away
+        const jpComplaintTerms = "高い OR 乗り換え OR 解約 OR 代替 OR 困ってる OR 使いにくい OR alternative";
         for (const competitor of competitorNames.slice(0, 3)) {
           if (limitReached || insertedTargets.length >= remaining) break;
-          const phQuery = `site:producthunt.com "${competitor}" (expensive OR alternative OR "wish it had" OR "looking for" OR missing)`;
-          const phRes = await fetch("https://api.tavily.com/search", {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${process.env.TAVILY_API_KEY}` },
-            body: JSON.stringify({ query: phQuery, search_depth: "advanced", max_results: 8, include_answer: false, include_raw_content: false }),
-            signal: AbortSignal.timeout(12000),
-          });
-          if (!phRes.ok) continue;
-          const phData = await phRes.json();
-          const phResults = filterFreshResults((phData.results || []) as Record<string, unknown>[], sixMonthsAgo);
-          for (const result of phResults) {
-            if (insertedTargets.length >= remaining) { limitReached = true; break; }
-            const url = (result.url as string) || "";
-            const content = ((result.content as string) || "").slice(0, 500);
-            // Extract username from PH URL pattern /posts/<product>?comment_id=xxx or author name
-            const usernameMatch = url.match(/producthunt\.com\/posts\/([^/?#]+)/) || content.match(/@([a-zA-Z0-9_]+)/);
-            const username = usernameMatch ? usernameMatch[1].slice(0, 50) : `ph_${competitor.replace(/\s/g, "_").toLowerCase()}`;
-            const dedupKey = `producthunt_competitor::${url}`;
-            if (dedupSet.has(dedupKey)) continue;
-            dedupSet.add(dedupKey);
-            const { error: phInsertErr } = await getSupabase().from("targets").insert({
-              campaign_id: campaignId, platform: "producthunt_competitor",
-              username, profile_url: url, post_url: url,
-              post_content: `[${competitor}代替ユーザー] ${content}`.slice(0, 500),
-              match_score: 65, priority: "A", status: "pending",
-              match_reason: `ProductHunt: ${competitor}からの乗り換え候補`,
+
+          // Two queries: Japanese-specific + English negative with JP signals
+          const queries = [
+            `"${competitor}" ${jpComplaintTerms} site:reddit.com OR site:twitter.com OR site:zenn.dev OR site:qiita.com`,
+            `site:producthunt.com "${competitor}" "too expensive" OR "switched" OR "alternative" OR "looking for" OR "wish it had" OR "missing"`,
+          ];
+
+          for (const phQuery of queries) {
+            if (limitReached || insertedTargets.length >= remaining) break;
+            const phRes = await fetch("https://api.tavily.com/search", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "Authorization": `Bearer ${process.env.TAVILY_API_KEY}` },
+              body: JSON.stringify({ query: phQuery, search_depth: "advanced", max_results: 6, include_answer: false, include_raw_content: false }),
+              signal: AbortSignal.timeout(12000),
             });
-            if (!phInsertErr) { insertedTargets.push(username); console.log(`[ph_competitor] ✅ ${username} (competitor: ${competitor})`); }
+            if (!phRes.ok) continue;
+            const phData = await phRes.json();
+            const phResults = filterFreshResults((phData.results || []) as Record<string, unknown>[], sixMonthsAgo);
+
+            for (const result of phResults) {
+              if (insertedTargets.length >= remaining) { limitReached = true; break; }
+              const url = (result.url as string) || "";
+              const content = ((result.content as string) || "").slice(0, 600);
+              const title = (result.title as string) || "";
+
+              // ── Filter: require Japanese characters OR explicit complaint signal ──
+              const hasJapanese = /[\u3040-\u30ff\u4e00-\u9fff]/.test(content + title);
+              const hasComplaintSignal = /expensive|too much|switched|alternative|looking for|乗り換え|高い|代替|解約/.test(content + title);
+              if (!hasJapanese && !hasComplaintSignal) {
+                console.log(`[ph_competitor] ⏭️ Skipping non-JP/non-complaint: ${url.slice(0, 60)}`);
+                continue;
+              }
+
+              // ── Extract real commenter name from content, NOT from page slug ──
+              // Priority: @mention in content → "by {Name}" pattern → title author → skip
+              const mentionMatch = content.match(/@([a-zA-Z0-9_\u3040-\u30ff\u4e00-\u9fff]{2,30})/);
+              const byMatch = content.match(/by\s+([A-Z][a-zA-Z]{1,20}(?:\s[A-Z][a-zA-Z]{1,20})?)/);
+              const titleAuthor = title.match(/^([^|–\-:]+?)\s*(?:on|reviewed|says)/i);
+
+              const username = mentionMatch
+                ? mentionMatch[1].replace(/^@/, "").slice(0, 50)
+                : byMatch
+                  ? byMatch[1].replace(/\s/g, "_").slice(0, 50)
+                  : titleAuthor
+                    ? titleAuthor[1].trim().replace(/\s/g, "_").slice(0, 50)
+                    : null;
+
+              // Skip if we can't identify a real person (just the product page)
+              if (!username) {
+                console.log(`[ph_competitor] ⏭️ No commenter extractable from ${url.slice(0, 60)}`);
+                continue;
+              }
+
+              // Skip if username looks like a product slug (all lowercase, contains dots/dashes = PH product page)
+              if (/^[a-z0-9._-]+$/.test(username) && username.includes(".")) {
+                console.log(`[ph_competitor] ⏭️ Looks like product slug, not person: ${username}`);
+                continue;
+              }
+
+              const dedupKey = `producthunt_competitor::${username}::${competitor}`;
+              if (dedupSet.has(dedupKey)) continue;
+              dedupSet.add(dedupKey);
+
+              const { error: phInsertErr } = await getSupabase().from("targets").insert({
+                campaign_id: campaignId, platform: "producthunt_competitor",
+                username, profile_url: url, post_url: url,
+                post_content: `[${competitor}代替候補] ${content}`.slice(0, 500),
+                match_score: hasJapanese ? 72 : 60, priority: "A", status: "pending",
+                match_reason: `ProductHunt: ${competitor}への不満コメント投稿者`,
+              });
+              if (!phInsertErr) {
+                insertedTargets.push(username);
+                console.log(`[ph_competitor] ✅ ${username} (JP:${hasJapanese}) from ${competitor}`);
+              }
+            }
           }
         }
       } catch (phErr) { console.error("[ph_competitor] error:", phErr); }
