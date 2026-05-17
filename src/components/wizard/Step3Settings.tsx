@@ -13,7 +13,6 @@ const PLATFORM_GROUPS = [
     platforms: [
       { id: "google_maps", name: "Googleマップ", icon: "🗺️", color: "#4285f4", requiredPlan: "free", desc: "企業メールをHunter.ioで自動取得（B2B最強）" },
       { id: "connpass", name: "Connpass", icon: "🎪", color: "#e05048", requiredPlan: "free", desc: "技術イベント主催者 → GitHub経由でメール取得" },
-      { id: "qiita", name: "Qiita", icon: "🟩", color: "#55c500", requiredPlan: "free", desc: "エンジニア → GitHub APIでメール取得" },
       { id: "zenn", name: "Zenn", icon: "💻", color: "#3ea8ff", requiredPlan: "free", desc: "エンジニア → GitHub APIでメール取得" },
       { id: "wantedly", name: "Wantedly", icon: "🤝", color: "#21bddb", requiredPlan: "free", desc: "スタートアップ人材 → 企業ページからメール" },
     ],

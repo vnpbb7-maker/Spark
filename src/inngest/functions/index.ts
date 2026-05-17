@@ -288,8 +288,8 @@ function buildMultiPlatformQueries(keyword: string, _language: string = ""): { q
   // Zenn — discovery + action
   queries.push({ query: `site:zenn.dev ${keyword} ${disc1} OR ${action1}`, targetPlatform: "zenn" });
 
-  // Qiita — pain signal
-  queries.push({ query: `site:qiita.com ${keyword} ${pain1} OR ${disc2}`, targetPlatform: "qiita" });
+  // Qiita — 連絡手段なし（GitHubメール取得が不安定）のため除外
+  // queries.push({ query: `site:qiita.com ${keyword} ${pain1} OR ${disc2}`, targetPlatform: "qiita" });
 
   // はてな — discovery signal
   queries.push({ query: `site:hatenablog.com OR site:hatena.ne.jp ${keyword} ${disc1} OR ${pain2}`, targetPlatform: "hatena" });
@@ -614,7 +614,7 @@ Return ONLY this JSON format (no markdown, no explanation):
       twitter: "site:x.com OR site:twitter.com",
       reddit: "site:reddit.com",
       note: "site:note.com",
-      qiita: "site:qiita.com",
+      // qiita: "site:qiita.com",  // 除外
       zenn: "site:zenn.dev",
       yahoo_qa: "site:detail.chiebukuro.yahoo.co.jp",
       hatena: "site:hatenablog.com OR site:hatenadiary.com",
@@ -662,7 +662,7 @@ Return ONLY this JSON format (no markdown, no explanation):
         // Build allowed site prefixes: only include community sites if that platform is selected
         const ALL_WEB_SITES: Record<string, string> = {
           note:      "site:note.com",
-          qiita:     "site:qiita.com",
+          // qiita: "site:qiita.com",  // 除外
           zenn:      "site:zenn.dev",
           reddit:    "site:reddit.com",
           yahoo_qa:  "site:detail.chiebukuro.yahoo.co.jp",
@@ -1004,7 +1004,7 @@ JSONのみ返してください: ["query1", "query2", "query3", "query4", "query
 
           // Two queries: Japanese-specific + English negative with JP signals
           const queries = [
-            `"${competitor}" ${jpComplaintTerms} site:reddit.com OR site:twitter.com OR site:zenn.dev OR site:qiita.com`,
+            `"${competitor}" ${jpComplaintTerms} site:reddit.com OR site:twitter.com OR site:zenn.dev`,
             `site:producthunt.com "${competitor}" "too expensive" OR "switched" OR "alternative" OR "looking for" OR "wish it had" OR "missing"`,
           ];
 

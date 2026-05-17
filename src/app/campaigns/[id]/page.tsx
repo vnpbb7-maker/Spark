@@ -444,7 +444,7 @@ export default function CampaignDetailPage() {
   const uniquePlatforms = [...new Set(targets.map((t) => t.platform))];
 
   const visibleTargets = useMemo(() => targets
-    .filter((t) => t.platform !== "note") // Note除外: 高品質リードが少ないため非表示
+    .filter((t) => t.platform !== "note" && t.platform !== "qiita") // note/Qiita除外: 連絡手段なし
     .filter((t) => platformFilter === "all" || t.platform === platformFilter)
     .filter((t) => priorityFilter === "all" || t.priority === priorityFilter)
     .filter((t) => {
