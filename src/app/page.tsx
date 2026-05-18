@@ -148,7 +148,7 @@ export default function Home() {
             cursor: "pointer",
           }}
         >
-          無料で始める
+          {isLoggedIn ? "ダッシュボード →" : "無料で始める"}
         </button>
       </nav>
 
@@ -652,7 +652,7 @@ export default function Home() {
                 ))}
               </ul>
               <button
-                onClick={() => router.push("/auth/login")}
+                onClick={() => router.push(isLoggedIn ? "/dashboard" : "/auth/login")}
                 style={{
                   width: "100%",
                   padding: "10px",
