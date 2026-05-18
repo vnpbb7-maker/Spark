@@ -100,7 +100,7 @@ export default function CompetitorRadarPage() {
             <input
               value={input}
               onChange={e => setInput(e.target.value)}
-              onKeyDown={e => e.key === "Enter" && handleSearch()}
+              onKeyDown={e => { if (e.key === "Enter" && !e.nativeEvent.isComposing) handleSearch(); }}
               placeholder="例：Apollo.io, HubSpot, Phantombuster"
               style={{
                 width: "100%", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)",

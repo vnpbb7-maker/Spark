@@ -11,7 +11,7 @@ interface TavilyResult {
 
 async function tavilySearch(query: string, maxResults = 8): Promise<TavilyResult[]> {
   const apiKey = process.env.TAVILY_API_KEY;
-  if (!apiKey) return [];
+  if (!apiKey) { console.error("[competitor-radar] TAVILY_API_KEY is not set"); return []; }
   try {
     const res = await fetch("https://api.tavily.com/search", {
       method: "POST",
@@ -19,10 +19,14 @@ async function tavilySearch(query: string, maxResults = 8): Promise<TavilyResult
       body: JSON.stringify({ query, search_depth: "advanced", max_results: maxResults, include_answer: false, include_raw_content: false }),
       signal: AbortSignal.timeout(12000),
     });
-    if (!res.ok) return [];
+    if (!res.ok) {
+      const errBody = await res.text().catch(() => "");
+      console.error(`[competitor-radar] Tavily HTTP ${res.status} for query "${query.slice(0,60)}": ${errBody.slice(0,200)}`);
+      return [];
+    }
     const data = await res.json();
     return (data.results || []) as TavilyResult[];
-  } catch { return []; }
+  } catch (e) { console.error("[competitor-radar] tavilySearch fetch error:", e); return []; }
 }
 
 export async function POST(req: NextRequest) {
@@ -136,9 +140,13 @@ ${snippets}
       summary: parsed.summary || { total: allResults.length, categories: {} },
       win_points: parsed.win_points || null,
     });
-  } catch (err) {
-    console.error("[competitor-radar]", err);
-    return NextResponse.json({ error: "サーバーエラーが発生しました" }, { status: 500 });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[competitor-radar] Unhandled error:", err);
+    return NextResponse.json({
+      error: msg || "サーバーエラーが発生しました",
+      ...(process.env.NODE_ENV === "development" && err instanceof Error ? { stack: err.stack } : {}),
+    }, { status: 500 });
   }
 }
 
