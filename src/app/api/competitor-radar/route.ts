@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 export const maxDuration = 60;
+export const runtime = "nodejs";
 
 interface TavilyResult {
   url: string;
