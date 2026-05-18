@@ -11,6 +11,11 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
+// Railway healthcheck (root path)
+app.get("/", (req, res) => {
+  res.json({ status: "ok", service: "spark-playwright" });
+});
+
 // ヘルスチェック
 app.get("/health", (req, res) => {
   res.json({ status: "ok", service: "spark-playwright" });
