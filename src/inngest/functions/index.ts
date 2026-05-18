@@ -949,15 +949,21 @@ JSONのみ返してください: ["query1", "query2", "query3", "query4", "query
             }
             // Hunter.io email finder
             let email = "";
-            if (website && process.env.HUNTER_API_KEY) {
+            if (!process.env.HUNTER_API_KEY) {
+              console.warn(`[google_maps] HUNTER_API_KEY not set — skipping email lookup for ${name}`);
+            } else if (!website) {
+              console.log(`[google_maps] No website for ${name} — cannot run Hunter.io`);
+            } else {
               try {
                 const domain = new URL(website).hostname.replace("www.", "");
+                console.log(`[google_maps] Hunter.io lookup: ${name} → domain=${domain}`);
                 const hunterRes = await fetch(
                   `https://api.hunter.io/v2/domain-search?domain=${domain}&limit=3&api_key=${process.env.HUNTER_API_KEY}`,
                   { signal: AbortSignal.timeout(5000) }
                 );
                 if (hunterRes.ok) {
                   const hunterData = await hunterRes.json();
+                  console.log(`[google_maps] Hunter raw response for ${domain}:`, JSON.stringify(hunterData).slice(0, 300));
                   const emails = (hunterData.data?.emails || []) as Array<{ value: string; confidence: number }>;
                   if (emails.length > 0) {
                     emails.sort((a, b) => (b.confidence || 0) - (a.confidence || 0));

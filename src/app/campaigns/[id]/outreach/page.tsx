@@ -24,7 +24,7 @@ type OutreachTarget = {
   priority: string; email: string | null; profile_url: string | null;
   post_content: string | null; ai_reason: string | null;
   message: string; status: "pending" | "sent" | "skipped";
-  sendMethod: "email" | "dm" | "none";
+  sendMethod: "email" | "dm" | "form" | "none";
 };
 
 const SNS_DM_PLATFORMS = ["reddit","twitter","x","instagram","tiktok","linkedin","youtube","note","wantedly","discord"];
@@ -90,7 +90,8 @@ export default function OutreachPage() {
           profile_url: (t.profile_url as string | null),
           post_content: t.post_content as string | null, ai_reason: t.ai_reason as string | null,
           message: "", status: "pending" as const,
-          sendMethod: hasEmail ? "email" : isDmPlatform ? "dm" : "none",
+          sendMethod: hasEmail ? "email" : isDmPlatform ? "dm" : (t.profile_url || t.post_url) ? "form" : "none",
+          post_url: (t.post_url as string | null),
         };
       }));
     }
@@ -357,10 +358,19 @@ ${updated[i].platform}での投稿を拝見し、${productDesc.slice(0, 60)}${kw
                   <span style={{ fontSize: "16px", fontWeight: 800, fontFamily: "'Space Grotesk'", color: t.match_score >= 65 ? "#ffd60a" : "#2dd17a" }}>{t.match_score}%</span>
                   <span style={{
                     marginLeft: "auto", fontSize: "10px", padding: "3px 10px", borderRadius: "6px", fontWeight: 600,
-                    background: t.sendMethod === "email" ? "rgba(45,209,122,0.1)" : t.sendMethod === "dm" ? "rgba(29,155,240,0.1)" : "rgba(255,255,255,0.04)",
-                    color: t.sendMethod === "email" ? "#2dd17a" : t.sendMethod === "dm" ? "#1d9bf0" : "rgba(240,239,232,0.3)",
+                    background: t.sendMethod === "email" ? "rgba(45,209,122,0.1)"
+                      : t.sendMethod === "dm" ? "rgba(29,155,240,0.1)"
+                      : t.sendMethod === "form" ? "rgba(255,214,10,0.08)"
+                      : "rgba(255,255,255,0.04)",
+                    color: t.sendMethod === "email" ? "#2dd17a"
+                      : t.sendMethod === "dm" ? "#1d9bf0"
+                      : t.sendMethod === "form" ? "#ffd60a"
+                      : "rgba(240,239,232,0.3)",
                   }}>
-                    {t.sendMethod === "email" ? `📧 ${t.email}` : t.sendMethod === "dm" ? `💬 DM` : "❌ 送信不可"}
+                    {t.sendMethod === "email" ? `📧 ${t.email}`
+                      : t.sendMethod === "dm" ? `💬 DM`
+                      : t.sendMethod === "form" ? `📨 フォームのみ`
+                      : "❌ 送信不可"}
                   </span>
                   {/* Send status badge */}
                   {sendStatus[t.id] && sendStatus[t.id].status !== "idle" && (
@@ -453,6 +463,20 @@ ${updated[i].platform}での投稿を拝見し、${productDesc.slice(0, 60)}${kw
                       }}
                     >
                       💬 DMを開く →
+                    </a>
+                  )}
+                  {t.status === "pending" && t.sendMethod === "form" && (t.profile_url || (t as Record<string, unknown>).post_url as string) && (
+                    <a
+                      href={(t.profile_url || (t as Record<string, unknown>).post_url as string) || "#"}
+                      target="_blank" rel="noopener noreferrer"
+                      onClick={() => setStatus(t.id, "sent")}
+                      style={{
+                        background: "rgba(255,214,10,0.08)", border: "1px solid rgba(255,214,10,0.2)",
+                        borderRadius: "7px", padding: "5px 12px", fontSize: "10px", fontWeight: 600,
+                        color: "#ffd60a", cursor: "pointer", textDecoration: "none",
+                      }}
+                    >
+                      📨 フォームを開く →
                     </a>
                   )}
                   {t.status === "pending" && (
