@@ -214,6 +214,22 @@ ${updated[i].platform}での投稿を拝見し、${productDesc.slice(0, 60)}${kw
     for (const t of sendable) initialStatus[t.id] = { status: "sending" };
     setSendStatus(prev => ({ ...prev, ...initialStatus }));
 
+    // Safety net: auto-fail any target still "sending" after 95s
+    const safetyTimer = setTimeout(() => {
+      setSendStatus(prev => {
+        const patched = { ...prev };
+        let changed = false;
+        for (const [id, s] of Object.entries(patched)) {
+          if (s.status === "sending") {
+            patched[id] = { status: "error", error: "タイムアウト(95s)" };
+            changed = true;
+          }
+        }
+        return changed ? patched : prev;
+      });
+      setBulkSending(false);
+    }, 95000);
+
     const messages: Record<string, string> = {};
     for (const t of sendable) messages[t.id] = t.message || "";
     try {
@@ -221,7 +237,9 @@ ${updated[i].platform}での投稿を拝見し、${productDesc.slice(0, 60)}${kw
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ targetIds: sendable.map(t => t.id), senderName, senderEmail, messages }),
+        signal: AbortSignal.timeout(90000), // 90s total budget
       });
+      clearTimeout(safetyTimer);
       const data = await res.json();
       setBulkResult({ sent: data.sent || 0, failed: data.failed || 0, skipped: snsPending.length });
 
@@ -239,11 +257,13 @@ ${updated[i].platform}での投稿を拝見し、${productDesc.slice(0, 60)}${kw
           return r && r.status !== "failed" ? { ...t, status: "sent" as const } : t;
         }));
       }
-    } catch (e) {
+    } catch (e: unknown) {
+      clearTimeout(safetyTimer);
+      const isTimeout = e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError");
       const errStatus: Record<string, { status: "error"; error: string }> = {};
-      for (const t of sendable) errStatus[t.id] = { status: "error", error: "ネットワークエラー" };
+      for (const t of sendable) errStatus[t.id] = { status: "error", error: isTimeout ? "タイムアウト(90s)" : "ネットワークエラー" };
       setSendStatus(prev => ({ ...prev, ...errStatus }));
-      alert("送信エラーが発生しました");
+      alert(isTimeout ? "送信がタイムアウトしました（90秒）。件数を減らして再試行してください。" : "送信エラーが発生しました");
     }
     setBulkSending(false);
   };

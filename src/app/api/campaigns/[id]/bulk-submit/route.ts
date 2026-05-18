@@ -237,25 +237,40 @@ export async function POST(
         }
         sent++;
       } else if (hasForm && playwrightUrl) {
-        const formRes = await fetch(`${playwrightUrl}/submit-contact-form`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "x-api-key": playwrightKey || "" },
-          body: JSON.stringify({
-            target_id: target.id,
-            website_url: websiteUrl,
-            message,
-            sender_name: senderName || "SPARK",
-            sender_email: senderEmail,
-          }),
-          signal: AbortSignal.timeout(25000), // 25s per form submission
-        });
-        const result = await formRes.json();
-        if (result.success || result.submitted) {
-          results.push({ targetId: target.id, username: target.username as string, status: "sent", method: "form" });
-          sent++;
-          await supabase.from("targets").update({ contacted_at: new Date().toISOString(), status: "contacted" }).eq("id", target.id);
-        } else {
-          results.push({ targetId: target.id, username: target.username as string, status: "failed", method: "form", error: result.error || "送信失敗" });
+        try {
+          const formRes = await fetch(`${playwrightUrl}/submit-contact-form`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "x-api-key": playwrightKey || "" },
+            body: JSON.stringify({
+              target_id: target.id,
+              website_url: websiteUrl,
+              message,
+              sender_name: senderName || "SPARK",
+              sender_email: senderEmail,
+            }),
+            signal: AbortSignal.timeout(20000), // 20s per form submission
+          });
+          if (!formRes.ok) {
+            const errText = await formRes.text().catch(() => "");
+            console.error(`[bulk-submit] Playwright HTTP ${formRes.status} for ${target.username}: ${errText.slice(0, 200)}`);
+            results.push({ targetId: target.id, username: target.username as string, status: "failed", method: "form", error: `Playwright ${formRes.status}` });
+            failed++;
+          } else {
+            const result = await formRes.json();
+            if (result.success || result.submitted) {
+              results.push({ targetId: target.id, username: target.username as string, status: "sent", method: "form" });
+              sent++;
+              await supabase.from("targets").update({ contacted_at: new Date().toISOString(), status: "contacted" }).eq("id", target.id);
+            } else {
+              results.push({ targetId: target.id, username: target.username as string, status: "failed", method: "form", error: result.error || "送信失敗" });
+              failed++;
+            }
+          }
+        } catch (formErr: unknown) {
+          const isTimeout = formErr instanceof Error && (formErr.name === "TimeoutError" || formErr.name === "AbortError");
+          const errMsg = isTimeout ? "タイムアウト(20s)" : (formErr instanceof Error ? formErr.message : "フォームエラー");
+          console.error(`[bulk-submit] Playwright fetch error for ${target.username}:`, formErr);
+          results.push({ targetId: target.id, username: target.username as string, status: "failed", method: "form", error: errMsg });
           failed++;
         }
       } else if (hasForm) {
@@ -265,14 +280,16 @@ export async function POST(
         results.push({ targetId: target.id, username: target.username as string, status: "failed", method: "none", error: "連絡先なし" });
         failed++;
       }
-    } catch (e) {
+    } catch (e: unknown) {
+      const isTimeout = e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError");
+      const errMsg = isTimeout ? "タイムアウト" : (e instanceof Error ? e.message.slice(0, 60) : "エラー");
       console.error(`[bulk-submit] Error for ${target.username}:`, e);
-      results.push({ targetId: target.id, username: target.username as string, status: "failed", method: "none", error: "エラー" });
+      results.push({ targetId: target.id, username: target.username as string, status: "failed", method: "none", error: errMsg });
       failed++;
     }
 
-    // Small delay between form submissions to avoid rate-limiting
-    await new Promise(r => setTimeout(r, 1500));
+    // Small delay between submissions to avoid rate-limiting
+    await new Promise(r => setTimeout(r, 500));
   }
 
   // Update campaign send_count
