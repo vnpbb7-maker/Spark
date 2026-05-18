@@ -173,15 +173,27 @@ ${updated[i].platform}での投稿を拝見し、${productDesc.slice(0, 60)}${kw
   const handleBulkSend = async () => {
     const senderName = typeof window !== "undefined" ? localStorage.getItem("spark_sender_name") || "" : "";
     const senderEmail = typeof window !== "undefined" ? localStorage.getItem("spark_sender_email") || "" : "";
-    if (!senderEmail) { alert("設定ページで送信者メールを登録してください"); return; }
     const allPending = targets.filter(t => t.status === "pending" && t.sendMethod !== "none");
     if (!allPending.length) { alert("送信可能なターゲットがありません"); return; }
 
     // Separate SNS targets (DM only) from email/form sendable targets
     const snsPending = allPending.filter(t => isSNS(t.platform));
     const sendable = allPending.filter(t => !isSNS(t.platform));
+    const emailTargets = sendable.filter(t => t.sendMethod === "email");
+    const formTargets  = sendable.filter(t => t.sendMethod === "form");
 
-    if (!confirm(`${sendable.length}件を一括送信しますか？${snsPending.length > 0 ? `（${snsPending.length}件のSNSターゲットはスキップ）` : ""}`)) return;
+    // senderEmail is required only if there are email targets
+    if (emailTargets.length > 0 && !senderEmail) {
+      alert("設定ページで送信者メールを登録してください");
+      return;
+    }
+
+    const summary = [
+      emailTargets.length > 0 ? `メール ${emailTargets.length}件` : "",
+      formTargets.length  > 0 ? `フォーム ${formTargets.length}件` : "",
+      snsPending.length   > 0 ? `SNSスキップ ${snsPending.length}件` : "",
+    ].filter(Boolean).join("、");
+    if (!confirm(`${summary}を一括送信しますか？`)) return;
     setBulkSending(true);
 
     // Mark SNS targets as skipped immediately
