@@ -41,6 +41,13 @@ export async function POST(
       if (existing) {
         return NextResponse.json({ comment: existing, generatedMessage: existing.content });
       }
+    } else {
+      // force=true: 既存コメントを削除してから新規生成（上書き保証）
+      const { error: delErr } = await supabase
+        .from("comments")
+        .delete()
+        .eq("target_id", targetId);
+      if (delErr) console.error("[generate-comment] Delete existing comment error:", delErr);
     }
 
     const languageInstruction =
@@ -56,7 +63,7 @@ export async function POST(
     // ── プレーンテキスト直接出力（JSON prefill廃止）──
     const promptContent = isB2B
       ? `あなたは優秀な日本語ビジネスメールライターです。
-以下の情報をもとに、300〜400字の自然なビジネスメールを生成してください。
+以下の情報をもとに、自然なビジネスメールを生成してください。
 
 【送信先企業】${companyName}
 【送信者名】${senderName}
@@ -66,16 +73,23 @@ export async function POST(
 ## 厳守ルール
 - キーワードはそのまま使わず、文脈に合わせて自然に言い換える
 - 「100名」「リスト」などの単語は意味を汲んで「初期ユーザー獲得」「顧客リスト構築」などに変換
-- 以下の構成で書く：
-  1行目: ${companyName} ご担当者様
-  （空行）
-  はじめまして、${senderName}と申します。
-  （プロダクト説明2〜3文：送信先業種に合わせてカスタマイズ）
-  （βテスター募集の依頼1〜2文）
-  ご検討のほど、よろしくお願いいたします。
+- 必ず以下の構成と改行で書く（段落間は必ず1行空ける）：
+
+${companyName} ご担当者様
+
+はじめまして、${senderName}と申します。
+
+（プロダクト説明2〜3文：送信先業種に合わせてカスタマイズ）
+
+（βテスター募集の依頼1〜2文）
+
+ご検討のほど、よろしくお願いいたします。
+
 - 件名不要、本文のみ出力
 - テンプレート感を出さない
 - 丁寧で簡潔なビジネス文体
+- 全体300字以内。長くなる場合は説明を省いて簡潔にする
+- 1文が長い場合は2文に分ける
 
 メール本文のみを出力してください。JSONや説明文は不要です。`
       : `あなたは共感力の高いGrowthハッカーです。

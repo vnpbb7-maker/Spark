@@ -401,7 +401,7 @@ ${updated[i].platform}での投稿を拝見し、${productDesc.slice(0, 60)}${kw
                       <div style={{
                         background: "rgba(124,92,252,0.04)", border: "1px solid rgba(124,92,252,0.1)",
                         borderRadius: "8px", padding: "10px", fontSize: "12px", color: "rgba(240,239,232,0.7)",
-                        lineHeight: 1.5, cursor: "pointer",
+                        lineHeight: 1.5, cursor: "pointer", whiteSpace: "pre-wrap", wordBreak: "break-word",
                       }} onClick={() => setEditingId(t.id)}>
                         {t.message}
                       </div>
