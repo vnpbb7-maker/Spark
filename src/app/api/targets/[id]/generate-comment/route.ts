@@ -83,7 +83,7 @@ export async function POST(
 
 プロダクト：${productLine}
 プロダクトURL：${productUrl || campaign?.product_url || ""}
-${kwLine}
+${keywords ? `訴求ポイント（自然に言い換えて使う）：${keywords}` : ""}
 対象投稿URL：${target.post_url}
 投稿内容：${target.post_content?.slice(0, 300) || ""}
 プラットフォーム：${target.platform}
