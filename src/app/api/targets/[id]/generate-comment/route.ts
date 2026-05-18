@@ -50,30 +50,34 @@ export async function POST(
 
     const isB2B = target.platform === "google_maps";
     const productLine = campaign?.product_description || campaign?.product_url || productUrl || "プロダクト";
-    const kwLine = keywords ? `キーワード・訴求ポイント：${keywords}` : "";
+    const companyName = target.username || "御社";
+    const effectiveProductUrl = productUrl || campaign?.product_url || "";
 
     // ── プレーンテキスト直接出力（JSON prefill廃止）──
     const promptContent = isB2B
-      ? `以下の情報を元に、ビジネスメール形式の日本語アウトリーチメッセージを生成してください。
+      ? `あなたは優秀な日本語ビジネスメールライターです。
+以下の情報をもとに、300〜400字の自然なビジネスメールを生成してください。
 
-送信先企業: ${target.username}
-送信者名: ${senderName}
-プロダクト: ${productLine}
-プロダクトURL: ${productUrl || campaign?.product_url || ""}
-${kwLine}
+【送信先企業】${companyName}
+【送信者名】${senderName}
+【プロダクト】Spark AI（${effectiveProductUrl}）
+【プロダクトの特徴・参考キーワード】${keywords || productLine}
 
-メール形式（必ずこの構成）:
-1行目: ${target.username} ご担当者様
-2行目: 空行
-3行目: はじめまして、${senderName}と申します。
-4行目〜: プロダクトの説明（2〜3文、キーワードを自然に含める）
-次の段落: βテスターとしてご協力いただける企業様を探しております。
-締め: ご検討のほど、よろしくお願いいたします。
+## 厳守ルール
+- キーワードはそのまま使わず、文脈に合わせて自然に言い換える
+- 「100名」「リスト」などの単語は意味を汲んで「初期ユーザー獲得」「顧客リスト構築」などに変換
+- 以下の構成で書く：
+  1行目: ${companyName} ご担当者様
+  （空行）
+  はじめまして、${senderName}と申します。
+  （プロダクト説明2〜3文：送信先業種に合わせてカスタマイズ）
+  （βテスター募集の依頼1〜2文）
+  ご検討のほど、よろしくお願いいたします。
+- 件名不要、本文のみ出力
+- テンプレート感を出さない
+- 丁寧で簡潔なビジネス文体
 
-文字数: 200〜280字。テンプレート感を出さず自然な文体で。
-企業情報: ${target.post_content?.slice(0, 200) || ""}
-
-JSONではなく、メール本文のみを直接出力してください。余計な記号・引用符・括弧は不要です。`
+メール本文のみを出力してください。JSONや説明文は不要です。`
       : `あなたは共感力の高いGrowthハッカーです。
 以下の情報を元に自然なコメントを生成してください。
 
