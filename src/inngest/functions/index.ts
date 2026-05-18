@@ -966,6 +966,9 @@ JSONのみ返してください: ["query1", "query2", "query3", "query4", "query
                   } else {
                     console.log(`[google_maps] Hunter: no emails found for ${domain}`);
                   }
+                } else {
+                  const errBody = await hunterRes.text().catch(() => "");
+                  console.error(`[google_maps] Hunter HTTP ${hunterRes.status} for ${domain}: ${errBody.slice(0, 200)}`);
                 }
               } catch (hunterErr) { console.error(`[google_maps] Hunter error:`, hunterErr); }
             }

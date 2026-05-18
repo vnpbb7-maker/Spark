@@ -43,17 +43,16 @@ export async function POST(
       }
     }
 
-    // required_keywords is now used for Tavily search queries only, not comment generation
-
     const languageInstruction =
       campaign?.target_language === "ja" ? "日本語で書く"
         : campaign?.target_language === "en" ? "英語で書く"
           : "投稿と同じ言語で書く";
 
-    // B2B business email for google_maps targets
     const isB2B = target.platform === "google_maps";
     const productLine = campaign?.product_description || campaign?.product_url || productUrl || "プロダクト";
     const kwLine = keywords ? `キーワード・訴求ポイント：${keywords}` : "";
+
+    // ── プレーンテキスト直接出力（JSON prefill廃止）──
     const promptContent = isB2B
       ? `以下の情報を元に、ビジネスメール形式の日本語アウトリーチメッセージを生成してください。
 
@@ -74,8 +73,7 @@ ${kwLine}
 文字数: 200〜280字。テンプレート感を出さず自然な文体で。
 企業情報: ${target.post_content?.slice(0, 200) || ""}
 
-JSONのみ返してください：
-{"comment": "メール本文", "approach": "このアプローチにした理由1文"}`
+JSONではなく、メール本文のみを直接出力してください。余計な記号・引用符・括弧は不要です。`
       : `あなたは共感力の高いGrowthハッカーです。
 以下の情報を元に自然なコメントを生成してください。
 
@@ -96,8 +94,8 @@ ${kwLine}
 ・150文字以内
 ・プロダクトについて最後に1文だけ自然に触れる
 
-JSONのみ返してください：
-{"comment": "コメント本文", "approach": "このアプローチにした理由1文"}`;
+JSONではなく、コメント本文のみを直接出力してください。余計な記号・引用符・括弧は不要です。`;
+
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
@@ -107,34 +105,39 @@ JSONのみ返してください：
       },
       body: JSON.stringify({
         model: "claude-haiku-4-5-20251001",
-        max_tokens: 400,
+        max_tokens: 600,
+        // prefillなし — プレーンテキスト直接出力
         messages: [
           { role: "user", content: promptContent },
-          { role: "assistant", content: "{" },
         ],
       }),
     });
 
     const data = await response.json();
-    const text = "{" + (data.content?.[0]?.text || "");
+    const rawText = (data.content?.[0]?.text || "").trim();
+    console.log("[generate-comment] Claude raw response:", rawText.slice(0, 200));
 
-    let commentData = { comment: "", approach: "" };
-    try {
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (jsonMatch) commentData = JSON.parse(jsonMatch[0]);
-      else commentData = { comment: text.slice(0, 200), approach: "自動生成" };
-    } catch {
-      commentData = { comment: text.slice(0, 200), approach: "自動生成" };
+    if (!rawText) {
+      console.error("[generate-comment] Empty response from Claude. data:", JSON.stringify(data).slice(0, 300));
+      return NextResponse.json({ error: "コメント生成に失敗しました" }, { status: 500 });
     }
 
-    let finalContent = typeof commentData.comment === "string"
-      ? commentData.comment
-      : JSON.stringify(commentData.comment);
+    // ── クリーニング：JSONが混入していた場合でも本文を抽出 ──
+    let finalContent = rawText;
 
-    // Strip nested JSON
+    // JSONオブジェクト形式で返ってきた場合はcommentフィールドを抽出
     if (/^\s*\{[\s\S]*\}\s*$/.test(finalContent)) {
-      try { const p = JSON.parse(finalContent); finalContent = p.comment || finalContent; } catch {}
+      try {
+        const parsed = JSON.parse(finalContent);
+        finalContent = parsed.comment || parsed.message || parsed.text || finalContent;
+      } catch { /* JSONではないのでそのまま */ }
     }
+
+    // 先頭末尾の { } ` など不要記号を除去
+    finalContent = finalContent
+      .replace(/^[\s`{}"]+/, "")
+      .replace(/[\s`{}"]+$/, "")
+      .trim();
 
     if (!finalContent) {
       return NextResponse.json({ error: "コメント生成に失敗しました" }, { status: 500 });
@@ -146,7 +149,7 @@ JSONのみ返してください：
       campaign_id: target.campaign_id,
       platform: target.platform,
       content: finalContent,
-      approach: commentData.approach || "",
+      approach: "",
       approved: false,
     }).select().single();
 
