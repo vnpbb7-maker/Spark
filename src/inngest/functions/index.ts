@@ -185,6 +185,13 @@ function filterFreshResults(results: Record<string, unknown>[], cutoffDate: Date
   });
 }
 
+// Filter: require minimum 10% Japanese characters in content or title
+function isJapanese(text: string): boolean {
+  if (!text || text.length === 0) return false;
+  const jpChars = (text.match(/[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]/g) || []).length;
+  return jpChars / text.length > 0.1;
+}
+
 // Filter out corporate/company results — keep individual users only
 const COMPANY_SIGNALS = [
   '株式会社', '合同会社', '有限会社', 'inc.', 'corp', 'co.jp', 'co.,ltd', 'company', 'official',
@@ -698,8 +705,14 @@ Return ONLY this JSON format (no markdown, no explanation):
               for (const result of results) {
                 const url = (result.url as string) || "";
                 const content = String((result.content as string) || "").slice(0, 500);
+                const title = String((result.title as string) || "");
                 if (!url) continue;
                 if (isCompanyUrl(url, content)) continue;
+                // JP filter: skip English-only content
+                if (!isJapanese(content) && !isJapanese(title)) {
+                  console.log(`[web] ⏭️ Non-JP content skipped: ${url.slice(0, 60)}`);
+                  continue;
+                }
                 if (insertedTargets.length >= remaining) { limitReached = true; break; }
                 const detectedPlatform = detectPlatformFromUrl(url);
                 console.log(`[web] detected platform for ${url.slice(0, 60)}: ${detectedPlatform}`);
@@ -752,8 +765,14 @@ Return ONLY this JSON format (no markdown, no explanation):
           for (const result of results) {
             const url = (result.url as string) || "";
             const content = String((result.content as string) || (result.snippet as string) || "").slice(0, 500);
+            const title = String((result.title as string) || "");
             if (!url) continue;
             if (isCompanyUrl(url, content)) { console.log(`[discovery] Skipped company: ${url.slice(0, 60)}`); continue; }
+            // JP filter: skip English-only content
+            if (!isJapanese(content) && !isJapanese(title)) {
+              console.log(`[discovery] ⏭️ Non-JP content skipped: ${url.slice(0, 60)}`);
+              continue;
+            }
             if (insertedTargets.length >= remaining) { limitReached = true; break; }
 
             const detectedPlatform = detectPlatformFromUrl(url);
