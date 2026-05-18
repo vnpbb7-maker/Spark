@@ -482,12 +482,12 @@ export default function CampaignDetailPage() {
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
             {(() => {
-              const SNS_DM = ["reddit","twitter","wantedly"];
               const selectedTargets = visibleTargets.filter(t => selected.has(t.id));
               const contactable = selectedTargets.filter(t => {
                 const hasEmail = t.email && !t.email.startsWith("Twitter:") && !t.email.startsWith("DM:");
-                const hasDm = SNS_DM.includes(t.platform);
-                return hasEmail || hasDm;
+                const hasDm = isSNSTarget(t.platform); // 全SNSプラットフォームをDM連絡可能として扱う
+                const hasForm = !!(t.contact_url || t.website);
+                return hasEmail || hasDm || hasForm;
               });
               const canSend = selectedCount > 0 && contactable.length > 0;
               const tooltip = selectedCount === 0 ? "ターゲットを選択してください" : contactable.length === 0 ? "選択中のターゲットに連絡手段がありません" : "";
