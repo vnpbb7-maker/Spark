@@ -146,16 +146,16 @@ export async function POST(
   // Hard limit: max BATCH_SIZE targets per call
   const targetIds: string[] = (body.targetIds || []).slice(0, BATCH_SIZE);
 
-  if (!targetIds?.length || !senderEmail) {
-    return NextResponse.json({ error: "targetIds and senderEmail required" }, { status: 400 });
+  if (!targetIds?.length) {
+    return NextResponse.json({ error: "targetIds required" }, { status: 400 });
   }
 
   const supabase = getSupabase();
 
-  // Fetch campaign
+  // Fetch campaign (including name and user_id for sent_history + report email)
   const { data: campaign } = await supabase
     .from("campaigns")
-    .select("product_description, product_url, daily_limit, send_count")
+    .select("product_description, product_url, daily_limit, send_count, name, user_id")
     .eq("id", campaignId)
     .single();
 
@@ -232,6 +232,14 @@ export async function POST(
         if (mcpSent) {
           results.push({ targetId: target.id, username: target.username as string, status: "sent", method: "gmail" });
           await supabase.from("targets").update({ contacted_at: new Date().toISOString(), status: "contacted" }).eq("id", target.id);
+          // Record sent history
+          if (campaign?.user_id) {
+            await supabase.from("sent_history").insert({
+              user_id: campaign.user_id, company_name: target.username,
+              website_url: (target.contact_url as string) || (target.website as string) || null,
+              email: email, campaign_id: campaignId, send_method: "email",
+            }).then(({ error: e }) => { if (e) console.warn("[bulk-submit] sent_history insert error:", e.message); });
+          }
         } else {
           results.push({ targetId: target.id, username: target.username as string, status: "gmail", method: "gmail", gmailUrl });
         }
@@ -261,6 +269,14 @@ export async function POST(
               results.push({ targetId: target.id, username: target.username as string, status: "sent", method: "form" });
               sent++;
               await supabase.from("targets").update({ contacted_at: new Date().toISOString(), status: "contacted" }).eq("id", target.id);
+              // Record sent history
+              if (campaign?.user_id) {
+                await supabase.from("sent_history").insert({
+                  user_id: campaign.user_id, company_name: target.username,
+                  website_url: websiteUrl, email: null,
+                  campaign_id: campaignId, send_method: "form",
+                }).then(({ error: e }) => { if (e) console.warn("[bulk-submit] sent_history insert error:", e.message); });
+              }
             } else {
               results.push({ targetId: target.id, username: target.username as string, status: "failed", method: "form", error: result.error || "送信失敗" });
               failed++;
@@ -295,6 +311,36 @@ export async function POST(
   // Update campaign send_count
   if (sent > 0) {
     await supabase.from("campaigns").update({ send_count: sendCount + sent }).eq("id", campaignId);
+  }
+
+  // ── 送信完了レポートメール（fire-and-forget） ──
+  if (senderEmail && sent + failed > 0) {
+    const successList = results.filter(r => r.status === "sent" || r.status === "gmail");
+    const failList    = results.filter(r => r.status === "failed");
+    const campaignName = (campaign?.name as string) || campaignId;
+    const reportBody = [
+      `【Spark AI】一括送信完了レポート`,
+      ``,
+      `キャンペーン: ${campaignName}`,
+      `送信日時: ${new Date().toLocaleString("ja-JP")}`,
+      ``,
+      `━━━━━━━━━━━━━━`,
+      `✅ 送信成功: ${successList.length}件`,
+      `❌ 送信失敗: ${failList.length}件`,
+      `━━━━━━━━━━━━━━`,
+      ``,
+      successList.length > 0 ? [`【送信成功】`, ...successList.map(r => `・${r.username}（${r.method}）`)].join("\n") : "",
+      failList.length > 0 ? [`【送信失敗】`, ...failList.map(r => `・${r.username}（${r.error || "原因不明"}）`)].join("\n") : "",
+      ``,
+      `---`,
+      `Spark AI https://spark-ai.jp`,
+    ].filter(l => l !== "").join("\n");
+
+    sendViaGmailMcp(
+      senderEmail,
+      `【Spark AI】送信完了 ✅${successList.length}件成功 / ❌${failList.length}件失敗`,
+      reportBody
+    ).catch(e => console.warn("[bulk-submit] report email failed:", e));
   }
 
   return NextResponse.json({ sent, failed, results, limitRemaining: remaining - sent });

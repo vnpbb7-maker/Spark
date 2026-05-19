@@ -49,6 +49,7 @@ export default function OutreachPage() {
   const [generating, setGenerating] = useState(false);
   const [bulkSending, setBulkSending] = useState(false);
   const [bulkResult, setBulkResult] = useState<{ sent: number; failed: number; skipped?: number } | null>(null);
+  const [chunkProgress, setChunkProgress] = useState<{ done: number; total: number } | null>(null);
   const [sendStatus, setSendStatus] = useState<Record<string, { status: "idle" | "sending" | "success" | "error"; error?: string }>>({});
   const [showSettings, setShowSettings] = useState(false);
   const [settingsSenderName, setSettingsSenderName] = useState("");
@@ -170,19 +171,19 @@ ${updated[i].platform}での投稿を拝見し、${productDesc.slice(0, 60)}${kw
     setEditingId(null);
   };
 
+  const CHUNK_SIZE = 5; // 5件ずつAPIを呼ぶ（Playwright 1件20s × 5 = 100s以内）
+
   const handleBulkSend = async () => {
-    const senderName = typeof window !== "undefined" ? localStorage.getItem("spark_sender_name") || "" : "";
+    const senderName  = typeof window !== "undefined" ? localStorage.getItem("spark_sender_name")  || "" : "";
     const senderEmail = typeof window !== "undefined" ? localStorage.getItem("spark_sender_email") || "" : "";
     const allPending = targets.filter(t => t.status === "pending" && t.sendMethod !== "none");
     if (!allPending.length) { alert("送信可能なターゲットがありません"); return; }
 
-    // Separate SNS targets (DM only) from email/form sendable targets
-    const snsPending = allPending.filter(t => isSNS(t.platform));
-    const sendable = allPending.filter(t => !isSNS(t.platform));
+    const snsPending   = allPending.filter(t => isSNS(t.platform));
+    const sendable     = allPending.filter(t => !isSNS(t.platform));
     const emailTargets = sendable.filter(t => t.sendMethod === "email");
     const formTargets  = sendable.filter(t => t.sendMethod === "form");
 
-    // senderEmail is required only if there are email targets
     if (emailTargets.length > 0 && !senderEmail) {
       alert("設定ページで送信者メールを登録してください");
       return;
@@ -194,9 +195,12 @@ ${updated[i].platform}での投稿を拝見し、${productDesc.slice(0, 60)}${kw
       snsPending.length   > 0 ? `SNSスキップ ${snsPending.length}件` : "",
     ].filter(Boolean).join("、");
     if (!confirm(`${summary}を一括送信しますか？`)) return;
-    setBulkSending(true);
 
-    // Mark SNS targets as skipped immediately
+    setBulkSending(true);
+    setBulkResult(null);
+    setChunkProgress({ done: 0, total: sendable.length });
+
+    // SNS → immediately skipped
     if (snsPending.length > 0) {
       const snsSkipped: Record<string, { status: "idle" | "sending" | "success" | "error"; error?: string }> = {};
       for (const t of snsPending) snsSkipped[t.id] = { status: "error", error: "SNS: 手動DMが必要" };
@@ -204,68 +208,87 @@ ${updated[i].platform}での投稿を拝見し、${productDesc.slice(0, 60)}${kw
     }
 
     if (sendable.length === 0) {
-      setBulkResult({ sent: 0, failed: 0 });
+      setBulkResult({ sent: 0, failed: 0, skipped: snsPending.length });
       setBulkSending(false);
+      setChunkProgress(null);
       return;
     }
 
-    // Mark sendable as "sending"
+    // Mark all sendable as "sending"
     const initialStatus: Record<string, { status: "idle" | "sending" | "success" | "error"; error?: string }> = {};
     for (const t of sendable) initialStatus[t.id] = { status: "sending" };
     setSendStatus(prev => ({ ...prev, ...initialStatus }));
 
-    // Safety net: auto-fail any target still "sending" after 95s
-    const safetyTimer = setTimeout(() => {
-      setSendStatus(prev => {
-        const patched = { ...prev };
-        let changed = false;
-        for (const [id, s] of Object.entries(patched)) {
-          if (s.status === "sending") {
-            patched[id] = { status: "error", error: "タイムアウト(95s)" };
-            changed = true;
-          }
-        }
-        return changed ? patched : prev;
-      });
-      setBulkSending(false);
-    }, 95000);
-
     const messages: Record<string, string> = {};
     for (const t of sendable) messages[t.id] = t.message || "";
-    try {
-      const res = await fetch(`/api/campaigns/${campaignId}/bulk-submit`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ targetIds: sendable.map(t => t.id), senderName, senderEmail, messages }),
-        signal: AbortSignal.timeout(90000), // 90s total budget
-      });
-      clearTimeout(safetyTimer);
-      const data = await res.json();
-      setBulkResult({ sent: data.sent || 0, failed: data.failed || 0, skipped: snsPending.length });
 
-      // Update per-target status from results
-      if (data.results) {
-        const newStatus: Record<string, { status: "idle" | "sending" | "success" | "error"; error?: string }> = {};
-        for (const r of data.results as { targetId: string; status: string; error?: string }[]) {
-          newStatus[r.targetId] = r.status === "failed"
-            ? { status: "error", error: r.error || "送信失敗" }
-            : { status: "success" };
+    let totalSent = 0, totalFailed = 0;
+    let processedCount = 0;
+
+    // ── 5件ずつチャンク処理 ──
+    for (let i = 0; i < sendable.length; i += CHUNK_SIZE) {
+      const chunk = sendable.slice(i, i + CHUNK_SIZE);
+      const chunkMessages: Record<string, string> = {};
+      for (const t of chunk) chunkMessages[t.id] = messages[t.id] || "";
+
+      try {
+        const res = await fetch(`/api/campaigns/${campaignId}/bulk-submit`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            targetIds: chunk.map(t => t.id),
+            senderName, senderEmail,
+            messages: chunkMessages,
+          }),
+          signal: AbortSignal.timeout(120000), // 120s per chunk (5×20s + buffer)
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          totalSent   += data.sent   || 0;
+          totalFailed += data.failed || 0;
+
+          if (data.results) {
+            const newStatus: Record<string, { status: "idle" | "sending" | "success" | "error"; error?: string }> = {};
+            for (const r of data.results as { targetId: string; status: string; error?: string }[]) {
+              newStatus[r.targetId] = r.status === "failed"
+                ? { status: "error", error: r.error || "送信失敗" }
+                : { status: "success" };
+            }
+            setSendStatus(prev => ({ ...prev, ...newStatus }));
+            setTargets(prev => prev.map(t => {
+              const r = data.results.find((x: { targetId: string; status: string }) => x.targetId === t.id);
+              return r && r.status !== "failed" ? { ...t, status: "sent" as const } : t;
+            }));
+          }
+        } else {
+          // chunk-level failure: mark all as error
+          const errStatus: Record<string, { status: "error"; error: string }> = {};
+          for (const t of chunk) errStatus[t.id] = { status: "error", error: `HTTP ${res.status}` };
+          setSendStatus(prev => ({ ...prev, ...errStatus }));
+          totalFailed += chunk.length;
         }
-        setSendStatus(prev => ({ ...prev, ...newStatus }));
-        setTargets(prev => prev.map(t => {
-          const r = data.results.find((x: { targetId: string; status: string }) => x.targetId === t.id);
-          return r && r.status !== "failed" ? { ...t, status: "sent" as const } : t;
-        }));
+      } catch (e: unknown) {
+        const isTimeout = e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError");
+        const errMsg = isTimeout ? "タイムアウト(120s)" : "ネットワークエラー";
+        const errStatus: Record<string, { status: "error"; error: string }> = {};
+        for (const t of chunk) errStatus[t.id] = { status: "error", error: errMsg };
+        setSendStatus(prev => ({ ...prev, ...errStatus }));
+        totalFailed += chunk.length;
       }
-    } catch (e: unknown) {
-      clearTimeout(safetyTimer);
-      const isTimeout = e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError");
-      const errStatus: Record<string, { status: "error"; error: string }> = {};
-      for (const t of sendable) errStatus[t.id] = { status: "error", error: isTimeout ? "タイムアウト(90s)" : "ネットワークエラー" };
-      setSendStatus(prev => ({ ...prev, ...errStatus }));
-      alert(isTimeout ? "送信がタイムアウトしました（90秒）。件数を減らして再試行してください。" : "送信エラーが発生しました");
+
+      processedCount += chunk.length;
+      setChunkProgress({ done: processedCount, total: sendable.length });
+
+      // チャンク間に1秒待機（レートリミット対策）
+      if (i + CHUNK_SIZE < sendable.length) {
+        await new Promise(r => setTimeout(r, 1000));
+      }
     }
+
+    setBulkResult({ sent: totalSent, failed: totalFailed, skipped: snsPending.length });
     setBulkSending(false);
+    setChunkProgress(null);
   };
 
   const filtered = targets.filter(t => {
@@ -308,7 +331,11 @@ ${updated[i].platform}での投稿を拝見し、${productDesc.slice(0, 60)}${kw
               fontSize: "12px", fontWeight: 700, cursor: bulkSending ? "wait" : "pointer",
               fontFamily: "'Space Grotesk'", opacity: bulkSending ? 0.7 : 1,
             }}>
-              {bulkSending ? "⏳ 送信中..." : "🚀 一括送信"}
+              {bulkSending
+                ? chunkProgress
+                  ? `⏳ ${chunkProgress.done}/${chunkProgress.total}件送信中...`
+                  : "⏳ 送信中..."
+                : "🚀 一括送信"}
             </button>
             {bulkResult && (
               <span style={{ fontSize: "11px", color: "rgba(240,239,232,0.5)", lineHeight: 1.5 }}>
