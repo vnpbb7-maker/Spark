@@ -48,6 +48,7 @@ export default function OutreachPage() {
   const [campaign, setCampaign] = useState<Record<string, unknown> | null>(null);
   const [generating, setGenerating] = useState(false);
   const [bulkSending, setBulkSending] = useState(false);
+  const [bulkSendQueued, setBulkSendQueued] = useState(false);
   const [findingUrls, setFindingUrls] = useState(false);
   const [bulkResult, setBulkResult] = useState<{ sent: number; failed: number; skipped?: number } | null>(null);
   const [chunkProgress, setChunkProgress] = useState<{ done: number; total: number; startedAt?: number } | null>(null);
@@ -211,105 +212,43 @@ ${updated[i].platform}での投稿を拝見し、${productDesc.slice(0, 60)}${kw
       formTargets.length  > 0 ? `フォーム ${formTargets.length}件` : "",
       snsPending.length   > 0 ? `SNSスキップ ${snsPending.length}件` : "",
     ].filter(Boolean).join("、");
-    if (!confirm(`${summary}を一括送信しますか？`)) return;
-
-    setBulkSending(true);
-    setBulkResult(null);
-    setChunkProgress({ done: 0, total: sendable.length, startedAt: Date.now() });
-
-    // SNS → immediately skipped
-    if (snsPending.length > 0) {
-      const snsSkipped: Record<string, { status: "idle" | "sending" | "success" | "error"; error?: string }> = {};
-      for (const t of snsPending) snsSkipped[t.id] = { status: "error", error: "SNS: 手動DMが必要" };
-      setSendStatus(prev => ({ ...prev, ...snsSkipped }));
-    }
+    if (!confirm(`${summary}をバックグラウンドで一括送信しますか？\n完了後に ${senderEmail || "登録メール"} へレポートをお送りします。`)) return;
 
     if (sendable.length === 0) {
-      setBulkResult({ sent: 0, failed: 0, skipped: snsPending.length });
-      setBulkSending(false);
-      setChunkProgress(null);
+      alert(`SNSターゲット ${snsPending.length}件はDM手動送信が必要です`);
       return;
     }
 
-    // Mark all sendable as "sending" immediately for visual feedback
-    const initialStatus: Record<string, { status: "idle" | "sending" | "success" | "error"; error?: string }> = {};
-    for (const t of sendable) initialStatus[t.id] = { status: "sending" };
-    setSendStatus(prev => ({ ...prev, ...initialStatus }));
+    setBulkSending(true);
+    setBulkResult(null);
 
-    let totalSent = 0, totalFailed = 0;
-
-    // ── 1件ずつ順番に送信（Playwright OOM防止 + Vercel timeout回避）──
-    for (let i = 0; i < sendable.length; i++) {
-      const target = sendable[i];
-
-      // 開始時点で進捗を更新
-      setChunkProgress({ done: i, total: sendable.length, startedAt: chunkProgress?.startedAt ?? Date.now() });
-
-      try {
-        const res = await fetch(`/api/targets/${target.id}/submit-form`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            sender_name: senderName,
-            sender_email: senderEmail,
-            override_message: target.message || undefined,
-          }),
-          signal: AbortSignal.timeout(65000), // 65s per target (submit-form has 55s playwright timeout)
-        });
-
-        const data = await res.json();
-
-        if (data.success || data.submitted) {
-          setSendStatus(prev => ({ ...prev, [target.id]: { status: "success" } }));
-          setTargets(prev => prev.map(t => t.id === target.id ? { ...t, status: "sent" as const } : t));
-          totalSent++;
-        } else if (data.gmailUrl) {
-          // Email compose URL — counts as "sent" (user opens it manually)
-          setSendStatus(prev => ({ ...prev, [target.id]: { status: "success" } }));
-          totalSent++;
-          // Open Gmail compose in new tab
-          window.open(data.gmailUrl, "_blank");
-        } else {
-          const errMsg = data.error || "送信失敗";
-          setSendStatus(prev => ({ ...prev, [target.id]: { status: "error", error: errMsg } }));
-          totalFailed++;
-        }
-      } catch (e: unknown) {
-        const isTimeout = e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError");
-        const errMsg = isTimeout ? "タイムアウト(65s)" : "ネットワークエラー";
-        setSendStatus(prev => ({ ...prev, [target.id]: { status: "error", error: errMsg } }));
-        totalFailed++;
-      }
-
-      // 完了後に進捗更新
-      setChunkProgress({ done: i + 1, total: sendable.length, startedAt: chunkProgress?.startedAt ?? Date.now() });
-
-      // 次の件まで1.5秒待機（Playwrightサーバー負荷軽減）
-      if (i < sendable.length - 1) {
-        await new Promise(r => setTimeout(r, 1500));
-      }
-    }
-
-    setBulkResult({ sent: totalSent, failed: totalFailed, skipped: snsPending.length });
-
-    // ── 全チャンク完了後にレポートメールを送信（フロントから呼び出す） ──
-    if (senderEmail && (totalSent + totalFailed) > 0) {
-      const campaignName = (campaign as Record<string, unknown>)?.name as string || campaignId;
-      fetch("/api/send-report", {
+    try {
+      const res = await fetch(`/api/campaigns/${campaignId}/bulk-submit`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          email: senderEmail,
-          campaignName,
-          successCount: totalSent,
-          failCount: totalFailed,
+          targetIds: sendable.map(t => t.id),
+          senderName,
+          senderEmail,
+          userEmail: senderEmail,
         }),
-      }).catch(e => console.warn("[outreach] report email failed:", e));
+      });
+      const data = await res.json();
+
+      if (data.queued) {
+        setBulkSendQueued(true);
+        setBulkResult(null); // clear old result
+      } else if (data.error) {
+        alert(`エラー: ${data.error}`);
+      }
+    } catch (e) {
+      alert("送信開始に失敗しました。ネットワークを確認してください。");
     }
 
     setBulkSending(false);
     setChunkProgress(null);
   };
+
 
   const filtered = targets.filter(t => {
     if (activeTab === "all") return t.status === "pending";

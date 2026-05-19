@@ -1690,3 +1690,111 @@ export const monitorReplies = inngest.createFunction(
     return { success: true };
   }
 );
+
+// ── バックグラウンド一括送信 ─────────────────────────────────────────────────
+export const bulkSendOutreach = inngest.createFunction(
+  { id: "bulk-send-outreach", retries: 0 },
+  { event: "outreach/bulk-send" },
+  async ({ event, step }: any) => {
+    const { campaignId, targetIds, senderName, senderEmail, userEmail } = event.data as {
+      campaignId: string;
+      targetIds: string[];
+      senderName: string;
+      senderEmail: string;
+      userEmail: string;
+    };
+
+    const supabase = getSupabase();
+    const successList: string[] = [];
+    const failList: { name: string; error: string }[] = [];
+
+    // 1件ずつ step.run で処理（各 step は独立してリトライ可能）
+    for (const targetId of targetIds) {
+      const result = await step.run(`send-${targetId}`, async () => {
+        const { data: target } = await supabase
+          .from("targets")
+          .select("*")
+          .eq("id", targetId)
+          .single();
+
+        if (targetErr) console.error(`[bulk-send] Target fetch error for ${targetId}:`, targetErr.message);
+        if (!target) {
+          console.error(`[bulk-send] Target not found for id: ${targetId}`);
+          return { success: false, error: "ターゲット不明", name: targetId };
+        }
+        console.log(`[bulk-send] Target found: ${target.username}, website: ${target.website}, contact_url: ${target.contact_url}`);
+
+        // submit-form API に委譲（Gmail MCP / Playwright 両対応）
+        const apiBase = process.env.NEXT_PUBLIC_APP_URL || "https://spark-ai.jp";
+        console.log(`[bulk-send] Calling submit-form for ${targetId} via ${apiBase}`);
+        const apiRes = await fetch(`${apiBase}/api/targets/${targetId}/submit-form`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sender_name: senderName,
+            sender_email: senderEmail,
+          }),
+          signal: AbortSignal.timeout(60000),
+        });
+        console.log(`[bulk-send] submit-form response status: ${apiRes.status} for ${targetId}`);
+
+        const data = await apiRes.json().catch(() => ({ success: false, error: "レスポンス解析失敗" }));
+        const succeeded = data.success || data.submitted;
+
+        if (succeeded) {
+          // sent_history に記録
+          await supabase.from("sent_history").insert({
+            user_id: (target.user_id as string) || null,
+            company_name: (target.username as string) || (target.company_name as string) || null,
+            website_url: (target.contact_url as string) || (target.website as string) || null,
+            email: (target.email as string) || null,
+            campaign_id: campaignId,
+            send_method: (target.email as string) ? "email" : "form",
+          }).catch((e: Error) => console.warn("[bulk-send] sent_history:", e.message));
+        }
+
+        return {
+          success: succeeded,
+          name: (target.username as string) || targetId,
+          error: succeeded ? undefined : (data.error || "送信失敗"),
+        };
+      });
+
+      if (result.success) {
+        successList.push(result.name);
+      } else {
+        failList.push({ name: result.name, error: result.error || "不明" });
+      }
+
+      // 件間に2秒待機（Playwright サーバー負荷軽減）
+      if (targetIds.indexOf(targetId) < targetIds.length - 1) {
+        await step.sleep(`wait-${targetId}`, "2s");
+      }
+    }
+
+    // 完了レポートメールを /api/send-report 経由で送信
+    await step.run("send-report-email", async () => {
+      const apiBase = process.env.NEXT_PUBLIC_APP_URL || "https://spark-ai.jp";
+      const { data: campaign } = await supabase
+        .from("campaigns")
+        .select("name")
+        .eq("id", campaignId)
+        .single();
+      const campaignName = (campaign?.name as string) || campaignId;
+
+      await fetch(`${apiBase}/api/send-report`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: userEmail || senderEmail,
+          campaignName,
+          successCount: successList.length,
+          failCount: failList.length,
+        }),
+        signal: AbortSignal.timeout(15000),
+      }).catch((e: Error) => console.warn("[bulk-send] report email:", e.message));
+    });
+
+    return { success: successList.length, failed: failList.length };
+  }
+);

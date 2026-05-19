@@ -130,6 +130,8 @@ async function sendViaGmailMcp(
   return { sent: false, gmailUrl };
 }
 
+import { inngest } from "@/inngest/client";
+
 export async function POST(
   req: NextRequest,
   { params }: { params: { id: string } }
@@ -137,13 +139,13 @@ export async function POST(
   const campaignId = params.id;
   const body = await req.json().catch(() => ({}));
   const {
-    senderName,
-    senderEmail,
+    senderName = "",
+    senderEmail = "",
+    userEmail = "",
     preview = false,
     messages = {},
   } = body;
 
-  // Hard limit: max BATCH_SIZE targets per call
   const targetIds: string[] = (body.targetIds || []).slice(0, BATCH_SIZE);
 
   if (!targetIds?.length) {
@@ -152,7 +154,7 @@ export async function POST(
 
   const supabase = getSupabase();
 
-  // Fetch campaign (including name and user_id for sent_history + report email)
+  // Fetch campaign for preview / daily-limit check
   const { data: campaign } = await supabase
     .from("campaigns")
     .select("product_description, product_url, daily_limit, send_count, name, user_id")
@@ -164,31 +166,15 @@ export async function POST(
     (campaign?.product_url as string) ||
     "SPARKプロダクト";
 
-  // Check daily limit
-  const dailyLimit = (campaign?.daily_limit as number) || 100;
-  const sendCount = (campaign?.send_count as number) || 0;
-  const remaining = Math.max(0, dailyLimit - sendCount);
-  const toProcess = targetIds.slice(0, remaining);
-
-  if (toProcess.length === 0) {
-    return NextResponse.json({
-      error: `1日の送信上限（${dailyLimit}件）に達しています`,
-      sent: 0, failed: 0, results: [],
-    });
-  }
-
-  // Fetch targets
-  const { data: targets } = await supabase
-    .from("targets")
-    .select("id, username, platform, email, website, contact_url, post_content, post_url")
-    .in("id", toProcess);
-
-  if (!targets?.length) {
-    return NextResponse.json({ sent: 0, failed: 0, results: [] });
-  }
-
-  // ── PREVIEW MODE: generate all messages in PARALLEL ──────────────────────
+  // ── PREVIEW MODE: synchronous as before ──────────────────────────────────
   if (preview) {
+    const { data: targets } = await supabase
+      .from("targets")
+      .select("id, username, platform, email, website, contact_url, post_content, post_url")
+      .in("id", targetIds);
+
+    if (!targets?.length) return NextResponse.json({ preview: true, previews: [] });
+
     const previews = await Promise.all(
       targets.map(async (target) => {
         const overrideMsg = (messages as Record<string, string>)[target.id];
@@ -197,118 +183,47 @@ export async function POST(
         const websiteUrl = (target.contact_url as string) || (target.website as string) || "";
         const hasEmail = email && !email.startsWith("Twitter:") && !email.startsWith("DM:");
         const method = hasEmail ? "gmail" : websiteUrl ? "form" : "none";
-        return {
-          targetId: target.id,
-          username: target.username as string,
-          platform: target.platform as string,
-          message,
-          method,
-        };
+        return { targetId: target.id, username: target.username as string, platform: target.platform as string, message, method };
       })
     );
     return NextResponse.json({ preview: true, previews });
   }
 
-  // ── SEND MODE ────────────────────────────────────────────────────────────
-  const playwrightUrl = process.env.PLAYWRIGHT_SERVER_URL;
-  const playwrightKey = process.env.PLAYWRIGHT_API_KEY;
+  // ── SEND MODE: enqueue Inngest background job ─────────────────────────────
+  const dailyLimit = (campaign?.daily_limit as number) || 100;
+  const sendCount  = (campaign?.send_count  as number) || 0;
+  const remaining  = Math.max(0, dailyLimit - sendCount);
+  const toProcess  = targetIds.slice(0, remaining);
 
-  // Helper: process one target and return a BulkResult
-  async function processTarget(target: Record<string, unknown>): Promise<BulkResult> {
-    const overrideMsg = (messages as Record<string, string>)[target.id as string];
-    const message = overrideMsg || await generateMessage(target, productDescription);
-    const email = target.email as string | null;
-    const websiteUrl = (target.contact_url as string) || (target.website as string) || "";
-    const hasEmail = email && !email.startsWith("Twitter:") && !email.startsWith("DM:");
-    // Fix3: skip if there's no real form URL (avoid slow crawl)
-    const hasForm = !!target.contact_url && (target.contact_url as string).startsWith("http");
-
-    if (hasEmail) {
-      const campaignTitle = productDescription.slice(0, 40);
-      const subject = `【ご提案】${campaignTitle}`;
-      const { sent: mcpSent, gmailUrl } = await sendViaGmailMcp(email, subject, message);
-      if (mcpSent) {
-        await supabase.from("targets").update({ contacted_at: new Date().toISOString(), status: "contacted" }).eq("id", target.id);
-        if (campaign?.user_id) {
-          await supabase.from("sent_history").insert({
-            user_id: campaign.user_id, company_name: target.username,
-            website_url: websiteUrl || null, email: email,
-            campaign_id: campaignId, send_method: "email",
-          }).then(({ error: e }) => { if (e) console.warn("[bulk-submit] sent_history insert error:", e.message); });
-        }
-        return { targetId: target.id as string, username: target.username as string, status: "sent", method: "gmail" };
-      }
-      return { targetId: target.id as string, username: target.username as string, status: "gmail", method: "gmail", gmailUrl };
-    }
-
-    if (hasForm && playwrightUrl) {
-      try {
-        const formRes = await fetch(`${playwrightUrl}/submit-contact-form`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "x-api-key": playwrightKey || "" },
-          body: JSON.stringify({
-            target_id: target.id,
-            website_url: target.contact_url, // Use contact_url directly (Fix3: already validated)
-            message,
-            sender_name: senderName || "SPARK",
-            sender_email: senderEmail,
-          }),
-          signal: AbortSignal.timeout(20000), // 20s per form
-        });
-        if (!formRes.ok) {
-          const errText = await formRes.text().catch(() => "");
-          console.error(`[bulk-submit] Playwright HTTP ${formRes.status} for ${target.username as string}: ${errText.slice(0, 200)}`);
-          return { targetId: target.id as string, username: target.username as string, status: "failed", method: "form", error: `Playwright ${formRes.status}` };
-        }
-        const result = await formRes.json();
-        if (result.success || result.submitted) {
-          await supabase.from("targets").update({ contacted_at: new Date().toISOString(), status: "contacted" }).eq("id", target.id);
-          if (campaign?.user_id) {
-            await supabase.from("sent_history").insert({
-              user_id: campaign.user_id, company_name: target.username,
-              website_url: websiteUrl, email: null,
-              campaign_id: campaignId, send_method: "form",
-            }).then(({ error: e }) => { if (e) console.warn("[bulk-submit] sent_history insert error:", e.message); });
-          }
-          return { targetId: target.id as string, username: target.username as string, status: "sent", method: "form" };
-        }
-        return { targetId: target.id as string, username: target.username as string, status: "failed", method: "form", error: result.error || "送信失敗" };
-      } catch (formErr: unknown) {
-        const isTimeout = formErr instanceof Error && (formErr.name === "TimeoutError" || formErr.name === "AbortError");
-        const errMsg = isTimeout ? "タイムアウト(20s)" : (formErr instanceof Error ? formErr.message : "フォームエラー");
-        console.error(`[bulk-submit] Playwright error for ${target.username as string}:`, formErr);
-        return { targetId: target.id as string, username: target.username as string, status: "failed", method: "form", error: errMsg };
-      }
-    }
-
-    if (!hasEmail && !hasForm && websiteUrl) {
-      // website is set but contact_url is not — skip slow crawl (Fix3)
-      return { targetId: target.id as string, username: target.username as string, status: "failed", method: "none", error: "フォームURL未取得（スキップ）" };
-    }
-    if (hasForm && !playwrightUrl) {
-      return { targetId: target.id as string, username: target.username as string, status: "failed", method: "none", error: "Playwright未設定" };
-    }
-    return { targetId: target.id as string, username: target.username as string, status: "failed", method: "none", error: "連絡先なし" };
+  if (toProcess.length === 0) {
+    return NextResponse.json({
+      error: `1日の送信上限（${dailyLimit}件）に達しています`,
+      queued: false,
+    });
   }
 
-  // Run all targets in PARALLEL within this chunk (Playwright server handles concurrency)
-  const resultList = await Promise.all(
-    targets.map(t => processTarget(t as Record<string, unknown>).catch((e: unknown) => {
-      const msg = e instanceof Error ? e.message.slice(0, 60) : "エラー";
-      console.error(`[bulk-submit] Unhandled error for target:`, e);
-      return { targetId: (t as Record<string, unknown>).id as string, username: (t as Record<string, unknown>).username as string, status: "failed" as const, method: "none" as const, error: msg };
-    }))
-  );
+  await inngest.send({
+    name: "outreach/bulk-send",
+    data: {
+      campaignId,
+      targetIds: toProcess,
+      senderName,
+      senderEmail,
+      userEmail: userEmail || senderEmail,
+    },
+  });
 
-  const results = resultList;
-  const sent = results.filter(r => r.status === "sent" || r.status === "gmail").length;
-  const failed = results.filter(r => r.status === "failed").length;
-
-
-  // Update campaign send_count
-  if (sent > 0) {
-    await supabase.from("campaigns").update({ send_count: sendCount + sent }).eq("id", campaignId);
+  // Optimistically update send_count
+  if (toProcess.length > 0) {
+    await supabase.from("campaigns")
+      .update({ send_count: sendCount + toProcess.length })
+      .eq("id", campaignId)
+      .catch(() => {});
   }
 
-  return NextResponse.json({ sent, failed, results, limitRemaining: remaining - sent });
+  return NextResponse.json({
+    queued: true,
+    count: toProcess.length,
+    message: `${toProcess.length}件のバックグラウンド送信を開始しました。完了後にメールでお知らせします。`,
+  });
 }

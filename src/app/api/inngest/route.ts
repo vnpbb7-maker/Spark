@@ -5,9 +5,10 @@ import {
   generateComments,
   postComments,
   monitorReplies,
+  bulkSendOutreach,
 } from "@/inngest/functions/index";
 
-export const maxDuration = 300; // Allow up to 5 minutes for Inngest step execution
+export const maxDuration = 300;
 
 export const { GET, POST, PUT } = serve({
   client: inngest,
@@ -16,5 +17,6 @@ export const { GET, POST, PUT } = serve({
     generateComments,
     postComments,
     monitorReplies,
+    bulkSendOutreach,
   ],
 });

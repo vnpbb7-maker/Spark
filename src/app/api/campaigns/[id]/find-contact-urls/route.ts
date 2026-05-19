@@ -69,10 +69,14 @@ export async function POST(
     .eq("campaign_id", campaignId)
     .is("contact_url", null)
     .not("website", "is", null)
-    .limit(30); // cap per call
+    .neq("website", "")           // also skip empty strings
+    .limit(30);
+
+  console.log(`[find-contact-urls] campaign=${campaignId} candidates=${targets?.length ?? 0} firecrawl=${process.env.FIRECRAWL_API_KEY ? "SET" : "NOT SET"}`);
+  if (error) console.error("[find-contact-urls] query error:", error.message);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  if (!targets?.length) return NextResponse.json({ updated: 0, message: "対象なし" });
+  if (!targets?.length) return NextResponse.json({ updated: 0, message: "対象なし", debug: { campaignId } });
 
   let updated = 0;
   const results: { id: string; username: string; contactUrl: string | null }[] = [];
