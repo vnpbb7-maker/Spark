@@ -210,137 +210,104 @@ export async function POST(
   }
 
   // ── SEND MODE ────────────────────────────────────────────────────────────
-  const results: BulkResult[] = [];
   const playwrightUrl = process.env.PLAYWRIGHT_SERVER_URL;
   const playwrightKey = process.env.PLAYWRIGHT_API_KEY;
-  let sent = 0;
-  let failed = 0;
 
-  for (const target of targets) {
-    try {
-      const overrideMsg = (messages as Record<string, string>)[target.id];
-      const message = overrideMsg || await generateMessage(target as Record<string, unknown>, productDescription);
-      const email = target.email as string | null;
-      const websiteUrl = (target.contact_url as string) || (target.website as string) || "";
-      const hasEmail = email && !email.startsWith("Twitter:") && !email.startsWith("DM:");
-      const hasForm = websiteUrl && websiteUrl.startsWith("http");
+  // Helper: process one target and return a BulkResult
+  async function processTarget(target: Record<string, unknown>): Promise<BulkResult> {
+    const overrideMsg = (messages as Record<string, string>)[target.id as string];
+    const message = overrideMsg || await generateMessage(target, productDescription);
+    const email = target.email as string | null;
+    const websiteUrl = (target.contact_url as string) || (target.website as string) || "";
+    const hasEmail = email && !email.startsWith("Twitter:") && !email.startsWith("DM:");
+    // Fix3: skip if there's no real form URL (avoid slow crawl)
+    const hasForm = !!target.contact_url && (target.contact_url as string).startsWith("http");
 
-      if (hasEmail) {
-        const campaignTitle = productDescription.slice(0, 40);
-        const subject = `【ご提案】${campaignTitle}`;
-        const { sent: mcpSent, gmailUrl } = await sendViaGmailMcp(email, subject, message);
-        if (mcpSent) {
-          results.push({ targetId: target.id, username: target.username as string, status: "sent", method: "gmail" });
+    if (hasEmail) {
+      const campaignTitle = productDescription.slice(0, 40);
+      const subject = `【ご提案】${campaignTitle}`;
+      const { sent: mcpSent, gmailUrl } = await sendViaGmailMcp(email, subject, message);
+      if (mcpSent) {
+        await supabase.from("targets").update({ contacted_at: new Date().toISOString(), status: "contacted" }).eq("id", target.id);
+        if (campaign?.user_id) {
+          await supabase.from("sent_history").insert({
+            user_id: campaign.user_id, company_name: target.username,
+            website_url: websiteUrl || null, email: email,
+            campaign_id: campaignId, send_method: "email",
+          }).then(({ error: e }) => { if (e) console.warn("[bulk-submit] sent_history insert error:", e.message); });
+        }
+        return { targetId: target.id as string, username: target.username as string, status: "sent", method: "gmail" };
+      }
+      return { targetId: target.id as string, username: target.username as string, status: "gmail", method: "gmail", gmailUrl };
+    }
+
+    if (hasForm && playwrightUrl) {
+      try {
+        const formRes = await fetch(`${playwrightUrl}/submit-contact-form`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-api-key": playwrightKey || "" },
+          body: JSON.stringify({
+            target_id: target.id,
+            website_url: target.contact_url, // Use contact_url directly (Fix3: already validated)
+            message,
+            sender_name: senderName || "SPARK",
+            sender_email: senderEmail,
+          }),
+          signal: AbortSignal.timeout(20000), // 20s per form
+        });
+        if (!formRes.ok) {
+          const errText = await formRes.text().catch(() => "");
+          console.error(`[bulk-submit] Playwright HTTP ${formRes.status} for ${target.username as string}: ${errText.slice(0, 200)}`);
+          return { targetId: target.id as string, username: target.username as string, status: "failed", method: "form", error: `Playwright ${formRes.status}` };
+        }
+        const result = await formRes.json();
+        if (result.success || result.submitted) {
           await supabase.from("targets").update({ contacted_at: new Date().toISOString(), status: "contacted" }).eq("id", target.id);
-          // Record sent history
           if (campaign?.user_id) {
             await supabase.from("sent_history").insert({
               user_id: campaign.user_id, company_name: target.username,
-              website_url: (target.contact_url as string) || (target.website as string) || null,
-              email: email, campaign_id: campaignId, send_method: "email",
+              website_url: websiteUrl, email: null,
+              campaign_id: campaignId, send_method: "form",
             }).then(({ error: e }) => { if (e) console.warn("[bulk-submit] sent_history insert error:", e.message); });
           }
-        } else {
-          results.push({ targetId: target.id, username: target.username as string, status: "gmail", method: "gmail", gmailUrl });
+          return { targetId: target.id as string, username: target.username as string, status: "sent", method: "form" };
         }
-        sent++;
-      } else if (hasForm && playwrightUrl) {
-        try {
-          const formRes = await fetch(`${playwrightUrl}/submit-contact-form`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "x-api-key": playwrightKey || "" },
-            body: JSON.stringify({
-              target_id: target.id,
-              website_url: websiteUrl,
-              message,
-              sender_name: senderName || "SPARK",
-              sender_email: senderEmail,
-            }),
-            signal: AbortSignal.timeout(20000), // 20s per form submission
-          });
-          if (!formRes.ok) {
-            const errText = await formRes.text().catch(() => "");
-            console.error(`[bulk-submit] Playwright HTTP ${formRes.status} for ${target.username}: ${errText.slice(0, 200)}`);
-            results.push({ targetId: target.id, username: target.username as string, status: "failed", method: "form", error: `Playwright ${formRes.status}` });
-            failed++;
-          } else {
-            const result = await formRes.json();
-            if (result.success || result.submitted) {
-              results.push({ targetId: target.id, username: target.username as string, status: "sent", method: "form" });
-              sent++;
-              await supabase.from("targets").update({ contacted_at: new Date().toISOString(), status: "contacted" }).eq("id", target.id);
-              // Record sent history
-              if (campaign?.user_id) {
-                await supabase.from("sent_history").insert({
-                  user_id: campaign.user_id, company_name: target.username,
-                  website_url: websiteUrl, email: null,
-                  campaign_id: campaignId, send_method: "form",
-                }).then(({ error: e }) => { if (e) console.warn("[bulk-submit] sent_history insert error:", e.message); });
-              }
-            } else {
-              results.push({ targetId: target.id, username: target.username as string, status: "failed", method: "form", error: result.error || "送信失敗" });
-              failed++;
-            }
-          }
-        } catch (formErr: unknown) {
-          const isTimeout = formErr instanceof Error && (formErr.name === "TimeoutError" || formErr.name === "AbortError");
-          const errMsg = isTimeout ? "タイムアウト(20s)" : (formErr instanceof Error ? formErr.message : "フォームエラー");
-          console.error(`[bulk-submit] Playwright fetch error for ${target.username}:`, formErr);
-          results.push({ targetId: target.id, username: target.username as string, status: "failed", method: "form", error: errMsg });
-          failed++;
-        }
-      } else if (hasForm) {
-        results.push({ targetId: target.id, username: target.username as string, status: "failed", method: "none", error: "Playwright未設定" });
-        failed++;
-      } else {
-        results.push({ targetId: target.id, username: target.username as string, status: "failed", method: "none", error: "連絡先なし" });
-        failed++;
+        return { targetId: target.id as string, username: target.username as string, status: "failed", method: "form", error: result.error || "送信失敗" };
+      } catch (formErr: unknown) {
+        const isTimeout = formErr instanceof Error && (formErr.name === "TimeoutError" || formErr.name === "AbortError");
+        const errMsg = isTimeout ? "タイムアウト(20s)" : (formErr instanceof Error ? formErr.message : "フォームエラー");
+        console.error(`[bulk-submit] Playwright error for ${target.username as string}:`, formErr);
+        return { targetId: target.id as string, username: target.username as string, status: "failed", method: "form", error: errMsg };
       }
-    } catch (e: unknown) {
-      const isTimeout = e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError");
-      const errMsg = isTimeout ? "タイムアウト" : (e instanceof Error ? e.message.slice(0, 60) : "エラー");
-      console.error(`[bulk-submit] Error for ${target.username}:`, e);
-      results.push({ targetId: target.id, username: target.username as string, status: "failed", method: "none", error: errMsg });
-      failed++;
     }
 
-    // Small delay between submissions to avoid rate-limiting
-    await new Promise(r => setTimeout(r, 500));
+    if (!hasEmail && !hasForm && websiteUrl) {
+      // website is set but contact_url is not — skip slow crawl (Fix3)
+      return { targetId: target.id as string, username: target.username as string, status: "failed", method: "none", error: "フォームURL未取得（スキップ）" };
+    }
+    if (hasForm && !playwrightUrl) {
+      return { targetId: target.id as string, username: target.username as string, status: "failed", method: "none", error: "Playwright未設定" };
+    }
+    return { targetId: target.id as string, username: target.username as string, status: "failed", method: "none", error: "連絡先なし" };
   }
+
+  // Run all targets in PARALLEL within this chunk (Playwright server handles concurrency)
+  const resultList = await Promise.all(
+    targets.map(t => processTarget(t as Record<string, unknown>).catch((e: unknown) => {
+      const msg = e instanceof Error ? e.message.slice(0, 60) : "エラー";
+      console.error(`[bulk-submit] Unhandled error for target:`, e);
+      return { targetId: (t as Record<string, unknown>).id as string, username: (t as Record<string, unknown>).username as string, status: "failed" as const, method: "none" as const, error: msg };
+    }))
+  );
+
+  const results = resultList;
+  const sent = results.filter(r => r.status === "sent" || r.status === "gmail").length;
+  const failed = results.filter(r => r.status === "failed").length;
+
 
   // Update campaign send_count
   if (sent > 0) {
     await supabase.from("campaigns").update({ send_count: sendCount + sent }).eq("id", campaignId);
-  }
-
-  // ── 送信完了レポートメール（fire-and-forget） ──
-  if (senderEmail && sent + failed > 0) {
-    const successList = results.filter(r => r.status === "sent" || r.status === "gmail");
-    const failList    = results.filter(r => r.status === "failed");
-    const campaignName = (campaign?.name as string) || campaignId;
-    const reportBody = [
-      `【Spark AI】一括送信完了レポート`,
-      ``,
-      `キャンペーン: ${campaignName}`,
-      `送信日時: ${new Date().toLocaleString("ja-JP")}`,
-      ``,
-      `━━━━━━━━━━━━━━`,
-      `✅ 送信成功: ${successList.length}件`,
-      `❌ 送信失敗: ${failList.length}件`,
-      `━━━━━━━━━━━━━━`,
-      ``,
-      successList.length > 0 ? [`【送信成功】`, ...successList.map(r => `・${r.username}（${r.method}）`)].join("\n") : "",
-      failList.length > 0 ? [`【送信失敗】`, ...failList.map(r => `・${r.username}（${r.error || "原因不明"}）`)].join("\n") : "",
-      ``,
-      `---`,
-      `Spark AI https://spark-ai.jp`,
-    ].filter(l => l !== "").join("\n");
-
-    sendViaGmailMcp(
-      senderEmail,
-      `【Spark AI】送信完了 ✅${successList.length}件成功 / ❌${failList.length}件失敗`,
-      reportBody
-    ).catch(e => console.warn("[bulk-submit] report email failed:", e));
   }
 
   return NextResponse.json({ sent, failed, results, limitRemaining: remaining - sent });

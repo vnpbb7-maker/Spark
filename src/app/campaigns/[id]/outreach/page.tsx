@@ -48,8 +48,9 @@ export default function OutreachPage() {
   const [campaign, setCampaign] = useState<Record<string, unknown> | null>(null);
   const [generating, setGenerating] = useState(false);
   const [bulkSending, setBulkSending] = useState(false);
+  const [findingUrls, setFindingUrls] = useState(false);
   const [bulkResult, setBulkResult] = useState<{ sent: number; failed: number; skipped?: number } | null>(null);
-  const [chunkProgress, setChunkProgress] = useState<{ done: number; total: number } | null>(null);
+  const [chunkProgress, setChunkProgress] = useState<{ done: number; total: number; startedAt?: number } | null>(null);
   const [sendStatus, setSendStatus] = useState<Record<string, { status: "idle" | "sending" | "success" | "error"; error?: string }>>({});
   const [showSettings, setShowSettings] = useState(false);
   const [settingsSenderName, setSettingsSenderName] = useState("");
@@ -171,7 +172,23 @@ ${updated[i].platform}での投稿を拝見し、${productDesc.slice(0, 60)}${kw
     setEditingId(null);
   };
 
-  const CHUNK_SIZE = 5; // 5件ずつAPIを呼ぶ（Playwright 1件20s × 5 = 100s以内）
+  const CHUNK_SIZE = 5;
+
+  const findContactUrls = async () => {
+    if (findingUrls) return;
+    setFindingUrls(true);
+    try {
+      const res = await fetch(`/api/campaigns/${campaignId}/find-contact-urls`, { method: "POST" });
+      const data = await res.json();
+      if (data.updated > 0) {
+        alert(`フォームURL取得完了: ${data.updated}/${data.total}件更新`);
+        fetchTargets(); // reload to show updated badges
+      } else {
+        alert(`新たに取得できたフォームURLはありませんでした`);
+      }
+    } catch { alert("フォームURL取得中にエラーが発生しました"); }
+    setFindingUrls(false);
+  };
 
   const handleBulkSend = async () => {
     const senderName  = typeof window !== "undefined" ? localStorage.getItem("spark_sender_name")  || "" : "";
@@ -198,7 +215,7 @@ ${updated[i].platform}での投稿を拝見し、${productDesc.slice(0, 60)}${kw
 
     setBulkSending(true);
     setBulkResult(null);
-    setChunkProgress({ done: 0, total: sendable.length });
+    setChunkProgress({ done: 0, total: sendable.length, startedAt: Date.now() });
 
     // SNS → immediately skipped
     if (snsPending.length > 0) {
@@ -230,6 +247,9 @@ ${updated[i].platform}での投稿を拝見し、${productDesc.slice(0, 60)}${kw
       const chunk = sendable.slice(i, i + CHUNK_SIZE);
       const chunkMessages: Record<string, string> = {};
       for (const t of chunk) chunkMessages[t.id] = messages[t.id] || "";
+
+      // チャンク開始時点で即座に進捗表示を更新（「処理中」状態）
+      setChunkProgress({ done: processedCount, total: sendable.length });
 
       try {
         const res = await fetch(`/api/campaigns/${campaignId}/bulk-submit`, {
@@ -277,6 +297,7 @@ ${updated[i].platform}での投稿を拝見し、${productDesc.slice(0, 60)}${kw
         totalFailed += chunk.length;
       }
 
+      // チャンク完了後に実際の完了数で進捗更新
       processedCount += chunk.length;
       setChunkProgress({ done: processedCount, total: sendable.length });
 
@@ -287,6 +308,22 @@ ${updated[i].platform}での投稿を拝見し、${productDesc.slice(0, 60)}${kw
     }
 
     setBulkResult({ sent: totalSent, failed: totalFailed, skipped: snsPending.length });
+
+    // ── 全チャンク完了後にレポートメールを送信（フロントから呼び出す） ──
+    if (senderEmail && (totalSent + totalFailed) > 0) {
+      const campaignName = (campaign as Record<string, unknown>)?.name as string || campaignId;
+      fetch("/api/send-report", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: senderEmail,
+          campaignName,
+          successCount: totalSent,
+          failCount: totalFailed,
+        }),
+      }).catch(e => console.warn("[outreach] report email failed:", e));
+    }
+
     setBulkSending(false);
     setChunkProgress(null);
   };
@@ -317,6 +354,14 @@ ${updated[i].platform}での投稿を拝見し、${productDesc.slice(0, 60)}${kw
             <h1 style={{ fontFamily: "'Space Grotesk'", fontWeight: 700, fontSize: "17px", margin: 0 }}>📨 アウトリーチ</h1>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <button onClick={findContactUrls} disabled={findingUrls || bulkSending} style={{
+              background: "rgba(255,214,10,0.08)", border: "1px solid rgba(255,214,10,0.2)",
+              color: "#ffd60a", borderRadius: "10px", padding: "8px 14px",
+              fontSize: "11px", fontWeight: 600, cursor: findingUrls ? "wait" : "pointer",
+              fontFamily: "'Space Grotesk'", opacity: findingUrls ? 0.6 : 1,
+            }}>
+              {findingUrls ? "⏳ 取得中..." : "🔍 フォームURL取得"}
+            </button>
             <button onClick={openSettings} disabled={generating} style={{
               background: generating ? "rgba(124,92,252,0.1)" : "linear-gradient(135deg, #7c5cfc, #5a3fd6)",
               color: "#fff", border: "none", borderRadius: "10px", padding: "8px 18px",
@@ -332,9 +377,16 @@ ${updated[i].platform}での投稿を拝見し、${productDesc.slice(0, 60)}${kw
               fontFamily: "'Space Grotesk'", opacity: bulkSending ? 0.7 : 1,
             }}>
               {bulkSending
-                ? chunkProgress
-                  ? `⏳ ${chunkProgress.done}/${chunkProgress.total}件送信中...`
-                  : "⏳ 送信中..."
+                ? chunkProgress && chunkProgress.done > 0
+                  ? (() => {
+                      const elapsed = Date.now() - (chunkProgress.startedAt || Date.now());
+                      const avgMs = elapsed / chunkProgress.done;
+                      const remaining = Math.ceil((chunkProgress.total - chunkProgress.done) * avgMs / 60000);
+                      return `⏳ ${chunkProgress.done}/${chunkProgress.total}件完了（残り約${remaining}分）`;
+                    })()
+                  : chunkProgress
+                    ? `⏳ 0/${chunkProgress.total}件 処理中...`
+                    : "⏳ 送信中..."
                 : "🚀 一括送信"}
             </button>
             {bulkResult && (

@@ -126,8 +126,8 @@ app.post("/post-comment", authMiddleware, async (req, res) => {
 
 // お問い合わせフォーム自動送信エンドポイント
 app.post("/submit-contact-form", authMiddleware, async (req, res) => {
-  const { target_id, website_url, message, sender_name, sender_email } = req.body;
-  console.log("[form] Submitting contact form for:", website_url);
+  const { target_id, website_url, contact_url, message, sender_name, sender_email } = req.body;
+  console.log("[form] Submitting contact form for:", contact_url || website_url);
 
   const browser = await chromium.launch({
     headless: true,
@@ -137,26 +137,32 @@ app.post("/submit-contact-form", authMiddleware, async (req, res) => {
 
   try {
     const page = await browser.newPage();
-    page.setDefaultTimeout(12000);
+    page.setDefaultTimeout(8000); // reduced from 12s
 
-    // 1. サイトに移動
-    await page.goto(website_url, { waitUntil: "domcontentloaded", timeout: 12000 });
-    console.log("[form] Navigated to:", page.url());
+    // If contact_url is provided, go directly — skip crawling
+    if (contact_url && contact_url.startsWith("http")) {
+      await page.goto(contact_url, { waitUntil: "domcontentloaded", timeout: 10000 });
+      console.log("[form] Navigated directly to contact_url:", page.url());
+    } else {
+      // 1. Navigate to root site
+      await page.goto(website_url, { waitUntil: "domcontentloaded", timeout: 10000 });
+      console.log("[form] Navigated to:", page.url());
 
-    // 2. お問い合わせページリンクを探す
-    const contactLinks = await page.$$eval("a", (links) =>
-      links
-        .map((l) => ({ href: l.href, text: (l.textContent || "").toLowerCase().trim() }))
-        .filter((l) => l.href && l.href.startsWith("http") && (
-          l.text.includes("contact") || l.text.includes("お問い合わせ") ||
-          l.text.includes("連絡") || l.text.includes("問合") || l.text.includes("inquiry")
-        ))
-    ).catch(() => []);
+      // 2. Try to find contact page link
+      const contactLinks = await page.$$eval("a", (links) =>
+        links
+          .map((l) => ({ href: l.href, text: (l.textContent || "").toLowerCase().trim() }))
+          .filter((l) => l.href && l.href.startsWith("http") && (
+            l.text.includes("contact") || l.text.includes("お問い合わせ") ||
+            l.text.includes("連絡") || l.text.includes("問合") || l.text.includes("inquiry")
+          ))
+      ).catch(() => []);
 
-    if (contactLinks.length > 0) {
-      console.log("[form] Found contact link:", contactLinks[0].href);
-      await page.goto(contactLinks[0].href, { waitUntil: "domcontentloaded", timeout: 10000 });
-      await page.waitForTimeout(1500);
+      if (contactLinks.length > 0) {
+        console.log("[form] Found contact link:", contactLinks[0].href);
+        await page.goto(contactLinks[0].href, { waitUntil: "domcontentloaded", timeout: 6000 });
+        await page.waitForTimeout(800); // reduced from 1500
+      }
     }
 
     // 3. フォームフィールドを検出して入力
@@ -187,7 +193,7 @@ app.post("/submit-contact-form", authMiddleware, async (req, res) => {
     for (const sel of submitSelectors) {
       try {
         await page.click(sel, { timeout: 2000 });
-        await page.waitForTimeout(2500);
+        await page.waitForTimeout(1500); // reduced from 2500
         submitted = true;
         console.log("[form] Submitted via:", sel);
         break;
