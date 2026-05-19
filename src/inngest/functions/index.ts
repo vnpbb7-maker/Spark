@@ -1693,8 +1693,7 @@ export const monitorReplies = inngest.createFunction(
 
 // ── バックグラウンド一括送信 ─────────────────────────────────────────────────
 export const bulkSendOutreach = inngest.createFunction(
-  { id: "bulk-send-outreach", retries: 0 },
-  { event: "outreach/bulk-send" },
+  { id: "bulk-send-outreach", retries: 0, triggers: [{ event: "outreach/bulk-send" }] },
   async ({ event, step }: any) => {
     const { campaignId, targetIds, senderName, senderEmail, userEmail } = event.data as {
       campaignId: string;
@@ -1711,7 +1710,7 @@ export const bulkSendOutreach = inngest.createFunction(
     // 1件ずつ step.run で処理（各 step は独立してリトライ可能）
     for (const targetId of targetIds) {
       const result = await step.run(`send-${targetId}`, async () => {
-        const { data: target } = await supabase
+        const { data: target, error: targetErr } = await supabase
           .from("targets")
           .select("*")
           .eq("id", targetId)
@@ -1743,14 +1742,18 @@ export const bulkSendOutreach = inngest.createFunction(
 
         if (succeeded) {
           // sent_history に記録
-          await supabase.from("sent_history").insert({
-            user_id: (target.user_id as string) || null,
-            company_name: (target.username as string) || (target.company_name as string) || null,
-            website_url: (target.contact_url as string) || (target.website as string) || null,
-            email: (target.email as string) || null,
-            campaign_id: campaignId,
-            send_method: (target.email as string) ? "email" : "form",
-          }).catch((e: Error) => console.warn("[bulk-send] sent_history:", e.message));
+          try {
+            await supabase.from("sent_history").insert({
+              user_id: (target.user_id as string) || null,
+              company_name: (target.username as string) || (target.company_name as string) || null,
+              website_url: (target.contact_url as string) || (target.website as string) || null,
+              email: (target.email as string) || null,
+              campaign_id: campaignId,
+              send_method: (target.email as string) ? "email" : "form",
+            });
+          } catch (e: unknown) {
+            console.warn("[bulk-send] sent_history:", e instanceof Error ? e.message : e);
+          }
         }
 
         return {
