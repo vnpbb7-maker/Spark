@@ -231,79 +231,62 @@ ${updated[i].platform}での投稿を拝見し、${productDesc.slice(0, 60)}${kw
       return;
     }
 
-    // Mark all sendable as "sending"
+    // Mark all sendable as "sending" immediately for visual feedback
     const initialStatus: Record<string, { status: "idle" | "sending" | "success" | "error"; error?: string }> = {};
     for (const t of sendable) initialStatus[t.id] = { status: "sending" };
     setSendStatus(prev => ({ ...prev, ...initialStatus }));
 
-    const messages: Record<string, string> = {};
-    for (const t of sendable) messages[t.id] = t.message || "";
-
     let totalSent = 0, totalFailed = 0;
-    let processedCount = 0;
 
-    // ── 5件ずつチャンク処理 ──
-    for (let i = 0; i < sendable.length; i += CHUNK_SIZE) {
-      const chunk = sendable.slice(i, i + CHUNK_SIZE);
-      const chunkMessages: Record<string, string> = {};
-      for (const t of chunk) chunkMessages[t.id] = messages[t.id] || "";
+    // ── 1件ずつ順番に送信（Playwright OOM防止 + Vercel timeout回避）──
+    for (let i = 0; i < sendable.length; i++) {
+      const target = sendable[i];
 
-      // チャンク開始時点で即座に進捗表示を更新（「処理中」状態）
-      setChunkProgress({ done: processedCount, total: sendable.length });
+      // 開始時点で進捗を更新
+      setChunkProgress({ done: i, total: sendable.length, startedAt: chunkProgress?.startedAt ?? Date.now() });
 
       try {
-        const res = await fetch(`/api/campaigns/${campaignId}/bulk-submit`, {
+        const res = await fetch(`/api/targets/${target.id}/submit-form`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            targetIds: chunk.map(t => t.id),
-            senderName, senderEmail,
-            messages: chunkMessages,
+            sender_name: senderName,
+            sender_email: senderEmail,
+            override_message: target.message || undefined,
           }),
-          signal: AbortSignal.timeout(120000), // 120s per chunk (5×20s + buffer)
+          signal: AbortSignal.timeout(65000), // 65s per target (submit-form has 55s playwright timeout)
         });
 
-        if (res.ok) {
-          const data = await res.json();
-          totalSent   += data.sent   || 0;
-          totalFailed += data.failed || 0;
+        const data = await res.json();
 
-          if (data.results) {
-            const newStatus: Record<string, { status: "idle" | "sending" | "success" | "error"; error?: string }> = {};
-            for (const r of data.results as { targetId: string; status: string; error?: string }[]) {
-              newStatus[r.targetId] = r.status === "failed"
-                ? { status: "error", error: r.error || "送信失敗" }
-                : { status: "success" };
-            }
-            setSendStatus(prev => ({ ...prev, ...newStatus }));
-            setTargets(prev => prev.map(t => {
-              const r = data.results.find((x: { targetId: string; status: string }) => x.targetId === t.id);
-              return r && r.status !== "failed" ? { ...t, status: "sent" as const } : t;
-            }));
-          }
+        if (data.success || data.submitted) {
+          setSendStatus(prev => ({ ...prev, [target.id]: { status: "success" } }));
+          setTargets(prev => prev.map(t => t.id === target.id ? { ...t, status: "sent" as const } : t));
+          totalSent++;
+        } else if (data.gmailUrl) {
+          // Email compose URL — counts as "sent" (user opens it manually)
+          setSendStatus(prev => ({ ...prev, [target.id]: { status: "success" } }));
+          totalSent++;
+          // Open Gmail compose in new tab
+          window.open(data.gmailUrl, "_blank");
         } else {
-          // chunk-level failure: mark all as error
-          const errStatus: Record<string, { status: "error"; error: string }> = {};
-          for (const t of chunk) errStatus[t.id] = { status: "error", error: `HTTP ${res.status}` };
-          setSendStatus(prev => ({ ...prev, ...errStatus }));
-          totalFailed += chunk.length;
+          const errMsg = data.error || "送信失敗";
+          setSendStatus(prev => ({ ...prev, [target.id]: { status: "error", error: errMsg } }));
+          totalFailed++;
         }
       } catch (e: unknown) {
         const isTimeout = e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError");
-        const errMsg = isTimeout ? "タイムアウト(120s)" : "ネットワークエラー";
-        const errStatus: Record<string, { status: "error"; error: string }> = {};
-        for (const t of chunk) errStatus[t.id] = { status: "error", error: errMsg };
-        setSendStatus(prev => ({ ...prev, ...errStatus }));
-        totalFailed += chunk.length;
+        const errMsg = isTimeout ? "タイムアウト(65s)" : "ネットワークエラー";
+        setSendStatus(prev => ({ ...prev, [target.id]: { status: "error", error: errMsg } }));
+        totalFailed++;
       }
 
-      // チャンク完了後に実際の完了数で進捗更新
-      processedCount += chunk.length;
-      setChunkProgress({ done: processedCount, total: sendable.length });
+      // 完了後に進捗更新
+      setChunkProgress({ done: i + 1, total: sendable.length, startedAt: chunkProgress?.startedAt ?? Date.now() });
 
-      // チャンク間に1秒待機（レートリミット対策）
-      if (i + CHUNK_SIZE < sendable.length) {
-        await new Promise(r => setTimeout(r, 1000));
+      // 次の件まで1.5秒待機（Playwrightサーバー負荷軽減）
+      if (i < sendable.length - 1) {
+        await new Promise(r => setTimeout(r, 1500));
       }
     }
 

@@ -124,10 +124,36 @@ app.post("/post-comment", authMiddleware, async (req, res) => {
   }
 });
 
+// ── Concurrency limiter: max 2 Chromium instances at once (Railway 512MB RAM)
+let activeCount = 0;
+const MAX_CONCURRENT = 2;
+const waitQueue: Array<() => void> = [];
+
+function acquireSlot(): Promise<void> {
+  if (activeCount < MAX_CONCURRENT) {
+    activeCount++;
+    return Promise.resolve();
+  }
+  return new Promise(resolve => waitQueue.push(resolve));
+}
+
+function releaseSlot() {
+  if (waitQueue.length > 0) {
+    const next = waitQueue.shift();
+    next?.(); // hand slot directly to the next waiter
+  } else {
+    activeCount--;
+  }
+}
+
 // お問い合わせフォーム自動送信エンドポイント
 app.post("/submit-contact-form", authMiddleware, async (req, res) => {
   const { target_id, website_url, contact_url, message, sender_name, sender_email } = req.body;
   console.log("[form] Submitting contact form for:", contact_url || website_url);
+
+  // Acquire concurrency slot before launching browser (prevents OOM on Railway 512MB)
+  await acquireSlot();
+  console.log(`[form] Acquired slot. Active: ${activeCount}/${MAX_CONCURRENT}, queued: ${waitQueue.length}`);
 
   const browser = await chromium.launch({
     headless: true,
@@ -211,6 +237,8 @@ app.post("/submit-contact-form", authMiddleware, async (req, res) => {
     res.json({ success: false, error: err.message });
   } finally {
     await browser.close();
+    releaseSlot();
+    console.log(`[form] Released slot. Active: ${activeCount}/${MAX_CONCURRENT}, queued: ${waitQueue.length}`);
   }
 });
 

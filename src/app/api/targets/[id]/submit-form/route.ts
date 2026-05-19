@@ -221,6 +221,7 @@ export async function POST(
       body: JSON.stringify({
         target_id: targetId,
         website_url: websiteUrl,
+        contact_url: (target.contact_url as string) || null, // direct form URL if available
         message: generatedMessage,
         sender_name: finalSenderName,
         sender_email: finalSenderEmail,
