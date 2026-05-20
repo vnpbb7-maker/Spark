@@ -11,9 +11,9 @@ export const maxDuration = 60;
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const targetId = params.id;
+  const { id: targetId } = await params;
   console.log("[submit-form] START targetId:", targetId);
 
   const body = await req.json().catch(() => ({}));

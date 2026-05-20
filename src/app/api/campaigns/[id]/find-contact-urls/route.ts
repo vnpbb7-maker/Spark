@@ -57,9 +57,9 @@ async function findContactUrl(websiteUrl: string): Promise<string | null> {
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const campaignId = params.id;
+  const { id: campaignId } = await params;
   const supabase = getSupabase();
 
   // Fetch targets without contact_url in this campaign

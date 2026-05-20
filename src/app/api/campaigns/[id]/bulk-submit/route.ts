@@ -134,9 +134,9 @@ import { inngest } from "@/inngest/client";
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const campaignId = params.id;
+  const { id: campaignId } = await params;
   const body = await req.json().catch(() => ({}));
   const {
     senderName = "",
