@@ -1583,25 +1583,6 @@ export const generateComments = inngest.createFunction(
           {
             method: "POST",
             headers: {
-              "Content-Type": "application/json",
-              "x-api-key": process.env.ANTHROPIC_API_KEY!,
-              "anthropic-version": "2023-06-01",
-            },
-            body: JSON.stringify({
-              model: "claude-haiku-4-5-20251001",
-              max_tokens: 300,
-              messages: [
-                {
-                  role: "user",
-                  content: `あなたは共感力の高いGrowthハッカーです。
-以下の情報を元に自然なコメントを生成してください。
-
-プロダクト：${campaign?.product_description || campaign?.product_url}
-対象投稿URL：${target.post_url}
-投稿内容：${target.post_content?.slice(0, 300) || ""}
-プラットフォーム：${target.platform}
-
-【ルール】
 ・${languageInstruction}
 ・売り込みから始めない
 ・対象投稿の内容に具体的に触れる
@@ -1707,7 +1688,10 @@ export const bulkSendOutreach = inngest.createFunction(
       userEmail: string;
     };
 
-    const supabase = getSupabase();
+    // ── デバッグ: 受け取った targetIds を全件ログ ──
+    console.log(`[bulk-send] START campaignId=${campaignId} targetIds.count=${(targetIds || []).length}`);
+    console.log(`[bulk-send] targetIds:`, JSON.stringify(targetIds));
+
     const successList: string[] = [];
     const failList: { name: string; error: string }[] = [];
 
@@ -1721,6 +1705,12 @@ export const bulkSendOutreach = inngest.createFunction(
       }
 
       const result = await step.run(`send-${targetId}`, async () => {
+        // ── step内でsupabaseを再生成（Inngestリプレイ時のクロージャ問題を回避）──
+        const supabase = getSupabase();
+
+        // 念のり step内でも targetId を確認
+        console.log(`[bulk-send] step executing for targetId: ${targetId} (type: ${typeof targetId}, len: ${String(targetId).length})`);
+
         const { data: target, error: targetErr } = await supabase
           .from("targets")
           .select("*")
