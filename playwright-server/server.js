@@ -165,11 +165,24 @@ app.post("/submit-contact-form", authMiddleware, async (req, res) => {
     const page = await browser.newPage();
     page.setDefaultTimeout(8000); // reduced from 12s
 
-    // If contact_url is provided, go directly — skip crawling
-    if (contact_url && contact_url.startsWith("http")) {
+    // Fix 1: Googleマップや無効なURLはコンタクトフォームではないのでスキップ
+    const isInvalidContactUrl = (url) => {
+      if (!url) return true;
+      if (url.includes('google.com/maps')) return true;
+      if (url.includes('goo.gl')) return true;
+      if (url.includes('maps.app')) return true;
+      if (url.includes('maps.google')) return true;
+      return false;
+    };
+
+    // If contact_url is provided and valid, go directly — skip crawling
+    if (contact_url && contact_url.startsWith("http") && !isInvalidContactUrl(contact_url)) {
       await page.goto(contact_url, { waitUntil: "domcontentloaded", timeout: 10000 });
       console.log("[form] Navigated directly to contact_url:", page.url());
     } else {
+      if (isInvalidContactUrl(contact_url)) {
+        console.log("[form] contact_url is a Maps/invalid URL, ignoring:", contact_url);
+      }
       // 1. Navigate to root site
       await page.goto(website_url, { waitUntil: "domcontentloaded", timeout: 10000 });
       console.log("[form] Navigated to:", page.url());
@@ -194,7 +207,25 @@ app.post("/submit-contact-form", authMiddleware, async (req, res) => {
     // 3. フォームフィールドを検出して入力
     const nameSelectors = ['input[name*="name" i]','input[placeholder*="名前"]','input[placeholder*="氏名"]','input[id*="name" i]','input[autocomplete="name"]'];
     const emailSelectors = ['input[type="email"]','input[name*="email" i]','input[placeholder*="メール"]','input[placeholder*="mail" i]'];
-    const messageSelectors = ['textarea[name*="message" i]','textarea[name*="content" i]','textarea[name*="body" i]','textarea[id*="message" i]','textarea'];
+    // Fix 2: 拡張メッセージセレクター（日本語プレースホルダー対応）
+    const messageSelectors = [
+      'textarea[name*="message" i]',
+      'textarea[name*="content" i]',
+      'textarea[name*="body" i]',
+      'textarea[name*="comment" i]',
+      'textarea[name*="inquiry" i]',
+      'textarea[name*="toiawase" i]',
+      'textarea[name*="text" i]',
+      'textarea[id*="message" i]',
+      'textarea[id*="content" i]',
+      'textarea[id*="inquiry" i]',
+      'textarea[placeholder*="お問い合わせ"]',
+      'textarea[placeholder*="メッセージ"]',
+      'textarea[placeholder*="内容"]',
+      'textarea[placeholder*="ご質問"]',
+      'textarea[placeholder*="詳細"]',
+      'textarea',  // 最後の手段：任意のtextarea
+    ];
 
     let filledName = false, filledEmail = false, filledMessage = false;
 
