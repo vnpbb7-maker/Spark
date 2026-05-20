@@ -1583,6 +1583,25 @@ export const generateComments = inngest.createFunction(
           {
             method: "POST",
             headers: {
+              "Content-Type": "application/json",
+              "x-api-key": process.env.ANTHROPIC_API_KEY!,
+              "anthropic-version": "2023-06-01",
+            },
+            body: JSON.stringify({
+              model: "claude-haiku-4-5-20251001",
+              max_tokens: 300,
+              messages: [
+                {
+                  role: "user",
+                  content: `あなたは共感力の高いGrowthハッカーです。
+以下の情報を元に自然なコメントを生成してください。
+
+プロダクト：${campaign?.product_description || campaign?.product_url}
+対象投稿URL：${target.post_url}
+投稿内容：${target.post_content?.slice(0, 300) || ""}
+プラットフォーム：${target.platform}
+
+【ルール】
 ・${languageInstruction}
 ・売り込みから始めない
 ・対象投稿の内容に具体的に触れる
