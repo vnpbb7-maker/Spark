@@ -992,7 +992,10 @@ JSONのみ返してください: ["query1", "query2", "query3", "query4", "query
               match_reason: `Googleマップ B2B: ${query.slice(0, 40)}`,
               ...(email ? { email } : {}),
               ...(phone ? { phone } : {}),
-              ...(website ? { website, contact_url: website } : {}),
+              // website のみ保存。contact_url は Firecrawl で後から取得するため null にする
+              // （GoogleマップURLや website トップページを contact_url に入れると
+              //   Playwright がフォームページではなく別ページに飛んでしまう）
+              ...(website ? { website } : {}),
             });
             if (mapsInsertErr) { console.error(`[google_maps] Insert error: ${mapsInsertErr.message}`); continue; }
             insertedTargets.push(name);
