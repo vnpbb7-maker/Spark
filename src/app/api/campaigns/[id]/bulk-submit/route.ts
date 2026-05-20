@@ -214,11 +214,13 @@ export async function POST(
   });
 
   // Optimistically update send_count
-  try {
-    await supabase.from("campaigns")
-      .update({ send_count: sendCount + toProcess.length })
-      .eq("id", campaignId);
-  } catch { /* non-critical */ }
+  if (toProcess.length > 0) {
+    try {
+      await supabase.from("campaigns")
+        .update({ send_count: sendCount + toProcess.length })
+        .eq("id", campaignId);
+    } catch { /* non-critical */ }
+  }
 
   return NextResponse.json({
     queued: true,
