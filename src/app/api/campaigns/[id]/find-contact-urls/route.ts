@@ -83,7 +83,6 @@ export async function POST(
 
   // Process in parallel (3 at a time)
   const CONCURRENCY = 3;
-  let updated = 0; // must be declared before parallel use
   for (let i = 0; i < targets.length; i += CONCURRENCY) {
     const batch = targets.slice(i, i + CONCURRENCY);
     const batchResults = await Promise.all(batch.map(async (t) => {
