@@ -164,7 +164,24 @@ export default function CampaignDetailPage() {
       // Always start with minScore=0 (show all targets) — user applies filter manually
       minScoreInitRef.current = true;
 
-      const enriched: TargetRow[] = tgtsData.map((t) => ({
+      // Build allowed platform set from campaign settings (case-insensitive)
+      const selectedPlatforms: string[] = Array.isArray(campData.platforms)
+        ? (campData.platforms as string[]).map((p: string) => p.toLowerCase())
+        : [];
+
+      const enriched: TargetRow[] = tgtsData
+        .filter((t) => {
+          // If campaign has no platform selection data, show all (backward compat)
+          if (selectedPlatforms.length === 0) return true;
+          const tp = ((t.platform as string) || "").toLowerCase();
+          // Always show google_maps if selected (regardless of casing stored in DB)
+          const canonicalPlatform = tp.replace(/_/g, "").replace(/\s/g, "");
+          return selectedPlatforms.some(sp => {
+            const canonicalSelected = sp.replace(/_/g, "").replace(/\s/g, "");
+            return canonicalSelected === canonicalPlatform || tp === sp;
+          });
+        })
+        .map((t) => ({
         id: t.id as string, platform: t.platform as string, username: t.username as string,
         contact_url: t.contact_url as string | null, website: t.website as string | null,
         post_url: t.post_url as string | null, post_content: t.post_content as string | null,

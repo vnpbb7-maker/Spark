@@ -1003,7 +1003,8 @@ JSONのみ返してください: ["query1", "query2", "query3", "query4", "query
     }
 
     // ─── ProductHunt competitor comment discovery ───
-    if (!limitReached && process.env.TAVILY_API_KEY && process.env.ANTHROPIC_API_KEY) {
+    // Only run if user explicitly selected "producthunt_competitor" platform
+    if (!limitReached && platforms.includes("producthunt_competitor") && process.env.TAVILY_API_KEY && process.env.ANTHROPIC_API_KEY) {
       try {
         console.log("[ph_competitor] Starting ProductHunt competitor discovery");
         // Step 1: Extract competitor names via Claude
@@ -1112,7 +1113,8 @@ JSONのみ返してください: ["query1", "query2", "query3", "query4", "query
     }
 
     // ─── Google Maps competitor review discovery ───
-    if (!limitReached && process.env.TAVILY_API_KEY && process.env.ANTHROPIC_API_KEY) {
+    // Only run if user explicitly selected "google_maps_review" platform
+    if (!limitReached && platforms.includes("google_maps_review") && process.env.TAVILY_API_KEY && process.env.ANTHROPIC_API_KEY) {
       try {
         console.log("[maps_review] Starting competitor review discovery");
         // Step 1: Extract category keywords via Claude
