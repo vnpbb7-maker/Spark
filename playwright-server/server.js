@@ -127,9 +127,9 @@ app.post("/post-comment", authMiddleware, async (req, res) => {
 // ── Concurrency limiter: max 2 Chromium instances at once (Railway 512MB RAM)
 let activeCount = 0;
 const MAX_CONCURRENT = 2;
-const waitQueue: Array<() => void> = [];
+const waitQueue = []; // plain JS array of resolve callbacks
 
-function acquireSlot(): Promise<void> {
+function acquireSlot() {
   if (activeCount < MAX_CONCURRENT) {
     activeCount++;
     return Promise.resolve();
@@ -140,7 +140,7 @@ function acquireSlot(): Promise<void> {
 function releaseSlot() {
   if (waitQueue.length > 0) {
     const next = waitQueue.shift();
-    next?.(); // hand slot directly to the next waiter
+    if (next) next(); // hand slot directly to the next waiter
   } else {
     activeCount--;
   }
