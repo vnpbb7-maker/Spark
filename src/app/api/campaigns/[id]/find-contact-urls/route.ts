@@ -83,17 +83,23 @@ export async function POST(
 
   // Process in parallel (3 at a time)
   const CONCURRENCY = 3;
+  let updated = 0; // must be declared before parallel use
   for (let i = 0; i < targets.length; i += CONCURRENCY) {
     const batch = targets.slice(i, i + CONCURRENCY);
-    await Promise.all(batch.map(async (t) => {
-      const url = t.website as string;
+    const batchResults = await Promise.all(batch.map(async (t) => {
+      const url = (t.website as string) || "";
+      if (!url) return { id: t.id as string, username: (t.username as string) || "", contactUrl: null };
       const contactUrl = await findContactUrl(url);
       if (contactUrl) {
         await supabase.from("targets").update({ contact_url: contactUrl }).eq("id", t.id);
-        updated++;
+        return { id: t.id as string, username: (t.username as string) || "", contactUrl, didUpdate: true };
       }
-      results.push({ id: t.id as string, username: t.username as string, contactUrl });
+      return { id: t.id as string, username: (t.username as string) || "", contactUrl: null };
     }));
+    for (const r of batchResults) {
+      results.push(r);
+      if ((r as { didUpdate?: boolean }).didUpdate) updated++;
+    }
   }
 
   return NextResponse.json({ updated, total: targets.length, results });

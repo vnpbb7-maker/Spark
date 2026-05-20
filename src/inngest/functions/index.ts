@@ -1711,6 +1711,13 @@ export const bulkSendOutreach = inngest.createFunction(
 
     // 1件ずつ step.run で処理（各 step は独立してリトライ可能）
     for (const targetId of targetIds) {
+      // Guard: skip if targetId is missing/invalid
+      if (!targetId || typeof targetId !== "string" || targetId.length < 10) {
+        console.error(`[bulk-send] Skipping invalid targetId: ${JSON.stringify(targetId)}`);
+        failList.push({ name: targetId || "unknown", error: "無効なtargetId" });
+        continue;
+      }
+
       const result = await step.run(`send-${targetId}`, async () => {
         const { data: target, error: targetErr } = await supabase
           .from("targets")
