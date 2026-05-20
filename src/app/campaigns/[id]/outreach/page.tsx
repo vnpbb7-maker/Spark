@@ -22,6 +22,7 @@ const PRIORITY_STYLE: Record<string, { bg: string; color: string }> = {
 type OutreachTarget = {
   id: string; username: string; platform: string; match_score: number;
   priority: string; email: string | null; profile_url: string | null;
+  contact_url: string | null; website: string | null;
   post_content: string | null; ai_reason: string | null;
   message: string; status: "pending" | "sent" | "skipped";
   sendMethod: "email" | "dm" | "form" | "none";
@@ -69,7 +70,7 @@ export default function OutreachPage() {
     console.log("[outreach] campaignId:", campaignId, "idsParam:", idsParam);
 
     let query = supabase.from("targets")
-      .select("id, username, platform, match_score, priority, email, profile_url, post_content, ai_reason")
+      .select("id, username, platform, match_score, priority, email, profile_url, post_url, contact_url, website, post_content, ai_reason")
       .eq("campaign_id", campaignId)
       .order("match_score", { ascending: false });
 
@@ -91,9 +92,11 @@ export default function OutreachPage() {
           match_score: Number(t.match_score) || 0, priority: (t.priority as string) || "C",
           email: realEmail,
           profile_url: (t.profile_url as string | null),
+          contact_url: (t.contact_url as string | null),
+          website: (t.website as string | null),
           post_content: t.post_content as string | null, ai_reason: t.ai_reason as string | null,
           message: "", status: "pending" as const,
-          sendMethod: hasEmail ? "email" : isDmPlatform ? "dm" : (t.profile_url || t.post_url) ? "form" : "none",
+          sendMethod: hasEmail ? "email" : isDmPlatform ? "dm" : (t.contact_url || t.website || t.profile_url || t.post_url) ? "form" : "none",
           post_url: (t.post_url as string | null),
         };
       }));
@@ -498,9 +501,9 @@ ${updated[i].platform}での投稿を拝見し、${productDesc.slice(0, 60)}${kw
                       💬 DMを開く →
                     </a>
                   )}
-                  {t.status === "pending" && t.sendMethod === "form" && (t.profile_url || (t as Record<string, unknown>).post_url as string) && (
+                  {t.status === "pending" && t.sendMethod === "form" && (t.contact_url || t.website || t.profile_url || (t as Record<string, unknown>).post_url as string) && (
                     <a
-                      href={(t.profile_url || (t as Record<string, unknown>).post_url as string) || "#"}
+                      href={(t.contact_url || t.website || t.profile_url || (t as Record<string, unknown>).post_url as string) || "#"}
                       target="_blank" rel="noopener noreferrer"
                       onClick={() => setStatus(t.id, "sent")}
                       style={{
