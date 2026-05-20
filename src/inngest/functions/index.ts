@@ -1723,30 +1723,38 @@ export const bulkSendOutreach = inngest.createFunction(
         continue;
       }
 
-      const result = await step.run(`send-${targetId}`, async () => {
+      // Capture ID immutably to avoid Inngest step-replay closure issue
+      const currentTargetId = String(targetId);
+
+      const result = await step.run(`send-${currentTargetId}`, async () => {
         // ── step内でsupabaseを再生成（Inngestリプレイ時のクロージャ問題を回避）──
         const supabase = getSupabase();
 
-        // 念のり step内でも targetId を確認
-        console.log(`[bulk-send] step executing for targetId: ${targetId} (type: ${typeof targetId}, len: ${String(targetId).length})`);
+        // step内でも targetId を確認（リプレイ時に undefined になるケースを検知）
+        console.log(`[bulk-send] step start — currentTargetId="${currentTargetId}" type=${typeof currentTargetId} len=${currentTargetId.length}`);
 
         const { data: target, error: targetErr } = await supabase
           .from("targets")
           .select("*")
-          .eq("id", targetId)
+          .eq("id", currentTargetId)
           .single();
 
-        if (targetErr) console.error(`[bulk-send] Target fetch error for ${targetId}:`, targetErr.message);
+        if (targetErr) console.error(`[bulk-send] Target fetch error for "${currentTargetId}":`, targetErr.message);
         if (!target) {
-          console.error(`[bulk-send] Target not found for id: ${targetId}`);
-          return { success: false, error: "ターゲット不明", name: targetId };
+          console.error(`[bulk-send] Target not found for id: "${currentTargetId}"`);
+          return { success: false, error: "ターゲット不明", name: currentTargetId };
         }
-        console.log(`[bulk-send] Target found: ${target.username}, website: ${target.website}, contact_url: ${target.contact_url}`);
+        // Full target log to diagnose field issues
+        console.log(`[bulk-send] Target found:`, JSON.stringify({
+          id: target.id, username: target.username, platform: target.platform,
+          website: target.website, contact_url: target.contact_url, email: target.email,
+        }));
 
         // submit-form API に委譲（Gmail MCP / Playwright 両対応）
         const apiBase = process.env.NEXT_PUBLIC_APP_URL || "https://spark-ai.jp";
-        console.log(`[bulk-send] Calling submit-form for ${targetId} via ${apiBase}`);
-        const apiRes = await fetch(`${apiBase}/api/targets/${targetId}/submit-form`, {
+        const submitUrl = `${apiBase}/api/targets/${target.id}/submit-form`;
+        console.log(`[bulk-send] Calling submit-form: ${submitUrl}`);
+        const apiRes = await fetch(submitUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -1755,7 +1763,7 @@ export const bulkSendOutreach = inngest.createFunction(
           }),
           signal: AbortSignal.timeout(60000),
         });
-        console.log(`[bulk-send] submit-form response status: ${apiRes.status} for ${targetId}`);
+        console.log(`[bulk-send] submit-form status: ${apiRes.status} for target.id="${target.id}"`);
 
         const data = await apiRes.json().catch(() => ({ success: false, error: "レスポンス解析失敗" }));
         const succeeded = data.success || data.submitted;
@@ -1778,7 +1786,7 @@ export const bulkSendOutreach = inngest.createFunction(
 
         return {
           success: succeeded,
-          name: (target.username as string) || targetId,
+          name: (target.username as string) || currentTargetId,
           error: succeeded ? undefined : (data.error || "送信失敗"),
         };
       });
@@ -1790,8 +1798,8 @@ export const bulkSendOutreach = inngest.createFunction(
       }
 
       // 件間に2秒待機（Playwright サーバー負荷軽減）
-      if (targetIds.indexOf(targetId) < targetIds.length - 1) {
-        await step.sleep(`wait-${targetId}`, "2s");
+      if (targetIds.indexOf(currentTargetId) < targetIds.length - 1) {
+        await step.sleep(`wait-${currentTargetId}`, "2s");
       }
     }
 
