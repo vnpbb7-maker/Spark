@@ -8,20 +8,21 @@ async function sendViaGmailMcp(
   body: string
 ): Promise<{ sent: boolean }> {
   const mcpUrl = process.env.GMAIL_MCP_URL || "";
-  console.log("[send-report] GMAIL_MCP_URL:", mcpUrl ? "SET" : "NOT SET");
+  console.log("[send-report] GMAIL_MCP_URL:", mcpUrl || "NOT SET");
   console.log("[send-report] Sending report to:", toEmail);
 
-  if (!mcpUrl) {
-    console.warn("[send-report] GMAIL_MCP_URL not configured — skipping report email");
+  if (!mcpUrl || !process.env.ANTHROPIC_API_KEY) {
+    console.warn("[send-report] GMAIL_MCP_URL or ANTHROPIC_API_KEY not configured — skipping report email");
     return { sent: false };
   }
 
   try {
-    const res = await fetch(`${mcpUrl}/v1/messages`, {
+    // Anthropic API 経由で Gmail MCP を呼び出す（submit-form と同じパターン）
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": process.env.ANTHROPIC_API_KEY || "",
+        "x-api-key": process.env.ANTHROPIC_API_KEY,
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
@@ -31,21 +32,23 @@ async function sendViaGmailMcp(
           role: "user",
           content: `Send an email to ${toEmail} with subject "${subject}" and body:\n\n${body}\n\nUse the Gmail tool to send it. Reply only with {"sent": true} after sending.`,
         }],
-        tools: [{ name: "gmail-mcp", type: "custom" }],
+        mcp_servers: [{ type: "url", url: mcpUrl, name: "gmail-mcp" }],
       }),
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(20000),
     });
 
     if (res.ok) {
       const data = await res.json();
-      const text = data.content?.[0]?.text || "";
-      if (text.includes("\"sent\": true") || text.includes("\"sent\":true")) {
+      const text = (data.content?.[0]?.text || "").toLowerCase();
+      if (text.includes("sent") || text.includes("true")) {
         console.log("[send-report] Report email sent to:", toEmail);
         return { sent: true };
       }
+      console.warn("[send-report] Claude responded but no sent=true:", text.slice(0, 100));
+    } else {
+      const errText = await res.text().catch(() => "");
+      console.error("[send-report] Anthropic API error:", res.status, errText.slice(0, 200));
     }
-    const errText = await res.text().catch(() => "");
-    console.error("[send-report] MCP response not OK:", res.status, errText.slice(0, 200));
   } catch (e) {
     console.error("[send-report] Gmail MCP error:", e);
   }

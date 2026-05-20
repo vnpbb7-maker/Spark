@@ -62,6 +62,16 @@ export async function POST(
   const { id: campaignId } = await params;
   const supabase = getSupabase();
 
+  // GoogleマップURLをcontact_urlとして保存しないためのガード
+  const isInvalidContactUrl = (url: string): boolean => {
+    if (!url) return true;
+    if (url.includes("google.com/maps")) return true;
+    if (url.includes("goo.gl")) return true;
+    if (url.includes("maps.app")) return true;
+    if (url.includes("maps.google")) return true;
+    return false;
+  };
+
   // Fetch targets without contact_url in this campaign
   const { data: targets, error } = await supabase
     .from("targets")
@@ -89,9 +99,11 @@ export async function POST(
       const url = (t.website as string) || "";
       if (!url) return { id: t.id as string, username: (t.username as string) || "", contactUrl: null };
       const contactUrl = await findContactUrl(url);
-      if (contactUrl) {
+      if (contactUrl && !isInvalidContactUrl(contactUrl)) {
         await supabase.from("targets").update({ contact_url: contactUrl }).eq("id", t.id);
         return { id: t.id as string, username: (t.username as string) || "", contactUrl, didUpdate: true };
+      } else if (contactUrl) {
+        console.log(`[find-contact-urls] Skipped Maps/invalid URL for ${(t.username as string) || t.id}: ${contactUrl}`);
       }
       return { id: t.id as string, username: (t.username as string) || "", contactUrl: null };
     }));
