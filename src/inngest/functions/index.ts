@@ -1797,6 +1797,7 @@ export const bulkSendOutreach = inngest.createFunction(
 
     // 完了レポートメールを /api/send-report 経由で送信
     await step.run("send-report-email", async () => {
+      const supabase = getSupabase(); // step内で再生成
       const apiBase = process.env.NEXT_PUBLIC_APP_URL || "https://spark-ai.jp";
       const { data: campaign } = await supabase
         .from("campaigns")
