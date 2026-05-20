@@ -1730,8 +1730,8 @@ export const bulkSendOutreach = inngest.createFunction(
         // ── step内でsupabaseを再生成（Inngestリプレイ時のクロージャ問題を回避）──
         const supabase = getSupabase();
 
-        // step内でも targetId を確認（リプレイ時に undefined になるケースを検知）
-        console.log(`[bulk-send] step start — currentTargetId="${currentTargetId}" type=${typeof currentTargetId} len=${currentTargetId.length}`);
+        // ── 詳細デバッグ: targetId の値・型・長さを確認 ──
+        console.log("[bulkSend] currentTargetId value:", currentTargetId, "type:", typeof currentTargetId, "length:", currentTargetId?.length);
 
         const { data: target, error: targetErr } = await supabase
           .from("targets")
@@ -1739,9 +1739,18 @@ export const bulkSendOutreach = inngest.createFunction(
           .eq("id", currentTargetId)
           .single();
 
+        // ── DB結果を全件ログ ──
+        console.log("[bulkSend] DB result:", JSON.stringify(target), "error:", JSON.stringify(targetErr));
+
         if (targetErr) console.error(`[bulk-send] Target fetch error for "${currentTargetId}":`, targetErr.message);
         if (!target) {
           console.error(`[bulk-send] Target not found for id: "${currentTargetId}"`);
+          // DBにあるターゲットのサンプルを確認（接続・テーブル自体の問題を検知）
+          const { data: sampleTargets, error: sampleErr } = await supabase
+            .from("targets")
+            .select("id")
+            .limit(5);
+          console.log("[bulkSend] sample targets in DB:", JSON.stringify(sampleTargets), "sampleErr:", JSON.stringify(sampleErr));
           return { success: false, error: "ターゲット不明", name: currentTargetId };
         }
         // Full target log to diagnose field issues
