@@ -930,6 +930,8 @@ JSONのみ返してください: ["query1", "query2", "query3", "query4", "query
             const displayName = (place.displayName as Record<string, unknown>) || {};
             const name = (displayName.text as string) || "";
             if (!name) continue;
+            // Debug: log Places API fields to diagnose missing website
+            console.log(`[google_maps] place: ${name} websiteUri=${(place.websiteUri as string) ?? "MISSING"} phone=${(place.nationalPhoneNumber as string) ?? "MISSING"}`);
             const dedupKey = `google_maps::${name.toLowerCase()}`;
             if (dedupSet.has(dedupKey)) continue;
             dedupSet.add(dedupKey);
