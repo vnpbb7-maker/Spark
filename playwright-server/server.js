@@ -207,8 +207,8 @@ app.post("/submit-contact-form", authMiddleware, async (req, res) => {
     // 3. フォームフィールドを検出して入力
     const nameSelectors = ['input[name*="name" i]','input[placeholder*="名前"]','input[placeholder*="氏名"]','input[id*="name" i]','input[autocomplete="name"]'];
     const emailSelectors = ['input[type="email"]','input[name*="email" i]','input[placeholder*="メール"]','input[placeholder*="mail" i]'];
-    // Fix 2: 拡張メッセージセレクター（日本語プレースホルダー対応）
     const messageSelectors = [
+      // name属性
       'textarea[name*="message" i]',
       'textarea[name*="content" i]',
       'textarea[name*="body" i]',
@@ -216,15 +216,38 @@ app.post("/submit-contact-form", authMiddleware, async (req, res) => {
       'textarea[name*="inquiry" i]',
       'textarea[name*="toiawase" i]',
       'textarea[name*="text" i]',
+      'textarea[name*="msg" i]',
+      'textarea[name*="detail" i]',
+      'textarea[name*="description" i]',
+      'textarea[name*="memo" i]',
+      'textarea[name*="note" i]',
+      'textarea[name*="question" i]',
+      'textarea[name*="remarks" i]',
+      'textarea[name*="naiyo" i]',
+      // id属性
       'textarea[id*="message" i]',
       'textarea[id*="content" i]',
       'textarea[id*="inquiry" i]',
+      'textarea[id*="body" i]',
+      'textarea[id*="text" i]',
+      'textarea[id*="detail" i]',
+      // class属性
+      'textarea[class*="message" i]',
+      'textarea[class*="inquiry" i]',
+      'textarea[class*="contact" i]',
+      // placeholder（日本語）
       'textarea[placeholder*="お問い合わせ"]',
       'textarea[placeholder*="メッセージ"]',
       'textarea[placeholder*="内容"]',
       'textarea[placeholder*="ご質問"]',
+      'textarea[placeholder*="ご要望"]',
+      'textarea[placeholder*="お聞きしたい"]',
       'textarea[placeholder*="詳細"]',
-      'textarea',  // 最後の手段：任意のtextarea
+      'textarea[placeholder*="具体的"]',
+      // form内の任意 textarea
+      'form textarea',
+      // 最終手段
+      'textarea',
     ];
 
     let filledName = false, filledEmail = false, filledMessage = false;
@@ -239,8 +262,40 @@ app.post("/submit-contact-form", authMiddleware, async (req, res) => {
       try { await page.fill(sel, message, { timeout: 2000 }); filledMessage = true; console.log("[form] Filled message:", sel); break; } catch {}
     }
 
-    console.log(`[form] Fill results — name:${filledName} email:${filledEmail} message:${filledMessage}`);
+    // Fix 2: iframe内のフォームに対応
     if (!filledMessage) {
+      console.log("[form] Trying iframe fallback for message...");
+      const frames = page.frames();
+      for (const frame of frames) {
+        if (filledMessage) break;
+        for (const sel of messageSelectors) {
+          try {
+            await frame.fill(sel, message, { timeout: 2000 });
+            filledMessage = true;
+            console.log("[form] Filled message in iframe via:", sel);
+            // iframe内では name/email も埋める
+            for (const ns of nameSelectors) {
+              try { await frame.fill(ns, sender_name, { timeout: 1500 }); filledName = true; break; } catch {}
+            }
+            for (const es of emailSelectors) {
+              try { await frame.fill(es, sender_email, { timeout: 1500 }); filledEmail = true; break; } catch {}
+            }
+            break;
+          } catch {}
+        }
+      }
+    }
+
+    console.log(`[form] Fill results — name:${filledName} email:${filledEmail} message:${filledMessage}`);
+
+    // Fix 3: フィールドが見つからない場合のデバッグログ
+    if (!filledMessage) {
+      const textareas = await page.$$eval('textarea', els =>
+        els.map(el => ({ name: el.name, id: el.id, placeholder: el.placeholder, className: el.className.slice(0, 80) }))
+      ).catch(() => []);
+      console.log('[form] Available textareas:', JSON.stringify(textareas));
+      console.log('[form] Page URL:', page.url());
+      console.log('[form] Page title:', await page.title().catch(() => '(error)'));
       throw new Error("メッセージフィールドが見つかりませんでした");
     }
 
