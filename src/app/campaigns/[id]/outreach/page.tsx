@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useParams, useSearchParams, useRouter } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 const PLATFORM_ICONS: Record<string, { icon: string; label: string }> = {
@@ -42,7 +42,6 @@ type Tab = "all" | "email" | "dm" | "sent" | "skipped";
 export default function OutreachPage() {
   const router = useRouter();
   const { id: campaignId } = useParams<{ id: string }>();
-  const searchParams = useSearchParams();
   const [targets, setTargets] = useState<OutreachTarget[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>("all");
@@ -66,18 +65,24 @@ export default function OutreachPage() {
     if (!camp) return;
     setCampaign(camp);
 
-    // Get selected IDs from URL or default to all targets
-    const idsParam = searchParams.get("ids");
-    console.log("[outreach] campaignId:", campaignId, "idsParam:", idsParam);
+    // Get selected IDs from localStorage (avoids URL length truncation)
+    let savedIds: string[] = [];
+    if (typeof window !== 'undefined') {
+      const raw = localStorage.getItem('spark_selected_target_ids');
+      if (raw) {
+        try { savedIds = JSON.parse(raw); } catch { savedIds = []; }
+        localStorage.removeItem('spark_selected_target_ids'); // clear after reading
+      }
+    }
+    console.log('[outreach] campaignId:', campaignId, 'savedIds count:', savedIds.length);
 
-    let query = supabase.from("targets")
-      .select("id, username, platform, match_score, priority, email, profile_url, post_url, contact_url, website, post_content, ai_reason")
-      .eq("campaign_id", campaignId)
-      .order("match_score", { ascending: false });
+    let query = supabase.from('targets')
+      .select('id, username, platform, match_score, priority, email, profile_url, post_url, contact_url, website, post_content, ai_reason')
+      .eq('campaign_id', campaignId)
+      .order('match_score', { ascending: false });
 
-    if (idsParam) {
-      const ids = idsParam.split(",").filter(Boolean);
-      if (ids.length > 0) query = query.in("id", ids);
+    if (savedIds.length > 0) {
+      query = query.in('id', savedIds);
     }
 
     const { data, error: fetchErr } = await query.limit(300);

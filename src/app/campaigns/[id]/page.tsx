@@ -509,23 +509,30 @@ export default function CampaignDetailPage() {
               const canSend = selectedCount > 0 && contactable.length > 0;
               const tooltip = selectedCount === 0 ? "ターゲットを選択してください" : contactable.length === 0 ? "選択中のターゲットに連絡手段がありません" : "";
               return (
-                <a
-                  href={canSend ? `/campaigns/${campaignId}/outreach?ids=${[...selected].join(",")}` : undefined}
-                  onClick={!canSend ? (e) => e.preventDefault() : undefined}
+                <button
+                  onClick={() => {
+                    if (!canSend) return;
+                    const ids = [...selected];
+                    if (typeof window !== 'undefined') {
+                      localStorage.setItem('spark_selected_target_ids', JSON.stringify(ids));
+                    }
+                    router.push(`/campaigns/${campaignId}/outreach`);
+                  }}
+                  disabled={!canSend}
                   title={tooltip}
                   style={{
                     background: canSend ? "linear-gradient(135deg, #7c5cfc, #5a3fd6)" : "rgba(255,255,255,0.06)",
                     color: canSend ? "#fff" : "rgba(240,239,232,0.25)",
                     border: "none", borderRadius: "10px",
-                    padding: "8px 18px", fontSize: "12px", fontWeight: 700, textDecoration: "none",
+                    padding: "8px 18px", fontSize: "12px", fontWeight: 700,
                     fontFamily: "'Space Grotesk'",
                     boxShadow: canSend ? "0 4px 16px rgba(124,92,252,0.3)" : "none",
                     display: "flex", alignItems: "center", gap: "6px",
-                    cursor: canSend ? "pointer" : "not-allowed", pointerEvents: "auto",
+                    cursor: canSend ? "pointer" : "not-allowed",
                   }}
                 >
                   📨 送信する{selectedCount > 0 ? ` (${contactable.length}件)` : ""}
-                </a>
+                </button>
               );
             })()}
             <button onClick={() => setShowLiveLog(!showLiveLog)} style={{ background: showLiveLog ? "rgba(124,92,252,0.15)" : "rgba(255,255,255,0.04)", border: `1px solid ${showLiveLog ? "rgba(124,92,252,0.3)" : "rgba(255,255,255,0.08)"}`, borderRadius: "10px", padding: "7px 12px", fontSize: "14px", cursor: "pointer", color: showLiveLog ? "#7c5cfc" : "rgba(240,239,232,0.4)" }}>
