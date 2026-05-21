@@ -285,6 +285,8 @@ ${updated[i].platform}での投稿を拝見し、${productDesc.slice(0, 60)}${kw
       <div style={{ borderBottom: "1px solid rgba(255,255,255,0.07)", padding: "14px 24px" }}>
         <div style={{ maxWidth: "1000px", margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+            <button onClick={() => router.push("/dashboard")} style={{ background: "transparent", border: "none", color: "rgba(255,255,255,0.5)", fontSize: "13px", cursor: "pointer", padding: "4px 8px" }}>← ダッシュボード</button>
+            <span style={{ color: "rgba(255,255,255,0.1)" }}>|</span>
             <a href={`/campaigns/${campaignId}`} style={{ color: "rgba(240,239,232,0.4)", textDecoration: "none", fontSize: "13px" }}>← キャンペーン</a>
             <span style={{ color: "rgba(255,255,255,0.1)" }}>|</span>
             <h1 style={{ fontFamily: "'Space Grotesk'", fontWeight: 700, fontSize: "17px", margin: 0 }}>📨 アウトリーチ</h1>
