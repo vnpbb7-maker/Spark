@@ -204,6 +204,7 @@ export async function POST(
   // 4b. Playwright form submission
   const playwrightUrl = process.env.PLAYWRIGHT_SERVER_URL;
   const playwrightKey = process.env.PLAYWRIGHT_API_KEY;
+  console.log("[submit-form] playwrightUrl:", playwrightUrl ? playwrightUrl.slice(0, 50) + "..." : "NOT SET");
 
   if (!playwrightUrl) {
     return NextResponse.json({
@@ -226,7 +227,7 @@ export async function POST(
         sender_name: finalSenderName,
         sender_email: finalSenderEmail,
       }),
-      signal: AbortSignal.timeout(55000),
+      signal: AbortSignal.timeout(60000), // 60秒（Railway Chromium起動 + フォーム入力を考慮）
     });
 
     const result = await formRes.json();
@@ -237,10 +238,18 @@ export async function POST(
     }
 
     return NextResponse.json({ ...result, generatedMessage });
-  } catch (err) {
-    console.error("[submit-form] Playwright error:", err);
+  } catch (err: unknown) {
+    const e = err as Error;
+    const isTimeout = e.name === "AbortError" || e.message?.includes("timeout");
+    console.error(`[submit-form] Playwright ${isTimeout ? "TIMEOUT" : "ERROR"}:`, e.name, e.message);
     return NextResponse.json(
-      { success: false, error: "Playwrightサーバーへの接続に失敗しました", generatedMessage },
+      {
+        success: false,
+        error: isTimeout
+          ? "Playwrightサーバーがタイムアウト（60秒）しました"
+          : `Playwrightサーバーへの接続に失敗: ${e.message}`,
+        generatedMessage,
+      },
       { status: 500 }
     );
   }
