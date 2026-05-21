@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
@@ -58,6 +58,23 @@ export default function OutreachPage() {
   const [settingsSenderName, setSettingsSenderName] = useState("");
   const [settingsProductUrl, setSettingsProductUrl] = useState("");
   const [settingsKeywords, setSettingsKeywords] = useState("");
+  const [storedTargetIds, setStoredTargetIds] = useState<string[]>([]);
+  const storedIdsRef = React.useRef<string[]>([]);
+
+  // クライアントサイドのみ: localStorageから選択済みIDを読み取り、使用後にクリア
+  useEffect(() => {
+    const savedIds = localStorage.getItem('spark_selected_target_ids');
+    if (savedIds) {
+      try {
+        const ids = JSON.parse(savedIds) as string[];
+        storedIdsRef.current = ids;
+        setStoredTargetIds(ids);
+      } catch {
+        storedIdsRef.current = [];
+      }
+      localStorage.removeItem('spark_selected_target_ids');
+    }
+  }, []);
 
   const fetchTargets = useCallback(async () => {
     const supabase = createClient();
@@ -65,15 +82,8 @@ export default function OutreachPage() {
     if (!camp) return;
     setCampaign(camp);
 
-    // Get selected IDs from localStorage (avoids URL length truncation)
-    let savedIds: string[] = [];
-    if (typeof window !== 'undefined') {
-      const raw = localStorage.getItem('spark_selected_target_ids');
-      if (raw) {
-        try { savedIds = JSON.parse(raw); } catch { savedIds = []; }
-        localStorage.removeItem('spark_selected_target_ids'); // clear after reading
-      }
-    }
+    // Get selected IDs from ref set by localStorage useEffect (avoids SSR issues)
+    const savedIds = storedIdsRef.current;
     console.log('[outreach] campaignId:', campaignId, 'savedIds count:', savedIds.length);
 
     let query = supabase.from('targets')
@@ -108,9 +118,10 @@ export default function OutreachPage() {
       }));
     }
     setLoading(false);
-  }, [campaignId, searchParams]);
+  }, [campaignId]);
 
-  useEffect(() => { fetchTargets(); }, [fetchTargets]);
+  // storedTargetIdsがセットされた後（localStorage読み取り完了後）にfetchを実行
+  useEffect(() => { fetchTargets(); }, [fetchTargets, storedTargetIds]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Pre-fill settings from localStorage when modal opens
   const openSettings = () => {
