@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams, useSearchParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 const PLATFORM_ICONS: Record<string, { icon: string; label: string }> = {
@@ -40,6 +40,7 @@ const DM_URLS: Record<string, (username: string) => string> = {
 type Tab = "all" | "email" | "dm" | "sent" | "skipped";
 
 export default function OutreachPage() {
+  const router = useRouter();
   const { id: campaignId } = useParams<{ id: string }>();
   const searchParams = useSearchParams();
   const [targets, setTargets] = useState<OutreachTarget[]>([]);
@@ -318,6 +319,30 @@ ${updated[i].platform}での投稿を拝見し、${productDesc.slice(0, 60)}${kw
               <span style={{ fontSize: "11px", color: "rgba(240,239,232,0.5)", lineHeight: 1.5 }}>
                 ✅{bulkResult.sent}件送信完了 / ❌{bulkResult.failed}件失敗{bulkResult.skipped ? ` / 💬${bulkResult.skipped}件はDM手動送信` : ""}
               </span>
+            )}
+            {bulkSendQueued && (
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "6px" }}>
+                <button
+                  onClick={() => router.push("/dashboard")}
+                  style={{
+                    background: "rgba(255,255,255,0.08)",
+                    border: "0.5px solid rgba(255,255,255,0.2)",
+                    color: "#f0efe8",
+                    borderRadius: "8px",
+                    padding: "8px 18px",
+                    fontSize: "13px",
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                    fontFamily: "'Space Grotesk'",
+                    fontWeight: 600,
+                  }}
+                >
+                  ← ダッシュボードに戻る
+                </button>
+                <p style={{ fontSize: "11px", color: "rgba(255,255,255,0.35)", margin: 0 }}>
+                  送信はバックグラウンドで継続中です
+                </p>
+              </div>
             )}
           </div>
         </div>
