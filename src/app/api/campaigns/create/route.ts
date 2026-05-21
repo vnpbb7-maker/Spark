@@ -37,6 +37,33 @@ export async function POST(request: Request) {
       );
     }
 
+    // プラン別キャンペーン数制限チェック
+    const ADMIN_EMAILS = ["skillive.info@gmail.com", "vnpbb7@gmail.com"];
+    const isAdminByEmail = ADMIN_EMAILS.includes(user.email || "");
+    if (!isAdminByEmail) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("plan, is_admin")
+        .eq("id", user.id)
+        .maybeSingle();
+      const isAdmin = profile?.is_admin === true;
+      if (!isAdmin) {
+        const plan = profile?.plan || "free";
+        const campaignLimits: Record<string, number> = { free: 3, starter: 20, growth: 999999, unlimited: 999999 };
+        const maxCampaigns = campaignLimits[plan] ?? 3;
+        const { count } = await supabase
+          .from("campaigns")
+          .select("*", { count: "exact", head: true })
+          .eq("user_id", user.id);
+        if ((count || 0) >= maxCampaigns) {
+          return NextResponse.json(
+            { error: `現在のプラン（${plan}）では${maxCampaigns}件までキャンペーンを作成できます。アップグレードしてください。` },
+            { status: 403 }
+          );
+        }
+      }
+    }
+
     const { data, error } = await supabase
       .from("campaigns")
       .insert({

@@ -1,6 +1,7 @@
 // Deploy: 1747196705 — cache bust
 import { inngest } from "../client";
 import { createClient } from "@supabase/supabase-js";
+import { getUserPlan, PLAN_LIMITS } from "@/lib/plan-limits";
 
 function getSupabase() {
   return createClient(
@@ -442,9 +443,15 @@ export const discoverTargets = inngest.createFunction(
       return { error: "Campaign not found" };
     }
 
-    // 2. Per-campaign target limit
-    // TODO: change back to plan-based limit before production release
-    const campaignLimit = campaign.daily_limit || 50;
+    // 2. Per-campaign target limit — plan-based
+    const userId = campaign.user_id as string;
+    const { plan, isAdmin, limits } = await getUserPlan(getSupabase(), userId);
+    console.log(`[discover] userId=${userId} plan=${plan} isAdmin=${isAdmin} maxTargets=${limits.maxTargetsPerCampaign}`);
+
+    // キャンペーン設定のdaily_limitかプラン上限の小さい方を使用（管理者は無制限）
+    const campaignLimit = isAdmin
+      ? (campaign.daily_limit || 1000)
+      : Math.min(campaign.daily_limit || 50, limits.maxTargetsPerCampaign);
 
     const { count } = await getSupabase()
       .from("targets")
@@ -453,15 +460,14 @@ export const discoverTargets = inngest.createFunction(
     const existingCount = count || 0;
     const remaining = campaignLimit - existingCount;
     if (existingCount >= campaignLimit) {
-      console.log(`Campaign limit reached: ${existingCount}/${campaignLimit}`);
+      console.log(`[discover] Campaign limit reached: ${existingCount}/${campaignLimit} (plan=${plan})`);
       await getSupabase().from("campaigns").update({ status: "completed" }).eq("id", campaignId);
       return { error: "Campaign limit reached" };
     }
     const minMatchScore = (campaign.min_match_score as number) || 50;
-    console.log(`Campaign ${campaignId}: ${existingCount}/${campaignLimit} targets, remaining: ${remaining}, minMatchScore: ${minMatchScore}`);
+    console.log(`[discover] Campaign ${campaignId}: ${existingCount}/${campaignLimit} targets, remaining: ${remaining}, minMatchScore: ${minMatchScore}`);
 
     // 2b. Cross-campaign deduplication: only skip targets found in last 7 days
-    const userId = campaign.user_id;
     const { data: userCampaigns } = await getSupabase()
       .from("campaigns")
       .select("id")
