@@ -1702,18 +1702,33 @@ export const monitorReplies = inngest.createFunction(
 export const bulkSendOutreach = inngest.createFunction(
   { id: "bulk-send-outreach", retries: 0, triggers: [{ event: "outreach/bulk-send" }] },
   async ({ event, step }: any) => {
-    const { campaignId, targetIds, senderName, senderEmail, userEmail, userId } = event.data as {
+    const { campaignId, targetIds, senderName, senderEmail, userEmail, userId: eventUserId, settings } = event.data as {
       campaignId: string;
       targetIds: string[];
       senderName: string;
       senderEmail: string;
       userEmail: string;
       userId: string | null;
+      settings?: { userId?: string };
     };
 
-    // ── デバッグ: 受け取った targetIds を全件ログ ──
+    // デバッグ: 受け取った userId を確認
     console.log(`[bulk-send] START campaignId=${campaignId} targetIds.count=${(targetIds || []).length}`);
-    console.log(`[bulk-send] targetIds:`, JSON.stringify(targetIds));
+    console.log(`[bulk-send] userId from event:`, eventUserId);
+    console.log(`[bulk-send] settings.userId:`, settings?.userId);
+
+    // campaign.user_id をDBから取得（フォールバック用）
+    const supabaseTop = getSupabase();
+    const { data: campaignRow } = await supabaseTop
+      .from("campaigns")
+      .select("user_id")
+      .eq("id", campaignId)
+      .single();
+    const campaignUserId = (campaignRow?.user_id as string) || null;
+
+    // 優先順位: event.data.userId → event.data.settings.userId → campaign.user_id
+    const resolvedUserId = eventUserId || settings?.userId || campaignUserId || null;
+    console.log(`[bulk-send] resolved userId: ${resolvedUserId} (event=${eventUserId}, settings=${settings?.userId}, campaign=${campaignUserId})`);
 
     const successList: string[] = [];
     const failList: { name: string; error: string }[] = [];
@@ -1846,7 +1861,6 @@ export const bulkSendOutreach = inngest.createFunction(
         }).eq("id", target.id);
 
         // sent_history に記録
-        const resolvedUserId = userId || (target.user_id as string) || null;
         const { error: historyError } = await supabase.from("sent_history").insert({
           user_id: resolvedUserId,
           company_name: (target.username as string) || null,
