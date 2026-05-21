@@ -55,6 +55,7 @@ export default function OutreachPage() {
   const [chunkProgress, setChunkProgress] = useState<{ done: number; total: number; startedAt?: number } | null>(null);
   const [sendStatus, setSendStatus] = useState<Record<string, { status: "idle" | "sending" | "success" | "error"; error?: string }>>({});
   const [showSettings, setShowSettings] = useState(false);
+  const [enableTracking, setEnableTracking] = useState(false);
   const [settingsSenderName, setSettingsSenderName] = useState("");
   const [settingsProductUrl, setSettingsProductUrl] = useState("");
   const [settingsKeywords, setSettingsKeywords] = useState("");
@@ -133,6 +134,7 @@ export default function OutreachPage() {
     setSettingsSenderName(localStorage.getItem("spark_sender_name") || "");
     setSettingsProductUrl(localStorage.getItem("spark_product_url") || (campaign?.product_url as string) || "");
     setSettingsKeywords(localStorage.getItem("spark_keywords") || "");
+    setEnableTracking(localStorage.getItem("spark_enable_tracking") === "true");
     setShowSettings(true);
   };
 
@@ -141,6 +143,7 @@ export default function OutreachPage() {
     localStorage.setItem("spark_sender_name", settingsSenderName);
     localStorage.setItem("spark_product_url", settingsProductUrl);
     localStorage.setItem("spark_keywords", settingsKeywords);
+    localStorage.setItem("spark_enable_tracking", String(enableTracking));
     setShowSettings(false);
     generateMessages(settingsSenderName, settingsProductUrl, settingsKeywords);
   };
@@ -266,6 +269,7 @@ ${updated[i].platform}での投稿を拝見し、${productDesc.slice(0, 60)}${kw
           senderName,
           senderEmail,
           userEmail: senderEmail,
+          enableTracking: localStorage.getItem("spark_enable_tracking") === "true",
         }),
       });
       const data = await res.json();
@@ -617,11 +621,33 @@ ${updated[i].platform}での投稿を拝見し、${productDesc.slice(0, 60)}${kw
                 placeholder="山田 太郎" style={{ width: "100%", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "10px", padding: "10px 14px", color: "#f0efe8", fontSize: "13px", outline: "none", boxSizing: "border-box", fontFamily: "DM Sans" }} />
             </div>
 
-            <div style={{ marginBottom: "24px" }}>
+            <div style={{ marginBottom: "20px" }}>
               <label style={{ fontSize: "11px", color: "rgba(240,239,232,0.5)", display: "block", marginBottom: "6px" }}>🎯 キーワード / 訴求ポイント</label>
               <textarea value={settingsKeywords} onChange={e => setSettingsKeywords(e.target.value)}
                 placeholder="例：AI自動化、コスト削減、β無料など"
                 rows={3} style={{ width: "100%", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "10px", padding: "10px 14px", color: "#f0efe8", fontSize: "13px", outline: "none", resize: "vertical", boxSizing: "border-box", fontFamily: "DM Sans" }} />
+            </div>
+
+            {/* Click tracking opt-in */}
+            <div style={{
+              display: "flex", alignItems: "flex-start", gap: "10px",
+              padding: "14px 0",
+              borderTop: "0.5px solid rgba(255,255,255,0.08)",
+              marginBottom: "20px",
+            }}>
+              <input
+                type="checkbox"
+                id="enable-tracking-modal"
+                checked={enableTracking}
+                onChange={e => setEnableTracking(e.target.checked)}
+                style={{ marginTop: "2px", cursor: "pointer", accentColor: "#ff6b35", flexShrink: 0 }}
+              />
+              <label htmlFor="enable-tracking-modal" style={{ cursor: "pointer" }}>
+                <div style={{ fontSize: "13px", color: "#f0efe8", fontWeight: 600 }}>🔗 クリック追跡を有効にする</div>
+                <div style={{ fontSize: "11px", color: "rgba(255,255,255,0.4)", marginTop: "3px", lineHeight: 1.5 }}>
+                  メール内のURLが追跡リンクに変換されます。相手には通常のリンクとして表示されます。
+                </div>
+              </label>
             </div>
 
             <div style={{ display: "flex", gap: "10px" }}>
