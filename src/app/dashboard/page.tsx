@@ -251,7 +251,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Competitor Radar CTA */}
-        <div style={{ marginBottom: "20px" }}>
+        <div style={{ marginBottom: "12px" }}>
           <a href="/competitor-radar" style={{ textDecoration: "none", display: "block" }}>
             <div style={{
               background: "linear-gradient(135deg, rgba(255,107,53,0.08) 0%, rgba(255,214,10,0.05) 100%)",
@@ -278,6 +278,35 @@ export default function DashboardPage() {
                 <span style={{ background: "rgba(255,107,53,0.15)", color: "#ff6b35", fontSize: "10px", fontWeight: 700, padding: "3px 8px", borderRadius: "6px" }}>NEW</span>
                 <span style={{ fontSize: "18px", color: "rgba(255,107,53,0.6)" }}>→</span>
               </div>
+            </div>
+          </a>
+        </div>
+
+        {/* 送信レポート CTA */}
+        <div style={{ marginBottom: "20px" }}>
+          <a href="/analytics" style={{ textDecoration: "none", display: "block" }}>
+            <div style={{
+              background: "linear-gradient(135deg, rgba(45,209,122,0.07) 0%, rgba(124,92,252,0.05) 100%)",
+              border: "1px solid rgba(45,209,122,0.18)",
+              borderRadius: "16px", padding: "20px 24px",
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+              cursor: "pointer", transition: "all 0.2s",
+            }}
+            onMouseEnter={e => (e.currentTarget.style.borderColor = "rgba(45,209,122,0.35)")}
+            onMouseLeave={e => (e.currentTarget.style.borderColor = "rgba(45,209,122,0.18)")}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+                <div style={{ fontSize: "32px" }}>📊</div>
+                <div>
+                  <div style={{ fontFamily: "'Space Grotesk'", fontWeight: 700, fontSize: "15px", marginBottom: "4px" }}>
+                    送信レポート & コンバージョン
+                  </div>
+                  <div style={{ fontSize: "12px", color: "rgba(240,239,232,0.45)", lineHeight: 1.4 }}>
+                    送信履歴・日別グラフ・Spark AI登録コンバージョンを追跡
+                  </div>
+                </div>
+              </div>
+              <span style={{ fontSize: "18px", color: "rgba(45,209,122,0.6)" }}>→</span>
             </div>
           </a>
         </div>

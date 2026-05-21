@@ -9,7 +9,7 @@ const getSupabase = () =>
 
 export const maxDuration = 300; // 5 minutes (Vercel Pro)
 
-const BATCH_SIZE = 10; // max targets per API call
+// No hard cap — all selected targets are forwarded to Inngest
 
 interface BulkResult {
   targetId: string;
@@ -146,7 +146,8 @@ export async function POST(
     messages = {},
   } = body;
 
-  const targetIds: string[] = (body.targetIds || []).slice(0, BATCH_SIZE);
+  const targetIds: string[] = (body.targetIds || []).filter((id: unknown) => typeof id === 'string' && id.length > 0);
+  console.log('[bulk-submit] received targetIds count:', targetIds.length, targetIds.slice(0, 5));
 
   if (!targetIds?.length) {
     return NextResponse.json({ error: "targetIds required" }, { status: 400 });
@@ -194,6 +195,7 @@ export async function POST(
   const sendCount  = (campaign?.send_count  as number) || 0;
   const remaining  = Math.max(0, dailyLimit - sendCount);
   const toProcess  = targetIds.slice(0, remaining);
+  console.log(`[bulk-submit] daily_limit=${dailyLimit} send_count=${sendCount} remaining=${remaining} → sending ${toProcess.length} to Inngest`);
 
   if (toProcess.length === 0) {
     return NextResponse.json({
@@ -202,6 +204,7 @@ export async function POST(
     });
   }
 
+  console.log(`[bulk-submit] sending to inngest: ${toProcess.length} targetIds`);
   await inngest.send({
     name: "outreach/bulk-send",
     data: {

@@ -79,7 +79,7 @@ export default function OutreachPage() {
       if (ids.length > 0) query = query.in("id", ids);
     }
 
-    const { data, error: fetchErr } = await query.limit(50);
+    const { data, error: fetchErr } = await query.limit(300);
     console.log("[outreach] fetched targets:", data?.length || 0, "error:", fetchErr?.message || "none");
     if (data) {
       setTargets(data.map((t: Record<string, unknown>) => {
