@@ -300,16 +300,55 @@ app.post("/submit-contact-form", authMiddleware, async (req, res) => {
     }
 
     // 4. 送信ボタンをクリック
-    const submitSelectors = ['button[type="submit"]','input[type="submit"]','button:has-text("送信")','button:has-text("Submit")','button:has-text("送る")','button:has-text("確認")'];
+    const submitSelectors = [
+      'button[type="submit"]',
+      'input[type="submit"]',
+      'button:has-text("送信")',
+      'button:has-text("Submit")',
+      'button:has-text("送る")',
+      'button:has-text("確認")',
+      'button:has-text("次へ")',
+      'button:has-text("進む")',
+      'button:has-text("申し込む")',
+      'button:has-text("問い合わせる")',
+      'button:has-text("Send")',
+      'button:has-text("お問い合わせ")',
+      '[type="submit"]',
+      '.submit',
+      '.btn-submit',
+      'button.submit',
+      'input.submit',
+    ];
     let submitted = false;
     for (const sel of submitSelectors) {
       try {
-        await page.click(sel, { timeout: 2000 });
-        await page.waitForTimeout(1500); // reduced from 2500
+        const btn = await page.$(sel);
+        if (!btn) continue;
+        const isVisible = await btn.isVisible();
+        if (!isVisible) { console.log('[form] Button not visible:', sel); continue; }
+        await btn.scrollIntoViewIfNeeded();
+        await page.waitForTimeout(500);
+        await btn.click({ timeout: 3000 });
+        await page.waitForTimeout(2000);
         submitted = true;
-        console.log("[form] Submitted via:", sel);
+        console.log('[form] Submitted via:', sel);
         break;
-      } catch {}
+      } catch (e) {
+        console.log('[form] Submit failed for:', sel, e.message);
+      }
+    }
+
+    // 送信ボタンが見つからない場合のデバッグ
+    if (!submitted) {
+      const buttons = await page.$$eval('button, input[type="submit"]', els =>
+        els.map(el => ({
+          type: el.type || '',
+          text: el.textContent?.trim().slice(0, 40) || '',
+          className: el.className.slice(0, 60),
+          visible: el.offsetParent !== null,
+        }))
+      ).catch(() => []);
+      console.log('[form] Available buttons:', JSON.stringify(buttons));
     }
 
     // Update Supabase target status
