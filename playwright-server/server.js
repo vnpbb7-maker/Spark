@@ -288,6 +288,57 @@ app.post("/submit-contact-form", authMiddleware, async (req, res) => {
 
     console.log(`[form] Fill results — name:${filledName} email:${filledEmail} message:${filledMessage}`);
 
+    // フォールバック: contact_urlにtextareaがなければwebsite_urlトップから再探索
+    if (!filledMessage && website_url && page.url() !== website_url) {
+      console.log('[form] Fallback: contact_url had no form, trying website root...');
+      try {
+        await page.goto(website_url, { waitUntil: 'domcontentloaded', timeout: 10000 });
+
+        // トップページからお問い合わせリンクを探す
+        const contactLinks = await page.$$eval('a', links =>
+          links
+            .map(l => ({ href: l.href, text: (l.textContent || '').trim() }))
+            .filter(l => l.href && l.href.startsWith('http') && (
+              l.text.includes('お問い合わせ') ||
+              l.text.includes('問い合わせ') ||
+              l.text.includes('contact') ||
+              l.text.includes('Contact') ||
+              l.text.includes('inquiry') ||
+              l.href.includes('contact') ||
+              l.href.includes('inquiry') ||
+              l.href.includes('toiawase')
+            ))
+        ).catch(() => []);
+
+        if (contactLinks.length > 0) {
+          console.log('[form] Fallback contact link found:', contactLinks[0].href);
+          await page.goto(contactLinks[0].href, { waitUntil: 'domcontentloaded', timeout: 10000 });
+          await page.waitForTimeout(800);
+
+          // 再度メッセージフィールドを探す
+          for (const sel of messageSelectors) {
+            try {
+              await page.fill(sel, message, { timeout: 2000 });
+              filledMessage = true;
+              console.log('[form] Fallback filled message via:', sel);
+              // name/email も再試行
+              for (const ns of nameSelectors) {
+                try { await page.fill(ns, sender_name, { timeout: 1500 }); filledName = true; break; } catch {}
+              }
+              for (const es of emailSelectors) {
+                try { await page.fill(es, sender_email, { timeout: 1500 }); filledEmail = true; break; } catch {}
+              }
+              break;
+            } catch {}
+          }
+        } else {
+          console.log('[form] Fallback: no contact link found on root page');
+        }
+      } catch (fallbackErr) {
+        console.warn('[form] Fallback error:', fallbackErr.message);
+      }
+    }
+
     // Fix 3: フィールドが見つからない場合のデバッグログ
     if (!filledMessage) {
       const textareas = await page.$$eval('textarea', els =>
