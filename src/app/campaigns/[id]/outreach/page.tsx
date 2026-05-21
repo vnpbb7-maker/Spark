@@ -198,11 +198,21 @@ ${updated[i].platform}での投稿を拝見し、${productDesc.slice(0, 60)}${kw
   const handleBulkSend = async () => {
     const senderName  = typeof window !== "undefined" ? localStorage.getItem("spark_sender_name")  || "" : "";
     const senderEmail = typeof window !== "undefined" ? localStorage.getItem("spark_sender_email") || "" : "";
+
+    // pending かつ何らかの送信手段があるもの全件
     const allPending = targets.filter(t => t.status === "pending" && t.sendMethod !== "none");
     if (!allPending.length) { alert("送信可能なターゲットがありません"); return; }
 
-    const snsPending   = allPending.filter(t => isSNS(t.platform));
-    const sendable     = allPending.filter(t => !isSNS(t.platform));
+    // DM専用（フォームURL・メールなし）のみスキップ。SNSでもフォームURLがあれば送信
+    const dmOnly   = allPending.filter(t => t.sendMethod === "dm");
+    const sendable = allPending.filter(t => t.sendMethod !== "dm"); // email + form（SNSプラットフォーム含む）
+
+    console.log("[bulk-send] total targets:", targets.length);
+    console.log("[bulk-send] allPending:", allPending.length);
+    console.log("[bulk-send] sendable (email+form):", sendable.length);
+    console.log("[bulk-send] dmOnly (skipped):", dmOnly.length);
+    console.log("[bulk-send] sendable ids:", sendable.map(t => t.id));
+
     const emailTargets = sendable.filter(t => t.sendMethod === "email");
     const formTargets  = sendable.filter(t => t.sendMethod === "form");
 
@@ -214,12 +224,12 @@ ${updated[i].platform}での投稿を拝見し、${productDesc.slice(0, 60)}${kw
     const summary = [
       emailTargets.length > 0 ? `メール ${emailTargets.length}件` : "",
       formTargets.length  > 0 ? `フォーム ${formTargets.length}件` : "",
-      snsPending.length   > 0 ? `SNSスキップ ${snsPending.length}件` : "",
+      dmOnly.length       > 0 ? `DM手動 ${dmOnly.length}件` : "",
     ].filter(Boolean).join("、");
     if (!confirm(`${summary}をバックグラウンドで一括送信しますか？\n完了後に ${senderEmail || "登録メール"} へレポートをお送りします。`)) return;
 
     if (sendable.length === 0) {
-      alert(`SNSターゲット ${snsPending.length}件はDM手動送信が必要です`);
+      alert(`DM専用ターゲット ${dmOnly.length}件は手動送信が必要です`);
       return;
     }
 
@@ -241,7 +251,7 @@ ${updated[i].platform}での投稿を拝見し、${productDesc.slice(0, 60)}${kw
 
       if (data.queued) {
         setBulkSendQueued(true);
-        setBulkResult(null); // clear old result
+        setBulkResult(null);
       } else if (data.error) {
         alert(`エラー: ${data.error}`);
       }
