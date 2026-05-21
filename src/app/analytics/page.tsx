@@ -69,6 +69,7 @@ export default function AnalyticsPage() {
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<"all" | "converted">("all");
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const fetchData = useCallback(async () => {
     const supabase = createClient();
@@ -91,6 +92,12 @@ export default function AnalyticsPage() {
     const supabase = createClient();
     await supabase.auth.signOut();
     router.push("/");
+  };
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    await fetchData();
+    setTimeout(() => setIsRefreshing(false), 800);
   };
 
   const history = data?.history || [];
@@ -143,8 +150,26 @@ export default function AnalyticsPage() {
               フォーム送信履歴 · ドメイン照合によるコンバージョン追跡
             </p>
           </div>
-          <button onClick={fetchData} style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "10px", padding: "8px 16px", color: "rgba(240,239,232,0.6)", fontSize: "12px", cursor: "pointer", fontFamily: "'Space Grotesk'" }}>
-            🔄 更新
+          <style>{`
+            @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+            .spinning { animation: spin 0.8s linear infinite; display: inline-block; }
+          `}</style>
+          <button
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+            style={{
+              background: isRefreshing ? "rgba(255,107,53,0.08)" : "rgba(255,255,255,0.05)",
+              border: `1px solid ${isRefreshing ? "rgba(255,107,53,0.2)" : "rgba(255,255,255,0.08)"}`,
+              borderRadius: "10px", padding: "8px 16px",
+              color: isRefreshing ? "rgba(255,107,53,0.8)" : "rgba(240,239,232,0.6)",
+              fontSize: "12px", cursor: isRefreshing ? "default" : "pointer",
+              fontFamily: "'Space Grotesk'", fontWeight: 600,
+              opacity: isRefreshing ? 0.85 : 1, transition: "all 0.2s",
+              display: "flex", alignItems: "center", gap: "6px",
+            }}
+          >
+            <span className={isRefreshing ? "spinning" : ""} style={{ display: "inline-block" }}>🔄</span>
+            {isRefreshing ? "更新中..." : "更新"}
           </button>
         </div>
 
