@@ -81,54 +81,52 @@ export default function OutreachPage() {
     setIdsLoaded(true); // localStorage読み取り完了（IDがなくてもtrue）
   }, []);
 
-  const fetchTargets = useCallback(async () => {
+  const fetchTargets = useCallback(async (filterIds?: string[]) => {
     const supabase = createClient();
     const { data: camp } = await supabase.from("campaigns").select("*").eq("id", campaignId).single();
     if (!camp) return;
     setCampaign(camp);
 
-    // Get selected IDs from ref set by localStorage useEffect (avoids SSR issues)
-    const savedIds = storedIdsRef.current;
-    console.log('[outreach] campaignId:', campaignId, 'savedIds count:', savedIds.length);
-
-    let query = supabase.from('targets')
+    // 全件取得（IN句の件数制限・タイミング問題を回避）
+    const { data, error: fetchErr } = await supabase
+      .from('targets')
       .select('id, username, platform, match_score, priority, email, profile_url, post_url, contact_url, website, post_content, ai_reason')
       .eq('campaign_id', campaignId)
-      .order('match_score', { ascending: false });
+      .order('match_score', { ascending: false })
+      .limit(500);
 
-    if (savedIds.length > 0) {
-      query = query.in('id', savedIds);
-    }
+    console.log('[outreach] fetched all targets:', data?.length || 0, 'filterIds:', filterIds?.length ?? 0, 'error:', fetchErr?.message || 'none');
 
-    const { data, error: fetchErr } = await query.limit(300);
-    console.log("[outreach] fetched targets:", data?.length || 0, "error:", fetchErr?.message || "none");
-    if (data) {
-      setTargets(data.map((t: Record<string, unknown>) => {
-        const rawEmail = (t.email as string) || "";
-        const realEmail = rawEmail && !rawEmail.startsWith("Twitter:") && !rawEmail.startsWith("DM:") ? rawEmail : null;
-        const hasEmail = realEmail && realEmail.includes("@");
-        const isDmPlatform = SNS_DM_PLATFORMS.includes(t.platform as string);
-        return {
-          id: t.id as string, username: t.username as string, platform: t.platform as string,
-          match_score: Number(t.match_score) || 0, priority: (t.priority as string) || "C",
-          email: realEmail,
-          profile_url: (t.profile_url as string | null),
-          contact_url: (t.contact_url as string | null),
-          website: (t.website as string | null),
-          post_content: t.post_content as string | null, ai_reason: t.ai_reason as string | null,
-          message: "", status: "pending" as const,
-          sendMethod: hasEmail ? "email" : isDmPlatform ? "dm" : (t.contact_url || t.website || t.profile_url || t.post_url) ? "form" : "none",
-          post_url: (t.post_url as string | null),
-        };
-      }));
-    }
+    // クライアントサイドでIDフィルタリング
+    const idSet = filterIds && filterIds.length > 0 ? new Set(filterIds) : null;
+    const filtered = idSet ? (data || []).filter(t => idSet.has(t.id as string)) : (data || []);
+    console.log('[outreach] after filter:', filtered.length, 'targets shown');
+
+    setTargets(filtered.map((t: Record<string, unknown>) => {
+      const rawEmail = (t.email as string) || "";
+      const realEmail = rawEmail && !rawEmail.startsWith("Twitter:") && !rawEmail.startsWith("DM:") ? rawEmail : null;
+      const hasEmail = realEmail && realEmail.includes("@");
+      const isDmPlatform = SNS_DM_PLATFORMS.includes(t.platform as string);
+      return {
+        id: t.id as string, username: t.username as string, platform: t.platform as string,
+        match_score: Number(t.match_score) || 0, priority: (t.priority as string) || "C",
+        email: realEmail,
+        profile_url: (t.profile_url as string | null),
+        contact_url: (t.contact_url as string | null),
+        website: (t.website as string | null),
+        post_content: t.post_content as string | null, ai_reason: t.ai_reason as string | null,
+        message: "", status: "pending" as const,
+        sendMethod: hasEmail ? "email" : isDmPlatform ? "dm" : (t.contact_url || t.website || t.profile_url || t.post_url) ? "form" : "none",
+        post_url: (t.post_url as string | null),
+      };
+    }));
     setLoading(false);
   }, [campaignId]);
 
-  // idsLoadedがtrueになった後（localStorage読み取り完了後）に1回fetchを実行
+  // idsLoadedがtrueになった後に1回fetchを実行（IDを引数で直接渡してタイミング問題を排除）
   useEffect(() => {
-    if (idsLoaded) fetchTargets();
-  }, [idsLoaded, fetchTargets]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (idsLoaded) fetchTargets(storedIdsRef.current);
+  }, [idsLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Pre-fill settings from localStorage when modal opens
   const openSettings = () => {
