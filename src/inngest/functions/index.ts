@@ -1838,7 +1838,7 @@ export const bulkSendOutreach = inngest.createFunction(
               sender_name: senderName,
               sender_email: senderEmail,
             }),
-            signal: AbortSignal.timeout(90000), // 90秒（Inngest stepはタイムアウトなし）
+            signal: AbortSignal.timeout(180000), // 180秒（フォーム入力+送信ボタン+Railway cold start考慮）
           });
           console.log(`[bulk-send] Railway response status: ${formRes.status} for "${target.username}"`);
           data = await formRes.json().catch(() => ({ success: false, error: "レスポンス解析失敗" }));
