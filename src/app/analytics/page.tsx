@@ -25,6 +25,7 @@ type SentRow = {
   converted: boolean;
   converted_user_email: string | null;
   converted_at: string | null;
+  clicked: boolean;
 };
 
 type DailyPoint = { date: string; count: number };
@@ -35,6 +36,8 @@ type AnalyticsData = {
     weekSent: number;
     totalConversions: number;
     conversionRate: string;
+    totalClicks: number;
+    clickRate: string;
   };
   dailyData: DailyPoint[];
   history: SentRow[];
@@ -174,12 +177,14 @@ export default function AnalyticsPage() {
         </div>
 
         {/* Summary Cards */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "12px", marginBottom: "28px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: "12px", marginBottom: "28px" }}>
           {[
             { label: "総送信数", value: stats.totalSent, icon: "📨", color: "#ff6b35", sub: "累計" },
             { label: "今週の送信", value: stats.weekSent, icon: "📅", color: "#7c5cfc", sub: "直近7日" },
             { label: "送信先登録者", value: stats.totalConversions, icon: "🎯", color: "#2dd17a", sub: "送信先からの登録" },
             { label: "登録率", value: `${stats.conversionRate}%`, icon: "📈", color: "#ffd60a", sub: "送信先登録率" },
+            { label: "🔗 クリック数", value: stats.totalClicks ?? 0, icon: "🔗", color: "#1d9bf0", sub: "リンククリック" },
+            { label: "クリック率", value: `${stats.clickRate ?? "0.0"}%`, icon: "🖱️", color: "#a78bfa", sub: "クリック/送信" },
           ].map((s) => (
             <div key={s.label} style={{ background: "#13132a", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "14px", padding: "18px", position: "relative", overflow: "hidden" }}>
               <div style={{ position: "absolute", top: "-10px", right: "-10px", fontSize: "48px", opacity: 0.06 }}>{s.icon}</div>
@@ -313,12 +318,18 @@ export default function AnalyticsPage() {
                 <div style={{ fontSize: "10px", color: "rgba(240,239,232,0.35)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {row.campaign_id ? row.campaign_id.slice(0, 8) + "…" : "—"}
                 </div>
-                <div>
+                <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
                   {row.converted ? (
                     <span style={{ fontSize: "10px", background: "rgba(45,209,122,0.12)", color: "#2dd17a", padding: "4px 10px", borderRadius: "6px", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "4px" }}>
                       ✅ 送信先からの登録
                     </span>
-                  ) : (
+                  ) : null}
+                  {row.clicked ? (
+                    <span style={{ fontSize: "10px", background: "rgba(29,155,240,0.12)", color: "#1d9bf0", padding: "4px 10px", borderRadius: "6px", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                      🔗 リンククリック
+                    </span>
+                  ) : null}
+                  {!row.converted && !row.clicked && (
                     <span style={{ fontSize: "10px", color: "rgba(240,239,232,0.25)" }}>送信済み</span>
                   )}
                 </div>

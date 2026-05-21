@@ -78,6 +78,7 @@ export default function Step3Settings({ recommendedPlatforms, onSubmit, loading 
   const [targetLanguage, setTargetLanguage] = useState("ja");
   const [requiredKeywords, setRequiredKeywords] = useState("");
   const [minMatchScore, setMinMatchScore] = useState(60);
+  const [enableTracking, setEnableTracking] = useState(false);
 
   // Fast admin check — runs immediately, no subscription query needed
   useEffect(() => {
@@ -135,7 +136,7 @@ export default function Step3Settings({ recommendedPlatforms, onSubmit, loading 
       router.push("/pricing");
       return;
     }
-    onSubmit({ platforms, daily_limit: dailyLimit, tone, auto_mode: false, target_language: targetLanguage, required_keywords: requiredKeywords, min_match_score: minMatchScore });
+    onSubmit({ platforms, daily_limit: dailyLimit, tone, auto_mode: false, target_language: targetLanguage, required_keywords: requiredKeywords, min_match_score: minMatchScore, enable_tracking: enableTracking });
   };
 
   return (
@@ -303,6 +304,27 @@ export default function Step3Settings({ recommendedPlatforms, onSubmit, loading 
           <span>30%（広く）</span>
           <span>70%（厳密）</span>
         </div>
+      </div>
+
+      {/* Click tracking opt-in */}
+      <div style={{ marginBottom: "28px", background: "rgba(124,92,252,0.05)", border: "1px solid rgba(124,92,252,0.15)", borderRadius: "14px", padding: "18px 20px" }}>
+        <label style={{ display: "flex", alignItems: "flex-start", gap: "12px", cursor: "pointer" }}>
+          <input
+            type="checkbox"
+            checked={enableTracking}
+            onChange={e => setEnableTracking(e.target.checked)}
+            style={{ marginTop: "2px", accentColor: "#7c5cfc", width: "16px", height: "16px", flexShrink: 0 }}
+          />
+          <div>
+            <div style={{ fontSize: "14px", fontWeight: 600, color: "#f0efe8", marginBottom: "4px" }}>
+              🔗 クリック追跡を有効にする
+            </div>
+            <div style={{ fontSize: "12px", color: "rgba(240,239,232,0.4)", lineHeight: 1.5 }}>
+              メール内のプロダクトURLが追跡リンクに変換されます。相手には通常のリンクとして表示されます。
+              アナリティクスでリンクのクリック数を確認できます。
+            </div>
+          </div>
+        </label>
       </div>
 
       {/* Submit */}

@@ -72,7 +72,18 @@ export async function GET() {
     conversionsMap.set(emailDomain, { userEmail: u.email, registeredAt: u.created_at });
   }
 
-  // Tag each sent_history row with conversion status
+  // Fetch click data from conversions table (target_id based)
+  const targetIds = history.map((h: Record<string, unknown>) => h.target_id).filter(Boolean) as string[];
+  let clickedTargetIds = new Set<string>();
+  if (targetIds.length > 0) {
+    const { data: clicks } = await supabaseAdmin
+      .from("conversions")
+      .select("target_id")
+      .in("target_id", targetIds);
+    clickedTargetIds = new Set((clicks || []).map((c: { target_id: string }) => c.target_id));
+  }
+
+  // Tag each sent_history row with conversion + click status
   const taggedHistory = history.map((row: Record<string, unknown>) => {
     const domain = getWebsiteDomain((row.website_url as string) || "");
     const isConverted = domain
@@ -81,11 +92,13 @@ export async function GET() {
     const conversionInfo = domain
       ? [...conversionsMap.entries()].find(([d]) => d.includes(domain) || domain.includes(d))
       : undefined;
+    const isClicked = clickedTargetIds.has(row.target_id as string);
     return {
       ...row,
       converted: isConverted,
       converted_user_email: conversionInfo?.[1]?.userEmail || null,
       converted_at: conversionInfo?.[1]?.registeredAt || null,
+      clicked: isClicked,
     };
   });
 
@@ -96,6 +109,8 @@ export async function GET() {
   const weekSent = history.filter((h: Record<string, unknown>) => new Date(h.sent_at as string) > weekAgo).length;
   const totalConversions = taggedHistory.filter((h) => h.converted).length;
   const conversionRate = totalSent > 0 ? ((totalConversions / totalSent) * 100).toFixed(1) : "0.0";
+  const totalClicks = taggedHistory.filter((h) => h.clicked).length;
+  const clickRate = totalSent > 0 ? ((totalClicks / totalSent) * 100).toFixed(1) : "0.0";
 
   // Daily chart data (last 30 days)
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
@@ -117,7 +132,7 @@ export async function GET() {
     }));
 
   return NextResponse.json({
-    stats: { totalSent, weekSent, totalConversions, conversionRate },
+    stats: { totalSent, weekSent, totalConversions, conversionRate, totalClicks, clickRate },
     dailyData,
     history: taggedHistory,
   });

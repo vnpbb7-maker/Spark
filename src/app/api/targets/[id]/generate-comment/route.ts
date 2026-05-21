@@ -60,6 +60,13 @@ export async function POST(
     const companyName = target.username || "御社";
     const effectiveProductUrl = productUrl || campaign?.product_url || "";
 
+    // クリック追跡が有効な場合、トラッキングURLを生成
+    const baseProductUrl = effectiveProductUrl;
+    const trackedUrl = campaign?.enable_tracking && campaign?.id && target.id
+      ? `https://spark-ai.jp/api/track/${campaign.id}/${target.id}`
+      : baseProductUrl;
+    const displayProductUrl = trackedUrl || baseProductUrl;
+
     // ── プレーンテキスト直接出力（JSON prefill廃止）──
     const promptContent = isB2B
       ? `あなたは優秀な日本語ビジネスメールライターです。
@@ -67,7 +74,7 @@ export async function POST(
 
 【送信先企業】${companyName}
 【送信者名】${senderName}
-【プロダクト】Spark AI（${effectiveProductUrl}）
+【プロダクト】Spark AI（${displayProductUrl}）
 【プロダクトの特徴・参考キーワード】${keywords || productLine}
 
 ## 厳守ルール
@@ -99,7 +106,7 @@ ${companyName} ご担当者様
 以下の情報を元に自然なコメントを生成してください。
 
 プロダクト：${productLine}
-プロダクトURL：${productUrl || campaign?.product_url || ""}
+プロダクトURL：${displayProductUrl || campaign?.product_url || ""}
 ${keywords ? `訴求ポイント（参考のみ・そのまま使用禁止）：${keywords}` : ""}
 対象投稿URL：${target.post_url}
 投稿内容：${target.post_content?.slice(0, 300) || ""}
