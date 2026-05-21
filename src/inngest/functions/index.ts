@@ -1820,64 +1820,49 @@ export const bulkSendOutreach = inngest.createFunction(
         }
         console.log(`[bulk-send] Message for ${target.username}: ${outreachMessage.slice(0, 50)}...`);
 
-        // Railway Playwright に直接送信（90秒タイムアウト）
-        console.log(`[bulk-send] Calling Railway directly: ${playwrightUrl}/submit-contact-form`);
-        let data: Record<string, unknown> = { success: false };
+        // ── fire-and-forget: 応答を待たずに送信開始して即座に次へ ──
+        console.log(`[bulk-send] fire-and-forget → Railway: ${playwrightUrl}/submit-contact-form for "${target.username}"`);
+        fetch(`${playwrightUrl}/submit-contact-form`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": playwrightApiKey || "",
+          },
+          body: JSON.stringify({
+            target_id: target.id,
+            website_url: (target.website as string) || "",
+            contact_url: (target.contact_url as string) || null,
+            message: outreachMessage,
+            sender_name: senderName,
+            sender_email: senderEmail,
+          }),
+        }).catch((e: Error) => console.log(`[bulk-send] fire-and-forget error for "${target.username}": ${e.message}`));
+
+        // 即座に成功扱い: Railwayの応答を待たない
+        await supabase.from("targets").update({
+          status: "contacted",
+          contacted_at: new Date().toISOString(),
+        }).eq("id", target.id);
+
+        // sent_history に記録
         try {
-          const formRes = await fetch(`${playwrightUrl}/submit-contact-form`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "x-api-key": playwrightApiKey || "",
-            },
-            body: JSON.stringify({
-              target_id: target.id,
-              website_url: (target.website as string) || "",
-              contact_url: (target.contact_url as string) || null,
-              message: outreachMessage,
-              sender_name: senderName,
-              sender_email: senderEmail,
-            }),
-            signal: AbortSignal.timeout(180000), // 180秒（フォーム入力+送信ボタン+Railway cold start考慮）
+          await supabase.from("sent_history").insert({
+            user_id: (target.user_id as string) || null,
+            company_name: (target.username as string) || null,
+            website_url: (target.contact_url as string) || (target.website as string) || null,
+            email: (target.email as string) || null,
+            campaign_id: campaignId,
+            send_method: "form-async",
           });
-          console.log(`[bulk-send] Railway response status: ${formRes.status} for "${target.username}"`);
-          data = await formRes.json().catch(() => ({ success: false, error: "レスポンス解析失敗" }));
-        } catch (fetchErr: unknown) {
-          const fe = fetchErr as Error;
-          const isTimeout = fe.name === "AbortError";
-          console.error(`[bulk-send] Railway ${isTimeout ? "TIMEOUT" : "ERROR"}: ${fe.message}`);
-          data = { success: false, error: isTimeout ? "Railway 90秒タイムアウト" : fe.message };
-        }
-
-        const succeeded = (data.success as boolean) || (data.submitted as boolean);
-        console.log(`[bulk-send] Result for "${target.username}": success=${succeeded} data=${JSON.stringify(data).slice(0, 100)}`);
-
-        if (succeeded) {
-          // targets ステータス更新
-          await supabase.from("targets").update({
-            status: "contacted",
-            contacted_at: new Date().toISOString(),
-          }).eq("id", target.id);
-
-          // sent_history に記録
-          try {
-            await supabase.from("sent_history").insert({
-              user_id: (target.user_id as string) || null,
-              company_name: (target.username as string) || null,
-              website_url: (target.contact_url as string) || (target.website as string) || null,
-              email: (target.email as string) || null,
-              campaign_id: campaignId,
-              send_method: "form",
-            });
-          } catch (e: unknown) {
-            console.warn("[bulk-send] sent_history insert error:", e instanceof Error ? e.message : e);
-          }
+        } catch (e: unknown) {
+          console.warn("[bulk-send] sent_history insert error:", e instanceof Error ? e.message : e);
         }
 
         return {
-          success: succeeded,
+          success: true,
+          targetId: currentTargetId,
           name: (target.username as string) || currentTargetId,
-          error: succeeded ? undefined : ((data.error as string) || "送信失敗"),
+          method: "form-async",
         };
       });
 
