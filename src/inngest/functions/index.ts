@@ -1762,44 +1762,122 @@ export const bulkSendOutreach = inngest.createFunction(
           website: target.website, contact_url: target.contact_url, email: target.email,
         }));
 
-        // submit-form API に委譲（Gmail MCP / Playwright 両対応）
-        const apiBase = process.env.NEXT_PUBLIC_APP_URL || "https://spark-ai.jp";
-        const submitUrl = `${apiBase}/api/targets/${target.id}/submit-form`;
-        console.log(`[bulk-send] Calling submit-form: ${submitUrl}`);
-        const apiRes = await fetch(submitUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            sender_name: senderName,
-            sender_email: senderEmail,
-          }),
-          signal: AbortSignal.timeout(60000),
-        });
-        console.log(`[bulk-send] submit-form status: ${apiRes.status} for target.id="${target.id}"`);
+        // ── Inngest → Railway 直接接続（Vercel経由をやめてタイムアウト回避）──
+        const playwrightUrl = process.env.PLAYWRIGHT_SERVER_URL;
+        const playwrightApiKey = process.env.PLAYWRIGHT_API_KEY;
 
-        const data = await apiRes.json().catch(() => ({ success: false, error: "レスポンス解析失敗" }));
-        const succeeded = data.success || data.submitted;
+        if (!playwrightUrl) {
+          console.error("[bulk-send] PLAYWRIGHT_SERVER_URL not set");
+          return { success: false, error: "Playwrightサーバー未設定", name: (target.username as string) || currentTargetId };
+        }
+
+        // メッセージをClaude で生成
+        let outreachMessage = "";
+        try {
+          const { data: campaignRow } = await supabase.from("campaigns").select("*").eq("id", campaignId).single();
+          const productDesc = (campaignRow?.product_description as string) || (campaignRow?.product_url as string) || "";
+          const claudeRes = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-api-key": process.env.ANTHROPIC_API_KEY!,
+              "anthropic-version": "2023-06-01",
+            },
+            body: JSON.stringify({
+              model: "claude-haiku-4-5-20251001",
+              max_tokens: 400,
+              messages: [{
+                role: "user",
+                content: `あなたはB2Bセールスの専門家です。
+以下の情報を元に、企業のお問い合わせフォームに送るメッセージを日本語で生成してください。
+
+送信者: ${senderName}
+自社サービス: ${productDesc}
+送信先企業: ${target.username}
+企業ウェブサイト: ${target.website}
+
+【ルール】
+・200文字以内
+・自然な敬語
+・売り込みは控えめに
+・具体的な価値提案を1文
+・問い合わせ・面談打診で締める
+
+メッセージ本文のみ返してください。`,
+              }],
+            }),
+            signal: AbortSignal.timeout(20000),
+          });
+          if (claudeRes.ok) {
+            const cd = await claudeRes.json();
+            outreachMessage = cd.content?.[0]?.text || "";
+          }
+        } catch (claudeErr) {
+          console.warn("[bulk-send] Claude message generation failed:", claudeErr);
+        }
+        if (!outreachMessage) {
+          outreachMessage = `${senderName}と申します。貴社のサービスに関心があり、ご連絡いたしました。一度お話しさせていただけますでしょうか。`;
+        }
+        console.log(`[bulk-send] Message for ${target.username}: ${outreachMessage.slice(0, 50)}...`);
+
+        // Railway Playwright に直接送信（90秒タイムアウト）
+        console.log(`[bulk-send] Calling Railway directly: ${playwrightUrl}/submit-contact-form`);
+        let data: Record<string, unknown> = { success: false };
+        try {
+          const formRes = await fetch(`${playwrightUrl}/submit-contact-form`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-api-key": playwrightApiKey || "",
+            },
+            body: JSON.stringify({
+              target_id: target.id,
+              website_url: (target.website as string) || "",
+              contact_url: (target.contact_url as string) || null,
+              message: outreachMessage,
+              sender_name: senderName,
+              sender_email: senderEmail,
+            }),
+            signal: AbortSignal.timeout(90000), // 90秒（Inngest stepはタイムアウトなし）
+          });
+          console.log(`[bulk-send] Railway response status: ${formRes.status} for "${target.username}"`);
+          data = await formRes.json().catch(() => ({ success: false, error: "レスポンス解析失敗" }));
+        } catch (fetchErr: unknown) {
+          const fe = fetchErr as Error;
+          const isTimeout = fe.name === "AbortError";
+          console.error(`[bulk-send] Railway ${isTimeout ? "TIMEOUT" : "ERROR"}: ${fe.message}`);
+          data = { success: false, error: isTimeout ? "Railway 90秒タイムアウト" : fe.message };
+        }
+
+        const succeeded = (data.success as boolean) || (data.submitted as boolean);
+        console.log(`[bulk-send] Result for "${target.username}": success=${succeeded} data=${JSON.stringify(data).slice(0, 100)}`);
 
         if (succeeded) {
+          // targets ステータス更新
+          await supabase.from("targets").update({
+            status: "contacted",
+            contacted_at: new Date().toISOString(),
+          }).eq("id", target.id);
+
           // sent_history に記録
           try {
             await supabase.from("sent_history").insert({
               user_id: (target.user_id as string) || null,
-              company_name: (target.username as string) || (target.company_name as string) || null,
+              company_name: (target.username as string) || null,
               website_url: (target.contact_url as string) || (target.website as string) || null,
               email: (target.email as string) || null,
               campaign_id: campaignId,
-              send_method: (target.email as string) ? "email" : "form",
+              send_method: "form",
             });
           } catch (e: unknown) {
-            console.warn("[bulk-send] sent_history:", e instanceof Error ? e.message : e);
+            console.warn("[bulk-send] sent_history insert error:", e instanceof Error ? e.message : e);
           }
         }
 
         return {
           success: succeeded,
           name: (target.username as string) || currentTargetId,
-          error: succeeded ? undefined : (data.error || "送信失敗"),
+          error: succeeded ? undefined : ((data.error as string) || "送信失敗"),
         };
       });
 
