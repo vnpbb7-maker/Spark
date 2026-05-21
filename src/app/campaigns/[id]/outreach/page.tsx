@@ -157,8 +157,9 @@ export default function OutreachPage() {
     const updated = [...targets];
     for (let i = 0; i < updated.length; i++) {
       try {
-        const reqBody = { sender_name: sn, sender_email: senderEmail, product_url: pu, keywords: kw, force: true };
-        console.log("[generate] target:", updated[i].username, "body:", reqBody);
+        const et = typeof window !== "undefined" ? localStorage.getItem("spark_enable_tracking") === "true" : false;
+        const reqBody = { sender_name: sn, sender_email: senderEmail, product_url: pu, keywords: kw, force: true, campaign_id: campaignId, enable_tracking: et };
+        console.log("[generate] target:", updated[i].username, "enableTracking:", et, "campaignId:", campaignId);
         const res = await fetch(`/api/targets/${updated[i].id}/generate-comment`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },

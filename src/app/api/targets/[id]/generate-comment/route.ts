@@ -11,6 +11,8 @@ export async function POST(
     const senderName = (body.sender_name as string) || "担当者";
     const productUrl = (body.product_url as string) || "";
     const keywords = (body.keywords as string) || "";
+    const bodyEnableTracking = body.enable_tracking === true || body.enableTracking === true;
+    const bodyCampaignId = (body.campaign_id as string) || null;
     const supabase = await createClient();
 
     const { data: { user } } = await supabase.auth.getUser();
@@ -61,11 +63,15 @@ export async function POST(
     const effectiveProductUrl = productUrl || campaign?.product_url || "";
 
     // クリック追跡が有効な場合、トラッキングURLを生成
+    // bodyから渡されたenableTracking優先、なければcampaign DB値を使用
+    const useTracking = bodyEnableTracking || (campaign?.enable_tracking === true);
+    const resolvedCampaignId = bodyCampaignId || (campaign?.id as string) || null;
     const baseProductUrl = effectiveProductUrl;
-    const trackedUrl = campaign?.enable_tracking && campaign?.id && target.id
-      ? `https://spark-ai.jp/api/track/${campaign.id}/${target.id}`
+    const trackedUrl = useTracking && resolvedCampaignId && target.id
+      ? `https://spark-ai.jp/api/track/${resolvedCampaignId}/${target.id}`
       : baseProductUrl;
     const displayProductUrl = trackedUrl || baseProductUrl;
+    console.log(`[generate-comment] useTracking=${useTracking} trackedUrl=${trackedUrl?.slice(0, 60)}...`);
 
     // ── プレーンテキスト直接出力（JSON prefill廃止）──
     const promptContent = isB2B
