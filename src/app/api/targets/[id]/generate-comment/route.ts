@@ -73,6 +73,12 @@ export async function POST(
     const displayProductUrl = trackedUrl || baseProductUrl;
     console.log(`[generate-comment] useTracking=${useTracking} trackedUrl=${trackedUrl?.slice(0, 60)}...`);
 
+    // URLを本文に必ず含めるよう指示（追跡URLまたはproductUrl）
+    const urlForInstruction = displayProductUrl || productUrl || "";
+    const urlInstruction = urlForInstruction
+      ? `\n※必ず本文中に「${urlForInstruction}」というURLを自然な形で1回含めること。例：「詳細は ${urlForInstruction} をご覧ください」`
+      : "";
+
     // ── プレーンテキスト直接出力（JSON prefill廃止）──
     const promptContent = isB2B
       ? `あなたは優秀な日本語ビジネスメールライターです。
@@ -101,13 +107,13 @@ ${companyName} ご担当者様
 
 ご検討のほど、よろしくお願いいたします。
 
-- 件名不要、本文のみ出力
 - テンプレート感を出さない
 - 丁寧で簡潔なビジネス文体
 - 全体300字以内。長くなる場合は説明を省いて簡潔にする
 - 1文が長い場合は2文に分ける
+${urlInstruction}
 
-メール本文のみを出力してください。JSONや説明文は不要です。`
+件名不要。メール本文のみを出力してください。JSONや説明文は不要です。`
       : `あなたは共感力の高いGrowthハッカーです。
 以下の情報を元に自然なコメントを生成してください。
 
@@ -128,6 +134,7 @@ ${keywords ? `訴求ポイント（参考のみ・そのまま使用禁止）：
 ・150文字以内
 ・プロダクトについて最後に1文だけ自然に触れる
 ・訴求ポイントのキーワードはそのまま使わない。「100名」「広告リスト」「自動サーチ」などの語句は禁止
+${urlInstruction}
 
 JSONではなく、コメント本文のみを直接出力してください。余計な記号・引用符・括弧は不要です。`;
 
