@@ -213,6 +213,7 @@ export async function POST(
       senderName,
       senderEmail,
       userEmail: userEmail || senderEmail,
+      userId: (campaign?.user_id as string) || null,
     },
   });
 

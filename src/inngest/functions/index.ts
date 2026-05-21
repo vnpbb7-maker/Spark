@@ -1702,12 +1702,13 @@ export const monitorReplies = inngest.createFunction(
 export const bulkSendOutreach = inngest.createFunction(
   { id: "bulk-send-outreach", retries: 0, triggers: [{ event: "outreach/bulk-send" }] },
   async ({ event, step }: any) => {
-    const { campaignId, targetIds, senderName, senderEmail, userEmail } = event.data as {
+    const { campaignId, targetIds, senderName, senderEmail, userEmail, userId } = event.data as {
       campaignId: string;
       targetIds: string[];
       senderName: string;
       senderEmail: string;
       userEmail: string;
+      userId: string | null;
     };
 
     // ── デバッグ: 受け取った targetIds を全件ログ ──
@@ -1845,17 +1846,20 @@ export const bulkSendOutreach = inngest.createFunction(
         }).eq("id", target.id);
 
         // sent_history に記録
-        try {
-          await supabase.from("sent_history").insert({
-            user_id: (target.user_id as string) || null,
-            company_name: (target.username as string) || null,
-            website_url: (target.contact_url as string) || (target.website as string) || null,
-            email: (target.email as string) || null,
-            campaign_id: campaignId,
-            send_method: "form-async",
-          });
-        } catch (e: unknown) {
-          console.warn("[bulk-send] sent_history insert error:", e instanceof Error ? e.message : e);
+        const resolvedUserId = userId || (target.user_id as string) || null;
+        const { error: historyError } = await supabase.from("sent_history").insert({
+          user_id: resolvedUserId,
+          company_name: (target.username as string) || null,
+          website_url: (target.contact_url as string) || (target.website as string) || null,
+          email: (target.email as string) || null,
+          campaign_id: campaignId,
+          send_method: "form-async",
+          sent_at: new Date().toISOString(),
+        });
+        if (historyError) {
+          console.error(`[bulk-send] sent_history insert error for "${target.username}":`, historyError.message, JSON.stringify(historyError));
+        } else {
+          console.log(`[bulk-send] sent_history inserted for "${target.username}" user_id=${resolvedUserId}`);
         }
 
         return {
