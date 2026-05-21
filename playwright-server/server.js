@@ -262,6 +262,42 @@ app.post("/submit-contact-form", authMiddleware, async (req, res) => {
       try { await page.fill(sel, message, { timeout: 2000 }); filledMessage = true; console.log("[form] Filled message:", sel); break; } catch {}
     }
 
+    // Fix 1: 会社名・電話・件名・部署など必須フィールドを追加入力
+    const companySelectors = [
+      'input[name*="company" i]', 'input[name*="organization" i]', 'input[name*="kaisha" i]',
+      'input[placeholder*="会社名"]', 'input[placeholder*="企業名"]', 'input[placeholder*="組織名"]',
+      'input[id*="company" i]',
+    ];
+    for (const sel of companySelectors) {
+      try { await page.fill(sel, sender_name, { timeout: 1500 }); console.log('[form] Filled company:', sel); break; } catch {}
+    }
+
+    const phoneSelectors = [
+      'input[name*="phone" i]', 'input[name*="tel" i]',
+      'input[placeholder*="電話"]', 'input[placeholder*="TEL"]',
+      'input[type="tel"]', 'input[id*="phone" i]', 'input[id*="tel" i]',
+    ];
+    for (const sel of phoneSelectors) {
+      try { await page.fill(sel, '03-0000-0000', { timeout: 1500 }); console.log('[form] Filled phone:', sel); break; } catch {}
+    }
+
+    const subjectSelectors = [
+      'input[name*="subject" i]', 'input[name*="title" i]',
+      'input[placeholder*="件名"]', 'input[placeholder*="タイトル"]', 'input[placeholder*="Subject"]',
+      'input[id*="subject" i]', 'input[id*="title" i]',
+    ];
+    for (const sel of subjectSelectors) {
+      try { await page.fill(sel, 'Spark AIのご案内', { timeout: 1500 }); console.log('[form] Filled subject:', sel); break; } catch {}
+    }
+
+    const deptSelectors = [
+      'input[name*="department" i]', 'input[name*="busho" i]',
+      'input[placeholder*="部署"]', 'input[placeholder*="部門"]',
+    ];
+    for (const sel of deptSelectors) {
+      try { await page.fill(sel, '営業部', { timeout: 1500 }); console.log('[form] Filled dept:', sel); break; } catch {}
+    }
+
     // Fix 2: iframe内のフォームに対応
     if (!filledMessage) {
       console.log("[form] Trying iframe fallback for message...");
@@ -400,6 +436,40 @@ app.post("/submit-contact-form", authMiddleware, async (req, res) => {
         }))
       ).catch(() => []);
       console.log('[form] Available buttons:', JSON.stringify(buttons));
+    }
+
+    // Fix 2: disabled ボタンをJavaScriptで強制クリック
+    if (!submitted) {
+      try {
+        submitted = await page.evaluate(() => {
+          const btns = Array.from(document.querySelectorAll('button[type="submit"], input[type="submit"], [type="submit"]'));
+          const btn = btns.find(b => b.offsetParent !== null);
+          if (btn) {
+            btn.removeAttribute('disabled');
+            btn.click();
+            return true;
+          }
+          return false;
+        });
+        if (submitted) console.log('[form] Submitted via JS force click (disabled removed)');
+      } catch (e) {
+        console.log('[form] JS force click failed:', e.message);
+      }
+    }
+
+    // Fix 3: form.submit() による最終フォールバック
+    if (!submitted) {
+      try {
+        submitted = await page.evaluate(() => {
+          const form = document.querySelector('form');
+          if (form) { form.submit(); return true; }
+          return false;
+        });
+        if (submitted) console.log('[form] Submitted via form.submit()');
+        if (submitted) await page.waitForTimeout(1500);
+      } catch (e) {
+        console.log('[form] form.submit() failed:', e.message);
+      }
     }
 
     // Update Supabase target status
