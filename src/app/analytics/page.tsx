@@ -144,10 +144,10 @@ export default function AnalyticsPage() {
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "28px" }}>
           <div>
             <h1 style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700, fontSize: "20px", margin: 0 }}>
-              📊 送信レポート & コンバージョン
+              📊 送信レポート & 送信先登録者
             </h1>
             <p style={{ fontSize: "12px", color: "rgba(240,239,232,0.35)", margin: "4px 0 0" }}>
-              フォーム送信履歴 · ドメイン照合によるコンバージョン追跡
+              フォーム送信履歴 · 送信した企業ドメインと一致するメールアドレスで登録したユーザー数を追跡
             </p>
           </div>
           <style>{`
@@ -178,8 +178,8 @@ export default function AnalyticsPage() {
           {[
             { label: "総送信数", value: stats.totalSent, icon: "📨", color: "#ff6b35", sub: "累計" },
             { label: "今週の送信", value: stats.weekSent, icon: "📅", color: "#7c5cfc", sub: "直近7日" },
-            { label: "コンバージョン", value: stats.totalConversions, icon: "🎯", color: "#2dd17a", sub: "Spark AI登録" },
-            { label: "CVR", value: `${stats.conversionRate}%`, icon: "📈", color: "#ffd60a", sub: "コンバージョン率" },
+            { label: "送信先登録者", value: stats.totalConversions, icon: "🎯", color: "#2dd17a", sub: "送信先からの登録" },
+            { label: "登録率", value: `${stats.conversionRate}%`, icon: "📈", color: "#ffd60a", sub: "送信先登録率" },
           ].map((s) => (
             <div key={s.label} style={{ background: "#13132a", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "14px", padding: "18px", position: "relative", overflow: "hidden" }}>
               <div style={{ position: "absolute", top: "-10px", right: "-10px", fontSize: "48px", opacity: 0.06 }}>{s.icon}</div>
@@ -225,7 +225,7 @@ export default function AnalyticsPage() {
         {stats.totalConversions > 0 && (
           <div style={{ background: "linear-gradient(135deg, rgba(45,209,122,0.06), rgba(45,209,122,0.02))", border: "1px solid rgba(45,209,122,0.2)", borderRadius: "16px", padding: "20px 24px", marginBottom: "24px" }}>
             <div style={{ fontFamily: "'Space Grotesk'", fontWeight: 700, fontSize: "14px", color: "#2dd17a", marginBottom: "12px" }}>
-              🎯 コンバージョン検出 — {stats.totalConversions}件
+              🎯 送信先登録者 — {stats.totalConversions}件
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
               {history.filter(h => h.converted).map(h => (
@@ -238,7 +238,7 @@ export default function AnalyticsPage() {
                     </div>
                   </div>
                   <span style={{ fontSize: "10px", background: "rgba(45,209,122,0.15)", color: "#2dd17a", padding: "3px 10px", borderRadius: "6px", fontWeight: 700 }}>
-                    ✅ Spark AI登録済み
+                    ✅ 送信先からの登録
                   </span>
                 </div>
               ))}
@@ -253,7 +253,7 @@ export default function AnalyticsPage() {
             <div style={{ display: "flex", gap: "6px" }}>
               {[
                 { key: "all" as const, label: `全て (${history.length})` },
-                { key: "converted" as const, label: `コンバージョン (${stats.totalConversions})` },
+                { key: "converted" as const, label: `送信先登録者 (${stats.totalConversions})` },
               ].map(tab => (
                 <button key={tab.key} onClick={() => setFilter(tab.key)} style={{
                   background: filter === tab.key ? "rgba(255,107,53,0.1)" : "transparent",
@@ -277,7 +277,7 @@ export default function AnalyticsPage() {
             <div style={{ padding: "48px", textAlign: "center" }}>
               <div style={{ fontSize: "28px", marginBottom: "10px" }}>📭</div>
               <div style={{ fontSize: "13px", color: "rgba(240,239,232,0.3)" }}>
-                {filter === "converted" ? "コンバージョンはまだありません" : "送信履歴がまだありません"}
+                {filter === "converted" ? "送信先からの登録者はまだいません" : "送信履歴がまだありません"}
               </div>
             </div>
           ) : filtered.map((row) => {
@@ -316,7 +316,7 @@ export default function AnalyticsPage() {
                 <div>
                   {row.converted ? (
                     <span style={{ fontSize: "10px", background: "rgba(45,209,122,0.12)", color: "#2dd17a", padding: "4px 10px", borderRadius: "6px", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                      ✅ Spark AI登録済み
+                      ✅ 送信先からの登録
                     </span>
                   ) : (
                     <span style={{ fontSize: "10px", color: "rgba(240,239,232,0.25)" }}>送信済み</span>
