@@ -513,9 +513,9 @@ export default function CampaignDetailPage() {
                   onClick={() => {
                     if (!canSend) return;
                     const ids = [...selected];
-                    if (typeof window !== 'undefined') {
-                      localStorage.setItem('spark_selected_target_ids', JSON.stringify(ids));
-                    }
+                    console.log('[campaigns] saving to localStorage:', ids.length, 'ids', ids.slice(0, 3));
+                    localStorage.setItem('spark_selected_target_ids', JSON.stringify(ids));
+                    console.log('[campaigns] localStorage set, navigating to outreach');
                     router.push(`/campaigns/${campaignId}/outreach`);
                   }}
                   disabled={!canSend}

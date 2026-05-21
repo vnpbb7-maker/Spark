@@ -60,20 +60,25 @@ export default function OutreachPage() {
   const [settingsKeywords, setSettingsKeywords] = useState("");
   const [storedTargetIds, setStoredTargetIds] = useState<string[]>([]);
   const storedIdsRef = React.useRef<string[]>([]);
+  const [idsLoaded, setIdsLoaded] = useState(false);
 
   // クライアントサイドのみ: localStorageから選択済みIDを読み取り、使用後にクリア
   useEffect(() => {
     const savedIds = localStorage.getItem('spark_selected_target_ids');
+    console.log('[outreach] localStorage raw:', savedIds?.slice(0, 80));
     if (savedIds) {
       try {
         const ids = JSON.parse(savedIds) as string[];
+        console.log('[outreach] parsed savedIds count:', ids.length);
         storedIdsRef.current = ids;
         setStoredTargetIds(ids);
       } catch {
+        console.error('[outreach] JSON.parse failed for spark_selected_target_ids');
         storedIdsRef.current = [];
       }
       localStorage.removeItem('spark_selected_target_ids');
     }
+    setIdsLoaded(true); // localStorage読み取り完了（IDがなくてもtrue）
   }, []);
 
   const fetchTargets = useCallback(async () => {
@@ -120,8 +125,10 @@ export default function OutreachPage() {
     setLoading(false);
   }, [campaignId]);
 
-  // storedTargetIdsがセットされた後（localStorage読み取り完了後）にfetchを実行
-  useEffect(() => { fetchTargets(); }, [fetchTargets, storedTargetIds]); // eslint-disable-line react-hooks/exhaustive-deps
+  // idsLoadedがtrueになった後（localStorage読み取り完了後）に1回fetchを実行
+  useEffect(() => {
+    if (idsLoaded) fetchTargets();
+  }, [idsLoaded, fetchTargets]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Pre-fill settings from localStorage when modal opens
   const openSettings = () => {
