@@ -1299,9 +1299,12 @@ JSONのみ返してください: ["query1", "query2", "query3", "query4", "query
           try {
             const rawProfileUrl = buildProfileUrl(t.profile_url || "", t.platform, t.username);
 
-            // place_id URL や Google Maps URL を contact_url に保存しない
+            // place_id / Google Maps 系 URL を contact_url に保存しない
             const isPlaceIdUrl = (u: string) =>
-              u.includes("place_id") || u.includes("google.com/maps");
+              u.includes("place_id") ||
+              u.includes("google.com/maps") ||
+              u.includes("maps.google") ||
+              u.includes("goo.gl");
 
             // google_maps プラットフォームは website を contact_url として使用
             let profileUrl: string;
@@ -1886,7 +1889,12 @@ export const bulkSendOutreach = inngest.createFunction(
             target_id: target.id,
             website_url: (() => {
               const ws = (target.website as string) || "";
-              return ws && !ws.includes("place_id") && !ws.includes("google.com/maps") ? ws : "";
+              return ws &&
+                !ws.includes("place_id") &&
+                !ws.includes("google.com/maps") &&
+                !ws.includes("maps.google") &&
+                !ws.includes("goo.gl")
+                ? ws : "";
             })(),
             contact_url: (target.contact_url as string) || null,
             message: outreachMessage,
@@ -1905,8 +1913,11 @@ export const bulkSendOutreach = inngest.createFunction(
         const cleanWebsiteUrl = (() => {
           const cu = (target.contact_url as string) || "";
           const ws = (target.website as string) || "";
-          // place_id / google.com/maps URL は保存しない
-          const isMapUrl = (u: string) => u.includes("place_id") || u.includes("google.com/maps");
+          const isMapUrl = (u: string) =>
+            u.includes("place_id") ||
+            u.includes("google.com/maps") ||
+            u.includes("maps.google") ||
+            u.includes("goo.gl");
           if (cu && !isMapUrl(cu)) return cu;
           if (ws && !isMapUrl(ws)) return ws;
           return null;
