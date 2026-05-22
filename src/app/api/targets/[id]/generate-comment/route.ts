@@ -62,22 +62,21 @@ export async function POST(
     const companyName = target.username || "御社";
     const effectiveProductUrl = productUrl || campaign?.product_url || "";
 
-    // クリック追跡が有効な場合、トラッキングURLを生成
-    // bodyから渡されたenableTracking優先、なければcampaign DB値を使用
+    // クリック追跡が有効な場合、トラッキングURLを生成（メール送信用のみ — プロンプトには渡さない）
     const useTracking = bodyEnableTracking || (campaign?.enable_tracking === true);
     const resolvedCampaignId = bodyCampaignId || (campaign?.id as string) || null;
-    const baseProductUrl = effectiveProductUrl;
     const trackedUrl = useTracking && resolvedCampaignId && target.id
       ? `https://spark-ai.jp/api/track/${resolvedCampaignId}/${target.id}`
-      : baseProductUrl;
-    const displayProductUrl = trackedUrl || baseProductUrl;
-    console.log(`[generate-comment] useTracking=${useTracking} trackedUrl=${trackedUrl?.slice(0, 60)}...`);
+      : null;
+    console.log(`[generate-comment] useTracking=${useTracking} trackedUrl=${trackedUrl?.slice(0, 60) ?? "none"}`);
 
-    // URLを本文に必ず含めるよう指示（追跡URLまたはproductUrl）
-    const urlForInstruction = displayProductUrl || productUrl || "";
-    const urlInstruction = urlForInstruction
-      ? `\n※必ず本文中に「${urlForInstruction}」というURLを自然な形で1回含めること。例：「詳細は ${urlForInstruction} をご覧ください」`
-      : "";
+    // Claudeプロンプトには絶対にトラッキングURLを渡さない
+    // 表示用URLは常にドメインのみ（spark-ai.jp）
+    const displayProductUrl = "spark-ai.jp";
+
+    // URLの強制挿入指示は行わない（トラッキングURL露出防止）
+    // 送信後にメール本文内のリンクをトラッキングURLに差し替える方式に変更予定
+    const urlInstruction = "";
 
     // ── プレーンテキスト直接出力（JSON prefill廃止）──
     const promptContent = isB2B
@@ -122,6 +121,12 @@ ${urlInstruction}
   例：「広告リスト」→「見込み顧客の発掘」
   例：「自動サーチAI」→「AIによる顧客探索」
 
+【絶対禁止：URL記載ルール】
+- https://spark-ai.jp/api/track/ を含むURLを文中に一切書かない
+- https://... の形でURLをそのまま文中に貼り付けない
+- 「詳細は〜をご覧ください」の形でURLを書かない
+- URLを記載する場合は「spark-ai.jp」のドメイン表記のみ可（例：「spark-ai.jpをご確認ください」）
+
 件名不要。メール本文のみを出力してください。JSONや説明文は不要です。`
       : `あなたは共感力の高いGrowthハッカーです。
 以下の情報を元に自然なコメントを生成してください。
@@ -148,7 +153,11 @@ ${keywords ? `訴求ポイント（参考のみ・そのまま使用禁止）：
 ・キーワードは意味を汲み取って自然な表現に意訳すること
   例：「100名のテストユーザー」→「初期ユーザーとともに改善中」
   例：「広告リスト」→「見込み顧客の発掘」
-${urlInstruction}
+
+【絶対禁止：URL記載ルール】
+- https://spark-ai.jp/api/track/ を含むURLを文中に一切書かない
+- https://... の形でURLをそのまま文中に貼り付けない
+- 「詳細は～をご覧ください」の形でURLを書かない
 
 JSONではなく、コメント本文のみを直接出力してください。余計な記号・引用符・括弧は不要です。`;
 
