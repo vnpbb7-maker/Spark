@@ -133,6 +133,24 @@ ${input.slice(0, 2000)}
   } catch (err) {
     if (err instanceof Error && err.message.includes("Failed to parse")) throw err;
     const msg = err instanceof Error ? err.message : String(err);
+
+    // HTTP status から 529 / 429 を検出（Anthropic SDK は status プロパティを持つ）
+    const status = (err as { status?: number; statusCode?: number }).status
+      || (err as { status?: number; statusCode?: number }).statusCode
+      || 0;
+
+    if (status === 529 || status === 429) {
+      const waitMs = 2000 * Math.pow(2, retryCount);
+      console.warn(
+        `[analyze] ただいまAIが混雑しています。自動で再試行中... (${retryCount + 1}/3) — ${waitMs / 1000}秒後`
+      );
+      if (retryCount < 2) {
+        await new Promise(r => setTimeout(r, waitMs));
+        return callClaude(input, retryCount + 1);
+      }
+      throw new Error(`Claude API overloaded (${status}) — リトライ上限に達しました。しばらくしてから再度お試しください。`);
+    }
+
     console.error(`[analyze] API error (attempt ${retryCount + 1}):`, msg);
     if (retryCount < 2) return callClaude(input, retryCount + 1);
     throw new Error(`Claude API error: ${msg}`);

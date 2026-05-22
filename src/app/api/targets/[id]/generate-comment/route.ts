@@ -140,24 +140,34 @@ ${urlInstruction}
 
 JSONではなく、コメント本文のみを直接出力してください。余計な記号・引用符・括弧は不要です。`;
 
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": process.env.ANTHROPIC_API_KEY!,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: "claude-haiku-4-5-20251001",
-        max_tokens: 600,
-        // prefillなし — プレーンテキスト直接出力
-        messages: [
-          { role: "user", content: promptContent },
-        ],
-      }),
-    });
+    // 529 Overloaded 対応: 指数バックオフリトライ
+    let response: Response | null = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      response = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": process.env.ANTHROPIC_API_KEY!,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model: "claude-haiku-4-5-20251001",
+          max_tokens: 600,
+          messages: [
+            { role: "user", content: promptContent },
+          ],
+        }),
+      });
+      if (response.status === 529 || response.status === 429) {
+        const waitMs = 2000 * Math.pow(2, attempt);
+        console.warn(`[generate-comment] ただいまAIが混雑しています。自動で再試行中... (${attempt + 1}/3) — ${waitMs / 1000}秒後`);
+        if (attempt < 2) { await new Promise(r => setTimeout(r, waitMs)); continue; }
+        return NextResponse.json({ error: "ただいまAIが混雑しています。しばらくしてから再度お試しください。" }, { status: 503 });
+      }
+      break; // 成功または別エラー
+    }
 
-    const data = await response.json();
+    const data = await response!.json();
     const rawText = (data.content?.[0]?.text || "").trim();
     console.log("[generate-comment] Claude raw response:", rawText.slice(0, 200));
 
