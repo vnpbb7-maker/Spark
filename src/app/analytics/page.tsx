@@ -304,7 +304,10 @@ export default function AnalyticsPage() {
                   <div style={{ fontSize: "12px", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {row.company_name || "—"}
                   </div>
-                  {row.website_url && (
+                  {row.website_url &&
+                    !row.website_url.includes("place_id") &&
+                    !row.website_url.includes("google.com/maps") &&
+                    row.website_url !== "skip" && (
                     <a href={row.website_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: "10px", color: "rgba(255,107,53,0.6)", textDecoration: "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block" }}>
                       {row.website_url.slice(0, 45)}{row.website_url.length > 45 ? "…" : ""}
                     </a>

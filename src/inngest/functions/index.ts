@@ -251,6 +251,12 @@ function buildProfileUrl(url: string, platform: string, username: string): strin
         return `https://profile.hatena.ne.jp/${sub}/`;
       } catch { return url; }
     }
+    case "google_maps": {
+      // Google Mapsプラットフォームではwebsiteを返す。place_id URLはフォーム送信に使えない
+      // profile_urlがmaps/place_idを含む場合はnull相当の空文字を返す
+      if (url && !url.includes("google.com/maps") && !url.includes("place_id")) return url;
+      return ""; // websiteはcontact更新フェーズで別途処理
+    }
     default: return url || `https://www.google.com/search?q=${encodeURIComponent(username)}`;
   }
 }
@@ -1291,7 +1297,33 @@ JSONのみ返してください: ["query1", "query2", "query3", "query4", "query
         // Process sequentially to avoid rate limits
         for (const t of newTargets as Array<{ id: string; profile_url: string | null; platform: string; username: string; email: string | null; website: string | null; post_url: string | null }>) {
           try {
-            const profileUrl = buildProfileUrl(t.profile_url || "", t.platform, t.username);
+            const rawProfileUrl = buildProfileUrl(t.profile_url || "", t.platform, t.username);
+
+            // place_id URL や Google Maps URL を contact_url に保存しない
+            const isPlaceIdUrl = (u: string) =>
+              u.includes("place_id") || u.includes("google.com/maps");
+
+            // google_maps プラットフォームは website を contact_url として使用
+            let profileUrl: string;
+            if (t.platform === "google_maps") {
+              const ws = (t.website as string | null) || "";
+              profileUrl = ws && !isPlaceIdUrl(ws) ? ws : "";
+            } else {
+              profileUrl = rawProfileUrl && !isPlaceIdUrl(rawProfileUrl) ? rawProfileUrl : "";
+            }
+
+            // contact_url が空の場合はスキップ（place_id URLを保存しない）
+            if (!profileUrl) {
+              // google_maps: website を contact_url に設定（Playwright がフォームを探す出発点として使用）
+              // website もなければ "skip" センチネルで再処理を防ぐ
+              const fallback = (t.website as string | null) && !isPlaceIdUrl((t.website as string)) 
+                ? (t.website as string) 
+                : "skip";
+              console.log(`[contact] ${t.platform} ${t.username} — setting contact_url=${fallback} (place_id excluded)`);
+              await getSupabase().from("targets").update({ contact_url: fallback }).eq("id", t.id);
+              continue;
+            }
+
             const updateData: Record<string, unknown> = { contact_url: profileUrl };
 
             // Skip if already has email
@@ -1852,7 +1884,10 @@ export const bulkSendOutreach = inngest.createFunction(
           },
           body: JSON.stringify({
             target_id: target.id,
-            website_url: (target.website as string) || "",
+            website_url: (() => {
+              const ws = (target.website as string) || "";
+              return ws && !ws.includes("place_id") && !ws.includes("google.com/maps") ? ws : "";
+            })(),
             contact_url: (target.contact_url as string) || null,
             message: outreachMessage,
             sender_name: senderName,
@@ -1867,10 +1902,19 @@ export const bulkSendOutreach = inngest.createFunction(
         }).eq("id", target.id);
 
         // sent_history に記録
+        const cleanWebsiteUrl = (() => {
+          const cu = (target.contact_url as string) || "";
+          const ws = (target.website as string) || "";
+          // place_id / google.com/maps URL は保存しない
+          const isMapUrl = (u: string) => u.includes("place_id") || u.includes("google.com/maps");
+          if (cu && !isMapUrl(cu)) return cu;
+          if (ws && !isMapUrl(ws)) return ws;
+          return null;
+        })();
         const { error: historyError } = await supabase.from("sent_history").insert({
           user_id: resolvedUserId,
           company_name: (target.username as string) || null,
-          website_url: (target.contact_url as string) || (target.website as string) || null,
+          website_url: cleanWebsiteUrl,
           email: (target.email as string) || null,
           campaign_id: campaignId,
           send_method: "form-async",
