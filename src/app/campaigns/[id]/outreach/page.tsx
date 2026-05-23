@@ -88,20 +88,40 @@ export default function OutreachPage() {
     if (!camp) return;
     setCampaign(camp);
 
-    // 全件取得（IN句の件数制限・タイミング問題を回避）
-    const { data, error: fetchErr } = await supabase
-      .from('targets')
-      .select('id, username, platform, match_score, priority, email, profile_url, post_url, contact_url, website, post_content, ai_reason')
-      .eq('campaign_id', campaignId)
-      .order('match_score', { ascending: false })
-      .limit(500);
+    console.log('[outreach] fetchTargets called. filterIds count:', filterIds?.length ?? 0);
 
-    console.log('[outreach] fetched all targets:', data?.length || 0, 'filterIds:', filterIds?.length ?? 0, 'error:', fetchErr?.message || 'none');
+    let data: Record<string, unknown>[] | null = null;
+    let fetchErr: { message: string } | null = null;
 
-    // クライアントサイドでIDフィルタリング
+    if (filterIds && filterIds.length > 0) {
+      // 選択IDがある場合: IN句で直接取得（limit/orderに依存しない確実な方法）
+      const { data: d, error: e } = await supabase
+        .from('targets')
+        .select('id, username, platform, match_score, priority, email, profile_url, post_url, contact_url, website, post_content, ai_reason')
+        .eq('campaign_id', campaignId)
+        .in('id', filterIds);
+      data = d as Record<string, unknown>[] | null;
+      fetchErr = e;
+      console.log('[outreach] IN-clause fetch:', data?.length ?? 0, '/ requested:', filterIds.length, 'error:', e?.message || 'none');
+    } else {
+      // IDなし（直接URL遷移等）: 全件取得
+      const { data: d, error: e } = await supabase
+        .from('targets')
+        .select('id, username, platform, match_score, priority, email, profile_url, post_url, contact_url, website, post_content, ai_reason')
+        .eq('campaign_id', campaignId)
+        .order('match_score', { ascending: false })
+        .limit(1000);
+      data = d as Record<string, unknown>[] | null;
+      fetchErr = e;
+      console.log('[outreach] full fetch:', data?.length ?? 0, 'error:', e?.message || 'none');
+    }
+
+    if (fetchErr) console.error('[outreach] fetch error:', fetchErr.message);
+
+    // クライアントサイドでIDフィルタリング（保険）
     const idSet = filterIds && filterIds.length > 0 ? new Set(filterIds) : null;
     const filtered = idSet ? (data || []).filter(t => idSet.has(t.id as string)) : (data || []);
-    console.log('[outreach] after filter:', filtered.length, 'targets shown');
+    console.log('[outreach] after client-filter:', filtered.length, 'shown');
 
     setTargets(filtered.map((t: Record<string, unknown>) => {
       const rawEmail = (t.email as string) || "";
