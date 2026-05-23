@@ -97,7 +97,7 @@ export default function OutreachPage() {
       // 選択IDがある場合: IN句で直接取得（limit/orderに依存しない確実な方法）
       const { data: d, error: e } = await supabase
         .from('targets')
-        .select('id, username, platform, match_score, priority, email, profile_url, post_url, contact_url, website, post_content, ai_reason')
+        .select('id, username, platform, match_score, priority, email, profile_url, post_url, contact_url, website, post_content, ai_reason, status, contacted_at')
         .eq('campaign_id', campaignId)
         .in('id', filterIds);
       data = d as Record<string, unknown>[] | null;
@@ -107,7 +107,7 @@ export default function OutreachPage() {
       // IDなし（直接URL遷移等）: 全件取得
       const { data: d, error: e } = await supabase
         .from('targets')
-        .select('id, username, platform, match_score, priority, email, profile_url, post_url, contact_url, website, post_content, ai_reason')
+        .select('id, username, platform, match_score, priority, email, profile_url, post_url, contact_url, website, post_content, ai_reason, status, contacted_at')
         .eq('campaign_id', campaignId)
         .order('match_score', { ascending: false })
         .limit(1000);
@@ -136,7 +136,9 @@ export default function OutreachPage() {
         contact_url: (t.contact_url as string | null),
         website: (t.website as string | null),
         post_content: t.post_content as string | null, ai_reason: t.ai_reason as string | null,
-        message: "", status: "pending" as const,
+        message: "",
+        // DBのstatusをUIのstatusにマッピング（contacted → sent、それ以外はpending）
+        status: (t.status as string) === "contacted" ? "sent" as const : "pending" as const,
         sendMethod: hasEmail ? "email" : isDmPlatform ? "dm" : (t.contact_url || t.website || t.profile_url || t.post_url) ? "form" : "none",
         post_url: (t.post_url as string | null),
       };
