@@ -913,7 +913,7 @@ JSONのみ返してください: ["query1", "query2", "query3", "query4", "query
           b2bQueries = ["スタートアップ 東京", "IT企業 採用", "マーケティング会社 渋谷"];
         }
         console.log(`[google_maps] Claude B2B queries:`, b2bQueries);
-        for (const query of b2bQueries.slice(0, 5)) {
+        for (const query of b2bQueries.slice(0, 10)) {
           if (limitReached || insertedTargets.length >= remaining) break;
           console.log(`[google_maps] calling Places API v1 with query: "${query}"`);
           const placesRes = await fetch("https://places.googleapis.com/v1/places:searchText", {
@@ -923,7 +923,7 @@ JSONのみ返してください: ["query1", "query2", "query3", "query4", "query
               "X-Goog-Api-Key": process.env.GOOGLE_PLACES_API_KEY || "",
               "X-Goog-FieldMask": "places.displayName,places.websiteUri,places.formattedAddress,places.nationalPhoneNumber,places.id",
             },
-            body: JSON.stringify({ textQuery: query, languageCode: "ja", maxResultCount: 10 }),
+            body: JSON.stringify({ textQuery: query, languageCode: "ja", maxResultCount: 20 }),
             signal: AbortSignal.timeout(10000),
           });
           console.log(`[google_maps] Places API v1 response status: ${placesRes.status}`);
@@ -936,7 +936,7 @@ JSONのみ返してください: ["query1", "query2", "query3", "query4", "query
           const places = (placesData.places || []) as Array<Record<string, unknown>>;
           console.log(`[google_maps] Places API v1 count: ${places.length} for "${query}"`);
           if (places.length === 0) continue;
-          for (const place of places.slice(0, 8)) {
+          for (const place of places.slice(0, 20)) {
             if (insertedTargets.length >= remaining) { limitReached = true; break; }
             // New Places API v1 field names
             const displayName = (place.displayName as Record<string, unknown>) || {};
