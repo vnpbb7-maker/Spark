@@ -43,7 +43,7 @@ export async function GET(
       .select("*")
       .eq("campaign_id", campaignId)
       .order("match_score", { ascending: false })
-      .limit(100);
+      .limit(1000);
 
     if (tgtErr) {
       console.error("[campaign API] targets error:", tgtErr.message);
