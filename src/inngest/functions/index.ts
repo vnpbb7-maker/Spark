@@ -1877,6 +1877,16 @@ export const bulkSendOutreach = inngest.createFunction(
         }
         console.log(`[bulk-send] Message for ${target.username}: ${outreachMessage.slice(0, 50)}...`);
 
+        // ── クリック追跡: enable_tracking=true の場合、spark-ai.jp をトラッキングURLに置換 ──
+        const enableTracking = (campaignRow as Record<string, unknown>)?.enable_tracking === true;
+        const trackingUrl = `https://spark-ai.jp/api/track/${campaignId}/${currentTargetId}`;
+        const finalMessage = enableTracking && outreachMessage.includes("spark-ai.jp")
+          ? outreachMessage.replace(/spark-ai\.jp/g, trackingUrl)
+          : outreachMessage;
+        if (enableTracking && finalMessage !== outreachMessage) {
+          console.log(`[bulk-send] ✅ Tracking URL injected for ${target.username}`);
+        }
+
         // ── fire-and-forget: 応答を待たずに送信開始して即座に次へ ──
         console.log(`[bulk-send] fire-and-forget → Railway: ${playwrightUrl}/submit-contact-form for "${target.username}"`);
         fetch(`${playwrightUrl}/submit-contact-form`, {
@@ -1897,7 +1907,7 @@ export const bulkSendOutreach = inngest.createFunction(
                 ? ws : "";
             })(),
             contact_url: (target.contact_url as string) || null,
-            message: outreachMessage,
+            message: finalMessage,
             sender_name: senderName,
             sender_email: senderEmail,
           }),
