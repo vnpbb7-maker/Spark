@@ -468,7 +468,7 @@ export default function CampaignDetailPage() {
       const score = Number(t.match_score) || 0;
       return minScore <= 0 || score >= minScore;
     })
-    .filter((t) => !contactFilter || t.email || t.twitter_handle),
+    .filter((t) => !contactFilter || t.email || t.twitter_handle || t.contact_url || t.website),
     [targets, platformFilter, priorityFilter, minScore, contactFilter]);
 
   const funnel = useMemo(() => ({
@@ -512,9 +512,12 @@ export default function CampaignDetailPage() {
                 <button
                   onClick={() => {
                     if (!canSend) return;
-                    const ids = [...selected];
-                    console.log('[campaigns] saving to sessionStorage:', ids.length, 'ids');
-                    sessionStorage.setItem('spark_selected_target_ids', JSON.stringify(ids));
+                    // targets全件から選択IDを引く（visibleTargetsのフィルタに依存しない）
+                    const sendableIds = targets
+                      .filter(t => selected.has(t.id))
+                      .map(t => t.id);
+                    console.log('[campaigns] saving to sessionStorage:', sendableIds.length, 'ids');
+                    sessionStorage.setItem('spark_selected_target_ids', JSON.stringify(sendableIds));
                     console.log('[campaigns] sessionStorage set, navigating to outreach');
                     router.push(`/campaigns/${campaignId}/outreach`);
                   }}
