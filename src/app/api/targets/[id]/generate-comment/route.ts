@@ -74,9 +74,8 @@ export async function POST(
     // 表示用URLは常にドメインのみ（spark-ai.jp）
     const displayProductUrl = "spark-ai.jp";
 
-    // URLの強制挿入指示は行わない（トラッキングURL露出防止）
-    // 送信後にメール本文内のリンクをトラッキングURLに差し替える方式に変更予定
-    const urlInstruction = "";
+    // ドメイン表記でURLを含めるよう指示（https://形式・トラッキングURLは禁止）
+    const urlInstruction = `\n※本文中に「spark-ai.jp」というドメイン名を自然な形で1回含めること。例：「spark-ai.jp でご確認いただけます」「spark-ai.jp をぜひご覧ください」\n※「https://」から始まる形式では書かないこと。`;
 
     // ── プレーンテキスト直接出力（JSON prefill廃止）──
     const promptContent = isB2B
