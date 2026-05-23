@@ -63,10 +63,10 @@ export default function OutreachPage() {
   const storedIdsRef = React.useRef<string[]>([]);
   const [idsLoaded, setIdsLoaded] = useState(false);
 
-  // クライアントサイドのみ: localStorageから選択済みIDを読み取り、使用後にクリア
+  // クライアントサイドのみ: sessionStorageから選択済みIDを読み取り、使用後にクリア
   useEffect(() => {
-    const savedIds = localStorage.getItem('spark_selected_target_ids');
-    console.log('[outreach] localStorage raw:', savedIds?.slice(0, 80));
+    const savedIds = sessionStorage.getItem('spark_selected_target_ids');
+    console.log('[outreach] sessionStorage raw:', savedIds?.slice(0, 80));
     if (savedIds) {
       try {
         const ids = JSON.parse(savedIds) as string[];
@@ -77,9 +77,9 @@ export default function OutreachPage() {
         console.error('[outreach] JSON.parse failed for spark_selected_target_ids');
         storedIdsRef.current = [];
       }
-      localStorage.removeItem('spark_selected_target_ids');
+      sessionStorage.removeItem('spark_selected_target_ids');
     }
-    setIdsLoaded(true); // localStorage読み取り完了（IDがなくてもtrue）
+    setIdsLoaded(true); // sessionStorage読み取り完了（IDがなくてもtrue）
   }, []);
 
   const fetchTargets = useCallback(async (filterIds?: string[]) => {
