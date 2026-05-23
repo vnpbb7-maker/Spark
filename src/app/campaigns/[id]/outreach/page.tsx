@@ -104,16 +104,17 @@ export default function OutreachPage() {
       fetchErr = e;
       console.log('[outreach] IN-clause fetch:', data?.length ?? 0, '/ requested:', filterIds.length, 'error:', e?.message || 'none');
     } else {
-      // IDなし（直接URL遷移等）: 全件取得
+      // IDなし（直接URL遷移等）: 未送信ターゲットのみ取得（contacted済みは除外）
       const { data: d, error: e } = await supabase
         .from('targets')
         .select('id, username, platform, match_score, priority, email, profile_url, post_url, contact_url, website, post_content, ai_reason, status, contacted_at')
         .eq('campaign_id', campaignId)
+        .neq('status', 'contacted')   // 送信済みは除外（現在のキャンペーンのみ対象）
         .order('match_score', { ascending: false })
         .limit(1000);
       data = d as Record<string, unknown>[] | null;
       fetchErr = e;
-      console.log('[outreach] full fetch:', data?.length ?? 0, 'error:', e?.message || 'none');
+      console.log('[outreach] full fetch (pending only):', data?.length ?? 0, 'error:', e?.message || 'none');
     }
 
     if (fetchErr) console.error('[outreach] fetch error:', fetchErr.message);
