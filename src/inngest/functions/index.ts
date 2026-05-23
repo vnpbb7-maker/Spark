@@ -473,7 +473,7 @@ export const discoverTargets = inngest.createFunction(
     const minMatchScore = (campaign.min_match_score as number) || 50;
     console.log(`[discover] Campaign ${campaignId}: ${existingCount}/${campaignLimit} targets, remaining: ${remaining}, minMatchScore: ${minMatchScore}`);
 
-    // 2b. Cross-campaign deduplication: only skip targets found in last 7 days
+    // 2b. Cross-campaign deduplication: SNS/Webターゲットのみ7日間排除（google_mapsは除外）
     const { data: userCampaigns } = await getSupabase()
       .from("campaigns")
       .select("id")
@@ -485,13 +485,14 @@ export const discoverTargets = inngest.createFunction(
       .from("targets")
       .select("username, platform")
       .in("campaign_id", userCampaignIds)
+      .neq("platform", "google_maps")   // google_mapsはクロスキャンペーンdedup対象外
       .gte("created_at", sevenDaysAgo);
 
     const dedupSet = new Set<string>();
     (existingTargetRows || []).forEach((t: { username: string; platform: string }) => {
       dedupSet.add(`${t.platform}::${t.username.toLowerCase()}`);
     });
-    console.log(`[dedup] Loaded ${dedupSet.size} existing targets from last 7 days across ${userCampaignIds.length} campaigns`);
+    console.log(`[dedup] Loaded ${dedupSet.size} existing SNS/Web targets from last 7 days (google_maps excluded from cross-campaign dedup)`);
 
     // 3. Generate problem-focused search queries via Claude
     const platforms: string[] = Array.isArray(campaign.platforms) ? (campaign.platforms as string[]) : [];
@@ -887,7 +888,7 @@ Return ONLY this JSON format (no markdown, no explanation):
             },
             body: JSON.stringify({
               model: "claude-haiku-4-5-20251001",
-              max_tokens: 200,
+              max_tokens: 600,
               messages: [{
                 role: "user",
                 content: `プロダクト: ${productDescription.slice(0, 150)}
@@ -909,8 +910,15 @@ JSONのみ返してください: ["query1", "query2", "query3", "query4", "query
           }
         } catch (qErr) { console.error("[google_maps] Query gen error:", qErr); }
         if (b2bQueries.length === 0) {
-          // Fallback to basic queries
-          b2bQueries = ["スタートアップ 東京", "IT企業 採用", "マーケティング会社 渋谷"];
+          // フォールバック: 地域×業種の多様なクエリ
+          b2bQueries = [
+            "スタートアップ 東京", "IT企業 渋谷", "マーケティング会社 大阪",
+            "ウェブ制作会社 新宿", "コンサルティング 名古屋", "SaaS企業 福岡",
+            "EC事業 横浜", "広告代理店 品川", "人材会社 池袋", "IT企業 札幌",
+            "スタートアップ 大阪", "マーケティング 京都", "コンサル 仙台",
+            "ウェブ開発 神戸", "IT企業 名古屋", "スタートアップ 福岡",
+            "広告代理店 渋谷", "SaaS 東京", "EC企業 大阪", "営業支援 東京",
+          ];
         }
         console.log(`[google_maps] Claude B2B queries:`, b2bQueries);
         for (const query of b2bQueries.slice(0, 10)) {
@@ -973,7 +981,7 @@ JSONのみ返してください: ["query1", "query2", "query3", "query4", "query
                 console.log(`[google_maps] Hunter.io lookup: ${name} → domain=${domain}`);
                 const hunterRes = await fetch(
                   `https://api.hunter.io/v2/domain-search?domain=${domain}&limit=3&api_key=${process.env.HUNTER_API_KEY}`,
-                  { signal: AbortSignal.timeout(5000) }
+                  { signal: AbortSignal.timeout(1500) }  // fail fast
                 );
                 if (hunterRes.ok) {
                   const hunterData = await hunterRes.json();
