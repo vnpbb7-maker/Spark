@@ -4,6 +4,13 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
+const PLAN_INFO: Record<string, { label: string; color: string; bg: string; maxTargets: number; maxSent: number; maxCampaigns: number }> = {
+  free:      { label: "Free",      color: "#aaa",     bg: "rgba(255,255,255,0.06)", maxTargets: 10,     maxSent: 10,     maxCampaigns: 3 },
+  starter:   { label: "Starter",   color: "#3ea8ff",  bg: "rgba(62,168,255,0.1)",  maxTargets: 100,    maxSent: 100,    maxCampaigns: 20 },
+  growth:    { label: "Growth",    color: "#2dd17a",  bg: "rgba(45,209,122,0.1)",  maxTargets: 1000,   maxSent: 1000,   maxCampaigns: 999 },
+  unlimited: { label: "Admin",     color: "#ffd700",  bg: "rgba(255,215,0,0.1)",   maxTargets: 999999, maxSent: 999999, maxCampaigns: 999999 },
+};
+
 const PLATFORMS = [
   { id: "twitter", name: "X (Twitter)", icon: "𝕏", color: "#1d9bf0", fields: [{ key: "username", label: "ユーザー名" }, { key: "email", label: "メールアドレス（セキュリティ認証用）" }, { key: "password", label: "パスワード" }] },
   { id: "reddit", name: "Reddit", icon: "🤖", color: "#ff4500", fields: [{ key: "username", label: "ユーザー名" }, { key: "password", label: "パスワード" }, { key: "session_cookie", label: "セッションクッキー（任意・推奨）" }] },
@@ -29,11 +36,20 @@ export default function SettingsPage() {
   const [senderName, setSenderName] = useState("");
   const [senderEmail, setSenderEmail] = useState("");
   const [senderSaved, setSenderSaved] = useState(false);
+  const [userPlan, setUserPlan] = useState<string>("free");
+  const [userEmail, setUserEmail] = useState<string>("");
 
   const fetchCreds = useCallback(async () => {
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { router.push("/auth/login"); return; }
+    setUserEmail(user.email || "");
+
+    // プラン取得
+    const { data: profile } = await supabase.from("profiles").select("plan, is_admin").eq("id", user.id).maybeSingle();
+    const isAdmin = profile?.is_admin === true;
+    setUserPlan(isAdmin ? "unlimited" : (profile?.plan as string) || "free");
+
     const { data } = await supabase.from("platform_credentials").select("*").eq("user_id", user.id);
     const map: Record<string, Record<string, string>> = {};
     const savedSet = new Set<string>();
@@ -98,6 +114,40 @@ export default function SettingsPage() {
       </div>
 
       <div style={{ maxWidth: "900px", margin: "0 auto", padding: "32px 24px" }}>
+        {/* ── プランカード ── */}
+        {(() => {
+          const pi = PLAN_INFO[userPlan] || PLAN_INFO.free;
+          return (
+            <div style={{ background: pi.bg, border: `1px solid ${pi.color}40`, borderRadius: 16, padding: "20px 24px", marginBottom: 32, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: pi.color, background: `${pi.color}22`, border: `1px solid ${pi.color}44`, borderRadius: 20, padding: "3px 10px", letterSpacing: "0.5px" }}>
+                    {pi.label.toUpperCase()} PLAN
+                  </span>
+                  <span style={{ fontSize: 12, color: "rgba(240,239,232,0.4)" }}>{userEmail}</span>
+                </div>
+                <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
+                  {[
+                    { label: "発見数/日", value: pi.maxTargets >= 999999 ? "無制限" : `${pi.maxTargets}件` },
+                    { label: "送信数/日", value: pi.maxSent >= 999999 ? "無制限" : `${pi.maxSent}件` },
+                    { label: "キャンペーン", value: pi.maxCampaigns >= 999 ? "無制限" : `${pi.maxCampaigns}件` },
+                  ].map(({ label, value }) => (
+                    <div key={label}>
+                      <div style={{ fontSize: 10, color: "rgba(240,239,232,0.35)", marginBottom: 2 }}>{label}</div>
+                      <div style={{ fontSize: 16, fontWeight: 700, color: pi.color, fontFamily: "'Space Grotesk', sans-serif" }}>{value}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              {userPlan === "free" && (
+                <a href="/pricing" style={{ background: "linear-gradient(135deg, #ff6b35, #e05528)", color: "#fff", textDecoration: "none", borderRadius: 10, padding: "10px 20px", fontSize: 13, fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif", whiteSpace: "nowrap" }}>
+                  🚀 アップグレード
+                </a>
+              )}
+            </div>
+          );
+        })()}
+
         <div style={{ background: "rgba(255,200,0,0.1)", border: "0.5px solid rgba(255,200,0,0.3)", borderRadius: 12, padding: "12px 16px", marginBottom: 24, fontSize: 13, color: "rgba(255,200,0,0.9)", lineHeight: 1.6 }}>
           ⚠️ <strong>重要：</strong> 2段階認証（2FA）が有効なアカウントは自動投稿できません。設定前に各SNSの2FAを無効にしてください。また、パスワードが間違っている場合は投稿時にエラーが表示されます。
         </div>
