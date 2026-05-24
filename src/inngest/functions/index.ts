@@ -93,6 +93,44 @@ async function getGitHubEmail(githubUrl: string): Promise<string | null> {
   }
 }
 
+// 強化版: プロフィール → 公開コミット履歴の順でメールを取得
+async function getEmailFromGitHub(username: string): Promise<string | null> {
+  if (!username) return null;
+  const token = process.env.GITHUB_TOKEN;
+  const headers: Record<string, string> = { 'Accept': 'application/vnd.github.v3+json', 'User-Agent': 'SPARK-Discovery' };
+  if (token) headers['Authorization'] = `token ${token}`;
+  try {
+    // 1. プロフィールから取得
+    const profileRes = await fetch(`https://api.github.com/users/${username}`, { headers, signal: AbortSignal.timeout(4000) });
+    if (profileRes.ok) {
+      const data = await profileRes.json();
+      const email = data.email as string | null;
+      if (email && !email.includes('noreply') && !email.includes('users.noreply')) {
+        console.log(`[github] Profile email for ${username}: ${email}`);
+        return email;
+      }
+    }
+    // 2. 公開コミット履歴から取得
+    const eventsRes = await fetch(`https://api.github.com/users/${username}/events/public?per_page=30`, { headers, signal: AbortSignal.timeout(4000) });
+    if (eventsRes.ok) {
+      const events = await eventsRes.json() as Array<Record<string, unknown>>;
+      for (const event of events) {
+        if (event.type === 'PushEvent') {
+          const commits = (event.payload as Record<string, unknown>)?.commits as Array<Record<string, unknown>> | undefined;
+          const commitEmail = commits?.[0]?.author as Record<string, string> | undefined;
+          const email = commitEmail?.email;
+          if (email && !email.includes('noreply') && !email.includes('users.noreply')) {
+            console.log(`[github] Commit email for ${username}: ${email}`);
+            return email;
+          }
+        }
+      }
+    }
+  } catch (e) { console.warn(`[github] getEmailFromGitHub error for ${username}:`, e); }
+  return null;
+}
+
+
 async function extractContactInfo(profileUrl: string, platform: string): Promise<ContactInfo> {
   try {
     // Use Jina Reader to fetch profile page content
@@ -846,22 +884,140 @@ Return ONLY this JSON format (no markdown, no explanation):
             if (dedupSet.has(dedupKey)) continue;
             dedupSet.add(dedupKey);
             const social = extractSocialFromContent(eventDesc);
+            // GitHub経由でメール取得（owner_nicknameをGitHubユーザー名として試みる）
+            let email = social.found_email || "";
+            if (!email) {
+              const ghEmail = await getEmailFromGitHub(ownerNickname);
+              if (ghEmail) email = ghEmail;
+            }
             const { error: connErr } = await getSupabase().from("targets").insert({
               campaign_id: campaignId, platform: "connpass",
               username: ownerDisplay || ownerNickname,
               profile_url: `https://connpass.com/user/${ownerNickname}/`,
               post_url: eventUrl,
               post_content: `${event.title || ""}\n${eventDesc}`.slice(0, 500),
-              match_score: 55, match_reason: `Connpassイベント主催者`, status: "pending",
-              ...(social.found_email ? { email: social.found_email } : {}),
+              match_score: email ? 70 : 55,
+              match_reason: `Connpassイベント主催者${email ? "（メール取得済み）" : ""}`, status: "pending",
+              ...(email ? { email } : {}),
             });
             if (connErr) { console.error(`[connpass] Insert error for ${ownerNickname}:`, connErr.message); continue; }
             insertedTargets.push(ownerNickname);
-            console.log(`[connpass] Inserted: ${ownerDisplay} (${ownerNickname})`);
+            console.log(`[connpass] Inserted: ${ownerDisplay} email=${email || "none"}`);
           }
         }
       } catch (err) { console.error("[connpass] error:", err); }
     }
+
+    // ── Zenn 専用ハンドラ（Tavily → GitHub API でメール取得）──
+    if (platforms.includes("zenn") && !limitReached && process.env.TAVILY_API_KEY) {
+      try {
+        const zennKeyword = searchQueries[0] || productDescription.slice(0, 40);
+        const zennQueries = [
+          `site:zenn.dev ${zennKeyword} 困ってる OR 試してみた OR 探してる`,
+          `site:zenn.dev ${zennKeyword} 課題 OR 解決策`,
+        ];
+        for (const query of zennQueries) {
+          if (limitReached) break;
+          console.log(`[zenn] Tavily search: "${query}"`);
+          const tavilyRes = await fetch("https://api.tavily.com/search", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ api_key: process.env.TAVILY_API_KEY, query, search_depth: "basic", max_results: 8, include_domains: ["zenn.dev"] }),
+            signal: AbortSignal.timeout(10000),
+          });
+          if (!tavilyRes.ok) continue;
+          const tavilyData = await tavilyRes.json();
+          const results = (tavilyData.results || []) as Array<Record<string, unknown>>;
+          console.log(`[zenn] ${results.length} results`);
+          for (const result of results) {
+            if (insertedTargets.length >= remaining) { limitReached = true; break; }
+            const url = (result.url as string) || "";
+            if (!url.includes("zenn.dev")) continue;
+            // Extract Zenn username from URL: zenn.dev/username/articles/...
+            const zennMatch = url.match(/zenn\.dev\/([a-zA-Z0-9_-]+)/);
+            if (!zennMatch) continue;
+            const zennUsername = zennMatch[1];
+            if (["articles", "books", "topics", "tech"].includes(zennUsername)) continue;
+            const dedupKey = `zenn::${zennUsername.toLowerCase()}`;
+            if (dedupSet.has(dedupKey)) continue;
+            dedupSet.add(dedupKey);
+            // GitHub経由でメール取得（ZennはGitHubアカウント連携）
+            const ghEmail = await getEmailFromGitHub(zennUsername);
+            const { error: zennErr } = await getSupabase().from("targets").insert({
+              campaign_id: campaignId, platform: "zenn",
+              username: zennUsername,
+              profile_url: `https://zenn.dev/${zennUsername}`,
+              post_url: url,
+              post_content: ((result.content as string) || "").slice(0, 500),
+              match_score: ghEmail ? 72 : 55,
+              match_reason: `Zennエンジニア${ghEmail ? "（GitHub経由メール取得）" : ""}`,
+              status: "pending",
+              ...(ghEmail ? { email: ghEmail } : {}),
+            });
+            if (zennErr) { console.error(`[zenn] Insert error for ${zennUsername}:`, zennErr.message); continue; }
+            insertedTargets.push(zennUsername);
+            console.log(`[zenn] Inserted: ${zennUsername} email=${ghEmail || "none"}`);
+          }
+        }
+      } catch (err) { console.error("[zenn] error:", err); }
+    }
+
+    // ── Wantedly 専用ハンドラ（Tavily → 企業websiteURL → Playwright フォーム送信）──
+    if (platforms.includes("wantedly") && !limitReached && process.env.TAVILY_API_KEY) {
+      try {
+        const wantedlyKeyword = searchQueries[0] || productDescription.slice(0, 40);
+        const wantedlyQueries = [
+          `site:wantedly.com/companies ${wantedlyKeyword} 募集`,
+          `site:wantedly.com ${wantedlyKeyword} 採用中`,
+        ];
+        for (const query of wantedlyQueries) {
+          if (limitReached) break;
+          console.log(`[wantedly] Tavily search: "${query}"`);
+          const tavilyRes = await fetch("https://api.tavily.com/search", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ api_key: process.env.TAVILY_API_KEY, query, search_depth: "basic", max_results: 8, include_domains: ["wantedly.com"] }),
+            signal: AbortSignal.timeout(10000),
+          });
+          if (!tavilyRes.ok) continue;
+          const tavilyData = await tavilyRes.json();
+          const results = (tavilyData.results || []) as Array<Record<string, unknown>>;
+          console.log(`[wantedly] ${results.length} results`);
+          for (const result of results) {
+            if (insertedTargets.length >= remaining) { limitReached = true; break; }
+            const url = (result.url as string) || "";
+            if (!url.includes("wantedly.com")) continue;
+            // Extract company name from URL: wantedly.com/companies/companyname
+            const companyMatch = url.match(/wantedly\.com\/companies\/([a-zA-Z0-9_-]+)/);
+            if (!companyMatch) continue;
+            const companySlug = companyMatch[1];
+            const dedupKey = `wantedly::${companySlug.toLowerCase()}`;
+            if (dedupSet.has(dedupKey)) continue;
+            dedupSet.add(dedupKey);
+            // コンテンツからウェブサイトURLを抽出
+            const content = (result.content as string) || "";
+            const websiteMatch = content.match(/https?:\/\/(?!wantedly\.com)[a-zA-Z0-9.-]+\.[a-z]{2,}[^\s"')>]*/);
+            const companyWebsite = websiteMatch ? websiteMatch[0] : null;
+            const { error: wantedlyErr } = await getSupabase().from("targets").insert({
+              campaign_id: campaignId, platform: "wantedly",
+              username: companySlug,
+              profile_url: `https://www.wantedly.com/companies/${companySlug}`,
+              post_url: url,
+              website: companyWebsite,
+              contact_url: companyWebsite,  // Playwright フォーム送信用
+              post_content: content.slice(0, 500),
+              match_score: companyWebsite ? 65 : 50,
+              match_reason: `Wantedly企業${companyWebsite ? "（Webサイトあり）" : ""}`,
+              status: "pending",
+            });
+            if (wantedlyErr) { console.error(`[wantedly] Insert error for ${companySlug}:`, wantedlyErr.message); continue; }
+            insertedTargets.push(companySlug);
+            console.log(`[wantedly] Inserted: ${companySlug} website=${companyWebsite || "none"}`);
+          }
+        }
+      } catch (err) { console.error("[wantedly] error:", err); }
+    }
+
 
     // Google Places API discovery (if "google_maps" is in selected platforms)
     console.log(`[google_maps] PRE-CHECK: platforms=${JSON.stringify(platforms)} limitReached=${limitReached} remaining=${remaining - insertedTargets.length}`);
