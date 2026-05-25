@@ -687,8 +687,11 @@ Return ONLY this JSON format (no markdown, no explanation):
       console.log(`[phase2] user selected platforms: ${JSON.stringify(platforms)}`);
       console.log(`[step2] processing platform: ${platform} (inserted: ${insertedTargets.length}/${remaining})`);
 
-      // Skip platforms handled separately below (connpass, google_maps)
-      if (platform === "connpass" || platform === "google_maps") continue;
+      // Skip platforms handled separately below (connpass, google_maps, zenn, wantedly)
+      if (platform === "connpass" || platform === "google_maps" || platform === "zenn" || platform === "wantedly") {
+        console.log(`[phase2] Skipping "${platform}" in generic loop — handled by dedicated handler below`);
+        continue;
+      }
 
       // Twitter: use dedicated Twitter search API
       if (platform === "twitter") {
@@ -908,7 +911,18 @@ Return ONLY this JSON format (no markdown, no explanation):
       } catch (err) { console.error("[connpass] error:", err); }
     }
 
+    // ── 専用ハンドラ到達確認ログ ──
+    console.log('[discover] === dedicated handlers START ===');
+    console.log('[discover] platforms:', JSON.stringify(platforms));
+    console.log('[discover] has connpass:', platforms.includes('connpass'));
+    console.log('[discover] has zenn:', platforms.includes('zenn'));
+    console.log('[discover] has wantedly:', platforms.includes('wantedly'));
+    console.log('[discover] limitReached:', limitReached, 'inserted:', insertedTargets.length, '/', remaining);
+    console.log('[discover] TAVILY_API_KEY set:', !!process.env.TAVILY_API_KEY);
+    console.log('[discover] GITHUB_TOKEN set:', !!process.env.GITHUB_TOKEN);
+
     // ── Zenn 専用ハンドラ（Tavily → GitHub API でメール取得）──
+    console.log('[zenn] block executing, platforms includes zenn:', platforms.includes('zenn'));
     if (platforms.includes("zenn") && !limitReached && process.env.TAVILY_API_KEY) {
       try {
         const zennKeyword = searchQueries[0] || productDescription.slice(0, 40);
@@ -963,6 +977,7 @@ Return ONLY this JSON format (no markdown, no explanation):
     }
 
     // ── Wantedly 専用ハンドラ（Tavily → 企業websiteURL → Playwright フォーム送信）──
+    console.log('[wantedly] block executing, platforms includes wantedly:', platforms.includes('wantedly'));
     if (platforms.includes("wantedly") && !limitReached && process.env.TAVILY_API_KEY) {
       try {
         const wantedlyKeyword = searchQueries[0] || productDescription.slice(0, 40);
