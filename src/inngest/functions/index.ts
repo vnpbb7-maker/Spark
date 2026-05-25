@@ -966,8 +966,24 @@ Return ONLY this JSON format (no markdown, no explanation):
             const dedupKey = `zenn::${zennUsername.toLowerCase()}`;
             if (dedupSet.has(dedupKey)) continue;
             dedupSet.add(dedupKey);
-            // GitHub経由でメール取得（ZennはGitHubアカウント連携）
-            const ghEmail = await getEmailFromGitHub(zennUsername);
+            // GitHub経由でメール取得
+            // ZennプロフィールページからGitHubユーザー名を確認（Zenn名≠GitHub名の場合に対応）
+            let githubUsername = zennUsername;
+            try {
+              const profileRes = await fetch(`https://r.jina.ai/https://zenn.dev/${zennUsername}`, {
+                headers: { Accept: "text/plain" }, signal: AbortSignal.timeout(5000),
+              });
+              if (profileRes.ok) {
+                const profileText = await profileRes.text();
+                const ghMatch = profileText.match(/github\.com\/([a-zA-Z0-9_-]+)/);
+                if (ghMatch && ghMatch[1]) {
+                  githubUsername = ghMatch[1];
+                  console.log(`[zenn] GitHub username for ${zennUsername}: ${githubUsername}`);
+                }
+              }
+            } catch { /* keep zennUsername as fallback */ }
+            const ghEmail = await getEmailFromGitHub(githubUsername);
+            console.log(`[zenn] ${zennUsername} → GitHub:${githubUsername} email:${ghEmail || "none"}`);
             const { error: zennErr } = await getSupabase().from("targets").insert({
               campaign_id: campaignId, platform: "zenn",
               username: zennUsername,

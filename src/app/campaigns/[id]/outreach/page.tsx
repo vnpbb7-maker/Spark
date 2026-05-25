@@ -28,7 +28,7 @@ type OutreachTarget = {
   sendMethod: "email" | "dm" | "form" | "none";
 };
 
-const SNS_DM_PLATFORMS = ["reddit","twitter","x","instagram","tiktok","linkedin","youtube","note","wantedly","discord"];
+const SNS_DM_PLATFORMS = ["reddit","twitter","x","instagram","tiktok","linkedin","youtube","note","discord"];
 const isSNS = (platform: string) => SNS_DM_PLATFORMS.includes((platform || "").toLowerCase());
 
 const DM_URLS: Record<string, (username: string) => string> = {

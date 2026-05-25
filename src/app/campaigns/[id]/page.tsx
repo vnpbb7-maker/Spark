@@ -553,8 +553,8 @@ export default function CampaignDetailPage() {
             { label: "S+Aランク", value: targets.filter(t => t.priority === "S" || t.priority === "A").length, icon: "⭐", color: "#ffd60a" },
             { label: "選択中", value: selectedCount, icon: "☑️", color: "#7c5cfc" },
             { label: "連絡先あり", value: targets.filter(t => {
-              const snsPlatforms = ["reddit","twitter","wantedly"];
-              return t.email || snsPlatforms.includes(t.platform);
+              const snsPlatforms = ["reddit","twitter"];
+              return t.email || snsPlatforms.includes(t.platform) || !!(t.contact_url || t.website);
             }).length, icon: "📧", color: "#2dd17a" },
           ].map((s) => (
             <div key={s.label} style={{ background: "#13132a", border: "1px solid rgba(255,255,255,0.07)", borderRadius: "14px", padding: "16px 18px" }}>
@@ -741,7 +741,7 @@ export default function CampaignDetailPage() {
                         <span className="tc-truncate" style={{ fontSize: "16px", fontWeight: 700, color: "#f0efe8", maxWidth: "200px", flexShrink: 1 }}>@{t.username}</span>
                         <span style={{ fontSize: "12px", padding: "2px 8px", borderRadius: "5px", background: `${pi.color}12`, color: pi.color, fontWeight: 600, flexShrink: 0 }}>{pi.icon} {t.platform === "yahoo_qa" ? "Yahoo知恵袋" : t.platform.charAt(0).toUpperCase() + t.platform.slice(1)}</span>
                         {(() => {
-                          const snsDm = ["reddit","twitter","wantedly"];
+                          const snsDm = ["reddit","twitter"];
                           const hasEmail = t.email && !t.email.startsWith("Twitter:") && !t.email.startsWith("DM:");
                           const isDmOnly = !hasEmail && snsDm.includes(t.platform);
                           if (hasEmail) return <span style={{ fontSize: "12px", padding: "2px 8px", borderRadius: "5px", background: "rgba(45,209,122,0.12)", color: "#2dd17a", fontWeight: 600 }}>✉️ メール</span>;
