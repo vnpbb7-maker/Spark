@@ -533,7 +533,18 @@ export const discoverTargets = inngest.createFunction(
     console.log(`[dedup] Loaded ${dedupSet.size} existing SNS/Web targets from last 7 days (google_maps excluded from cross-campaign dedup)`);
 
     // 3. Generate problem-focused search queries via Claude
-    const platforms: string[] = Array.isArray(campaign.platforms) ? (campaign.platforms as string[]) : [];
+    // platforms: DB に文字列 '["zenn","wantedly"]' として保存されている場合も対応
+    let platforms: string[] = [];
+    if (Array.isArray(campaign.platforms)) {
+      platforms = (campaign.platforms as string[]).map((p: string) => p.toLowerCase().trim());
+    } else if (typeof campaign.platforms === "string" && campaign.platforms.trim().startsWith("[")) {
+      try {
+        const parsed = JSON.parse(campaign.platforms);
+        if (Array.isArray(parsed)) platforms = parsed.map((p: string) => String(p).toLowerCase().trim());
+      } catch { /* keep empty */ }
+    }
+    console.log("[discover] parsed platforms:", JSON.stringify(platforms));
+
 
     // target_personas may be stored as array OR as object { personas: [...] }
     const rawPersonas = campaign.target_personas;
