@@ -2149,19 +2149,28 @@ export const bulkSendOutreach = inngest.createFunction(
         try {
           const { data: campaignRow } = await supabase.from("campaigns").select("*").eq("id", campaignId).single();
           const productDesc = (campaignRow?.product_description as string) || (campaignRow?.product_url as string) || "";
-          const claudeRes = await fetch("https://api.anthropic.com/v1/messages", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "x-api-key": process.env.ANTHROPIC_API_KEY!,
-              "anthropic-version": "2023-06-01",
-            },
-            body: JSON.stringify({
-              model: "claude-haiku-4-5-20251001",
-              max_tokens: 400,
-              messages: [{
-                role: "user",
-                content: `あなたはB2Bセールスの専門家です。
+          const isPRTimes = (target.platform as string) === "prtimes";
+          const promptContent = isPRTimes
+            ? `あなたはビジネスメールのプロです。
+以下の情報を元に、企業お問い合わせフォームへのメッセージを生成してください。
+
+送信者: ${senderName}
+自社サービス: ${productDesc}
+送信先企業: ${target.username}
+プレスリリース内容: ${(target.post_content as string || "").slice(0, 200)}
+
+【ルール】
+・書き出しは「${senderName}と申します。」
+・相手のプレスリリース内容（新サービス・新規事業）に1文触れる
+・自社サービスが役立てる理由を1文で簡潔に
+・締めは「ご検討いただけますと幸いです。」または同等の丁寧な結び
+・全体150〜200字（フォームの文字数制限を考慮）
+・件名は不要、本文のみ
+・売り込み色を抑えた提案型
+・敬語・ビジネスメール文体
+
+メッセージ本文のみ返してください。`
+            : `あなたはB2Bセールスの専門家です。
 以下の情報を元に、企業のお問い合わせフォームに送るメッセージを日本語で生成してください。
 
 送信者: ${senderName}
@@ -2176,8 +2185,18 @@ export const bulkSendOutreach = inngest.createFunction(
 ・具体的な価値提案を1文
 ・問い合わせ・面談打診で締める
 
-メッセージ本文のみ返してください。`,
-              }],
+メッセージ本文のみ返してください。`;
+          const claudeRes = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-api-key": process.env.ANTHROPIC_API_KEY!,
+              "anthropic-version": "2023-06-01",
+            },
+            body: JSON.stringify({
+              model: "claude-haiku-4-5-20251001",
+              max_tokens: 400,
+              messages: [{ role: "user", content: promptContent }],
             }),
             signal: AbortSignal.timeout(20000),
           });
