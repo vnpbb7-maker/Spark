@@ -698,8 +698,8 @@ Return ONLY this JSON format (no markdown, no explanation):
       console.log(`[phase2] user selected platforms: ${JSON.stringify(platforms)}`);
       console.log(`[step2] processing platform: ${platform} (inserted: ${insertedTargets.length}/${remaining})`);
 
-      // Skip platforms handled separately below (connpass, google_maps, zenn, wantedly)
-      if (platform === "connpass" || platform === "google_maps" || platform === "zenn" || platform === "wantedly") {
+      // Skip platforms handled separately below (connpass, google_maps, zenn, wantedly, prtimes)
+      if (platform === "connpass" || platform === "google_maps" || platform === "zenn" || platform === "wantedly" || platform === "prtimes") {
         console.log(`[phase2] Skipping "${platform}" in generic loop — handled by dedicated handler below`);
         continue;
       }
@@ -1060,6 +1060,74 @@ Return ONLY this JSON format (no markdown, no explanation):
       } catch (err) { console.error("[wantedly] error:", err); }
     }
 
+    // ── PR TIMES 専用ハンドラ（Tavily → 企業websiteURL → Playwright フォーム送信）──
+    console.log('[prtimes] block executing, platforms includes prtimes:', platforms.includes('prtimes'));
+    if (platforms.includes("prtimes") && !limitReached && process.env.TAVILY_API_KEY) {
+      try {
+        const prKeyword = searchQueries[0] || productDescription.slice(0, 40);
+        const prTimesQueries = [
+          `site:prtimes.jp ${prKeyword} 新サービス リリース`,
+          `site:prtimes.jp ${prKeyword} 新規事業 開始`,
+          `site:prtimes.jp ${prKeyword} ローンチ 募集`,
+          `site:prtimes.jp ${prKeyword} βテスト ユーザー募集`,
+        ];
+        for (const query of prTimesQueries) {
+          if (limitReached) break;
+          console.log(`[prtimes] query: "${query}"`);
+          const tavilyRes = await fetch("https://api.tavily.com/search", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              api_key: process.env.TAVILY_API_KEY, query,
+              search_depth: "basic", max_results: 8,
+              include_domains: ["prtimes.jp"],
+            }),
+            signal: AbortSignal.timeout(10000),
+          });
+          if (!tavilyRes.ok) { console.error(`[prtimes] Tavily error: ${tavilyRes.status}`); continue; }
+          const tavilyData = await tavilyRes.json();
+          const results = (tavilyData.results || []) as Array<Record<string, unknown>>;
+          console.log(`[prtimes] ${results.length} results for "${query.slice(0, 50)}"`);
+          for (const result of results) {
+            if (insertedTargets.length >= remaining) { limitReached = true; break; }
+            const url = (result.url as string) || "";
+            if (!url.includes("prtimes.jp")) continue;
+            const content = (result.content as string) || "";
+            const title = (result.title as string) || "";
+            // プレスリリースタイトルから企業名を抽出（「〜〜株式会社」「〜〜社」など）
+            const companyMatch = title.match(/^(.+?)(?:、|が|は|の|より|から)/);
+            const companyName = companyMatch ? companyMatch[1].trim() : title.slice(0, 30).trim();
+            if (!companyName) continue;
+            const dedupKey = `prtimes::${companyName.toLowerCase()}`;
+            if (dedupSet.has(dedupKey)) continue;
+            dedupSet.add(dedupKey);
+            // コンテンツ・タイトルから企業URLを抽出（prtimes.jp以外のURL）
+            const websiteMatch = content.match(/https?:\/\/(?!prtimes\.jp|www\.prtimes\.jp)[a-zA-Z0-9.-]+\.[a-z]{2,}[^\s"')>\]<]*/);
+            const companyWebsite = websiteMatch ? websiteMatch[0].replace(/[.、。）\]]+$/, "") : null;
+            const summary = `${title}\n${content}`.slice(0, 500);
+            console.log(`[prtimes] found company: ${companyName} url: ${companyWebsite || "none"}`);
+            console.log(`[prtimes] press release summary: ${summary.slice(0, 100)}`);
+            const { error: prErr } = await getSupabase().from("targets").insert({
+              campaign_id: campaignId, platform: "prtimes",
+              username: companyName,
+              profile_url: url,
+              post_url: url,
+              website: companyWebsite,
+              contact_url: companyWebsite,  // Playwright フォーム送信用
+              post_content: summary,
+              // 新規事業・新サービス開始 = 顧客獲得フェーズ → 高スコア
+              match_score: companyWebsite ? 78 : 60,
+              match_reason: `PR TIMES新規事業プレスリリース${companyWebsite ? "（Webサイトあり）" : ""}`,
+              ai_reason: "PR TIMESのプレスリリースは新規事業・新サービス開始の企業。顧客獲得フェーズにある可能性が高く接触タイミングが最適。",
+              status: "pending",
+            });
+            if (prErr) { console.error(`[prtimes] Insert error for ${companyName}:`, prErr.message); continue; }
+            insertedTargets.push(companyName);
+            console.log(`[prtimes] Inserted: ${companyName} website=${companyWebsite || "none"}`);
+          }
+        }
+      } catch (err) { console.error("[prtimes] error:", err); }
+    }
 
     // Google Places API discovery (if "google_maps" is in selected platforms)
     console.log(`[google_maps] PRE-CHECK: platforms=${JSON.stringify(platforms)} limitReached=${limitReached} remaining=${remaining - insertedTargets.length}`);

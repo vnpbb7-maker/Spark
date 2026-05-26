@@ -26,6 +26,7 @@ const PLATFORM_ICONS: Record<string, { icon: string; color: string }> = {
   discord: { icon: "💬", color: "#5865f2" }, google_maps: { icon: "🗺️", color: "#4285f4" },
   producthunt_competitor: { icon: "🔶", color: "#da552f" },
   google_maps_review: { icon: "⭐", color: "#fbbc04" },
+  prtimes: { icon: "📰", color: "#e8611a" },
   web: { icon: "🌐", color: "#2dd17a" },
 };
 
