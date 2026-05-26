@@ -1126,7 +1126,8 @@ Return ONLY this JSON format (no markdown, no explanation):
           for (const result of results) {
             if (insertedTargets.length >= remaining) { limitReached = true; break; }
             const url = (result.url as string) || "";
-            if (!url.includes("prtimes.jp")) continue;
+            // 個別プレスリリースURLのみ通過（/main/html/rd/p/ を含む）
+            if (!url.includes("prtimes.jp/main/html/rd/p/")) continue;
             // Jina Readerでページ詳細取得
             const { companyName, websiteUrl, summary } = await extractFromPRTimes(url);
             // フォールバック: Tavilyのtitleから企業名を推定
