@@ -60,6 +60,7 @@ export default function OutreachPage() {
   const [settingsProductUrl, setSettingsProductUrl] = useState("");
   const [settingsKeywords, setSettingsKeywords] = useState("");
   const [storedTargetIds, setStoredTargetIds] = useState<string[]>([]);
+  const [msgSelectedIds, setMsgSelectedIds] = useState<Set<string>>(new Set());
   const storedIdsRef = React.useRef<string[]>([]);
   const [idsLoaded, setIdsLoaded] = useState(false);
 
@@ -172,6 +173,10 @@ export default function OutreachPage() {
   };
 
   const generateMessages = async (senderName?: string, productUrl?: string, keywords?: string) => {
+    if (msgSelectedIds.size === 0) {
+      alert("メッセージを生成するリードを選択してください。");
+      return;
+    }
     setGenerating(true);
     const sn = senderName || (typeof window !== "undefined" ? localStorage.getItem("spark_sender_name") || "担当者" : "担当者");
     const pu = productUrl || (typeof window !== "undefined" ? localStorage.getItem("spark_product_url") || "" : "");
@@ -179,6 +184,7 @@ export default function OutreachPage() {
     const senderEmail = typeof window !== "undefined" ? localStorage.getItem("spark_sender_email") || "" : "";
     const updated = [...targets];
     for (let i = 0; i < updated.length; i++) {
+      if (!msgSelectedIds.has(updated[i].id)) continue; // 選択済みのみ生成
       try {
         const et = typeof window !== "undefined" ? localStorage.getItem("spark_enable_tracking") === "true" : false;
         const reqBody = { sender_name: sn, sender_email: senderEmail, product_url: pu, keywords: kw, force: true, campaign_id: campaignId, enable_tracking: et };
@@ -349,13 +355,13 @@ ${updated[i].platform}での投稿を拝見し、${productDesc.slice(0, 60)}${kw
             }}>
               {findingUrls ? "⏳ 取得中..." : "🔍 フォームURL取得"}
             </button>
-            <button onClick={openSettings} disabled={generating} style={{
-              background: generating ? "rgba(124,92,252,0.1)" : "linear-gradient(135deg, #7c5cfc, #5a3fd6)",
+            <button onClick={openSettings} disabled={generating || msgSelectedIds.size === 0} title={msgSelectedIds.size === 0 ? "リードを選択してください" : ""} style={{
+              background: generating || msgSelectedIds.size === 0 ? "rgba(124,92,252,0.1)" : "linear-gradient(135deg, #7c5cfc, #5a3fd6)",
               color: "#fff", border: "none", borderRadius: "10px", padding: "8px 18px",
-              fontSize: "12px", fontWeight: 700, cursor: generating ? "wait" : "pointer",
-              fontFamily: "'Space Grotesk'", opacity: generating ? 0.7 : 1,
+              fontSize: "12px", fontWeight: 700, cursor: generating || msgSelectedIds.size === 0 ? "not-allowed" : "pointer",
+              fontFamily: "'Space Grotesk'", opacity: generating || msgSelectedIds.size === 0 ? 0.5 : 1,
             }}>
-              {generating ? "⏳ メッセージ生成中..." : "✨ メッセージ一括生成"}
+              {generating ? "⏳ メッセージ生成中..." : msgSelectedIds.size > 0 ? `✨ メッセージ生成（${msgSelectedIds.size}件）` : "✨ メッセージ生成"}
             </button>
             <button onClick={handleBulkSend} disabled={bulkSending} style={{
               background: bulkSending ? "rgba(45,209,122,0.1)" : "linear-gradient(135deg, #2dd17a, #1ba360)",
@@ -456,6 +462,26 @@ ${updated[i].platform}での投稿を拝見し、${productDesc.slice(0, 60)}${kw
           </div>
         )}
 
+        {/* Select-all bar for message generation */}
+        {filtered.filter(t => t.status === "pending").length > 0 && (
+          <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "8px", padding: "6px 12px", background: "rgba(124,92,252,0.06)", borderRadius: "10px", border: "1px solid rgba(124,92,252,0.12)" }}>
+            <input
+              type="checkbox"
+              id="msg-select-all"
+              style={{ width: "15px", height: "15px", cursor: "pointer", accentColor: "#7c5cfc" }}
+              checked={filtered.filter(t => t.status === "pending").every(t => msgSelectedIds.has(t.id))}
+              onChange={e => {
+                const pendingIds = filtered.filter(t => t.status === "pending").map(t => t.id);
+                if (e.target.checked) setMsgSelectedIds(prev => new Set([...prev, ...pendingIds]));
+                else setMsgSelectedIds(prev => { const next = new Set(prev); pendingIds.forEach(id => next.delete(id)); return next; });
+              }}
+            />
+            <label htmlFor="msg-select-all" style={{ fontSize: "12px", color: "rgba(240,239,232,0.6)", cursor: "pointer", userSelect: "none" }}>
+              全選択 / 解除　<span style={{ color: "#7c5cfc", fontWeight: 700 }}>{msgSelectedIds.size}件選択中</span>
+            </label>
+          </div>
+        )}
+
         {/* Target list */}
         <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
           {filtered.length === 0 ? (
@@ -469,11 +495,20 @@ ${updated[i].platform}での投稿を拝見し、${productDesc.slice(0, 60)}${kw
             const isEditing = editingId === t.id;
             return (
               <div key={t.id} style={{
-                background: "#13132a", border: "1px solid rgba(255,255,255,0.06)",
+                background: msgSelectedIds.has(t.id) ? "rgba(124,92,252,0.05)" : "#13132a",
+                border: `1px solid ${msgSelectedIds.has(t.id) ? "rgba(124,92,252,0.25)" : "rgba(255,255,255,0.06)"}`,
                 borderRadius: "14px", padding: "16px 18px",
               }}>
                 {/* Header */}
                 <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "10px" }}>
+                  {t.status === "pending" && (
+                    <input
+                      type="checkbox"
+                      style={{ width: "15px", height: "15px", cursor: "pointer", flexShrink: 0, accentColor: "#7c5cfc" }}
+                      checked={msgSelectedIds.has(t.id)}
+                      onChange={e => setMsgSelectedIds(prev => { const next = new Set(prev); e.target.checked ? next.add(t.id) : next.delete(t.id); return next; })}
+                    />
+                  )}
                   <span style={{ background: ps.bg, color: ps.color, fontSize: "10px", fontWeight: 900, width: "22px", height: "22px", borderRadius: "6px", display: "flex", alignItems: "center", justifyContent: "center" }}>{t.priority}</span>
                   <span style={{ fontSize: "14px", fontWeight: 700 }}>@{t.username}</span>
                   <span style={{ fontSize: "10px", padding: "2px 8px", borderRadius: "5px", background: "rgba(255,255,255,0.04)", color: "rgba(240,239,232,0.5)" }}>{pi.icon} {pi.label}</span>

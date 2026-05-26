@@ -58,6 +58,8 @@ export async function POST(
           : "投稿と同じ言語で書く";
 
     const isB2B = target.platform === "google_maps";
+    const isPRTimes = target.platform === "prtimes";
+    const isFormBusiness = target.platform === "wantedly" || isPRTimes;
     const productLine = campaign?.product_description || campaign?.product_url || productUrl || "プロダクト";
     const companyName = target.username || "御社";
     const effectiveProductUrl = productUrl || campaign?.product_url || "";
@@ -78,7 +80,28 @@ export async function POST(
     const urlInstruction = `\n※本文中に「spark-ai.jp」というドメイン名を自然な形で1回含めること。例：「spark-ai.jp でご確認いただけます」「spark-ai.jp をぜひご覧ください」\n※「https://」から始まる形式では書かないこと。`;
 
     // ── プレーンテキスト直接出力（JSON prefill廃止）──
-    const promptContent = isB2B
+    const promptContent = isPRTimes
+      ? `あなたはビジネスメールのプロです。
+以下の情報を元に、企業お問い合わせフォームへのメッセージを生成してください。
+
+送信者: ${senderName}
+自社サービス: ${productLine}（${displayProductUrl}）
+送信先企業: ${companyName}
+プレスリリース内容: ${(target.post_content as string || "").slice(0, 200)}
+
+【ルール】
+・書き出しは「${senderName}と申します。」で始める
+・相手のプレスリリース内容（新サービス・新規事業）に1文触れる
+・自社サービスが役立てる理由を1文で簡潔に
+・締めは「ご検討いただけますと幸いです。」または同等の丁寧な結び
+・全体150〜200字（フォームの文字数制限を考慮）
+・件名は不要、本文のみ
+・売り込み色を抑えた提案型
+・敬語・ビジネスメール文体
+・送信者名「${senderName}」は必ずそのままの文字で使用すること
+
+メッセージ本文のみ返してください。`
+      : isB2B || isFormBusiness
       ? `あなたは優秀な日本語ビジネスメールライターです。
 以下の情報をもとに、自然なビジネスメールを生成してください。
 
