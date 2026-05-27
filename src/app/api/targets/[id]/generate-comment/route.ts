@@ -60,7 +60,8 @@ export async function POST(
     const isB2B = target.platform === "google_maps";
     const isPRTimes = target.platform === "prtimes";
     const isFormBusiness = target.platform === "wantedly" || isPRTimes;
-    const productLine = campaign?.product_description || campaign?.product_url || productUrl || "プロダクト";
+    // モーダル入力値を優先（DBのキャンペーン値より上書き）
+    const productLine = productUrl || campaign?.product_description || campaign?.product_url || "プロダクト";
     const companyName = target.username || "御社";
     const effectiveProductUrl = productUrl || campaign?.product_url || "";
 
@@ -85,20 +86,22 @@ export async function POST(
 以下の情報を元に、企業お問い合わせフォームへのメッセージを生成してください。
 
 送信者: ${senderName}
-自社サービス: ${productLine}（${displayProductUrl}）
+自社サービス: ${productLine}
+${keywords ? `【必ず含める訴求ポイント】${keywords}` : ""}
 送信先企業: ${companyName}
 プレスリリース内容: ${(target.post_content as string || "").slice(0, 200)}
 
-【ルール】
+【厳守ルール】
 ・書き出しは「${senderName}と申します。」で始める
 ・相手のプレスリリース内容（新サービス・新規事業）に1文触れる
-・自社サービスが役立てる理由を1文で簡潔に
+・自社サービスの訴求ポイント（上記【必ず含める訴求ポイント】）を自然な形で必ず1文に盛り込む
 ・締めは「ご検討いただけますと幸いです。」または同等の丁寧な結び
 ・全体150〜200字（フォームの文字数制限を考慮）
 ・件名は不要、本文のみ
 ・売り込み色を抑えた提案型
 ・敬語・ビジネスメール文体
 ・送信者名「${senderName}」は必ずそのままの文字で使用すること
+${effectiveProductUrl ? `・本文末尾付近に「詳しくは ${effectiveProductUrl} をご覧ください」を自然な形で含めること` : ""}
 
 メッセージ本文のみ返してください。`
       : isB2B || isFormBusiness
@@ -107,79 +110,60 @@ export async function POST(
 
 【送信先企業】${companyName}
 【送信者名】${senderName}
-【プロダクト】Spark AI（${displayProductUrl}）
-【プロダクトの特徴・参考キーワード】${keywords || productLine}
+【自社サービス・プロダクト説明】${productLine}
+${keywords ? `【訴求ポイント（必ず盛り込むこと）】${keywords}` : ""}
 
 ## 厳守ルール
-- 送信者名「${senderName}」は必ずそのままの文字で使用すること。絶対に翻訳・英訳・変換しないこと（例：「木」を"wood"にしない）
-- キーワードは参考情報のみ。文中にそのまま使用しないこと
-- 「100名」「テストユーザー」「広告リスト」「自動サーチ」「AI」などの単語はそのまま書かない
-- 数字＋名詞の組み合わせ（例：100名・50件）も禁止。「多くの」「初期ユーザー」などに言い換える
-- カタカナ列挙（例：「Saas・AI・自動化」）は禁止。文脈に合わせた日本語で説明する
-- 「100名」「リスト」などの単語は意味を汲んで「初期ユーザー獲得」「顧客開拓」などに変換
+- 送信者名「${senderName}」は必ずそのままの文字で使用すること。絶対に翻訳・英訳・変換しないこと
+- 上記【訴求ポイント】は意訳・言い換えOKだが、必ずメッセージの中核として盛り込むこと
+- 数字＋名詞の組み合わせ（100名・50件等）は「多くの」「初期ユーザー」等に言い換える
+- カタカナ列挙は禁止。文脈に合わせた日本語で表現する
 - 必ず以下の構成と改行で書く（段落間は必ず1行空ける）：
 
 ${companyName} ご担当者様
 
 はじめまして、${senderName}と申します。
 
-（プロダクト説明2〜3文：送信先業種に合わせてカスタマイズ）
+（プロダクト説明＋訴求ポイントを盛り込んだ2〜3文：送信先業種に合わせてカスタマイズ）
 
 （βテスター募集の依頼1〜2文）
 
-ご検討のほど、よろしくお願いいたします。
+${effectiveProductUrl ? `詳しくは ${effectiveProductUrl} をご覧ください。\n\n` : ""}ご検討のほど、よろしくお願いいたします。
 
 - テンプレート感を出さない
 - 丁寧で簡潔なビジネス文体
 - 全体300字以内。長くなる場合は説明を省いて簡潔にする
-- 1文が長い場合は2文に分ける
-${urlInstruction}
-
-【重要：キーワードの扱い】
-- keywordsはあくまで参考情報。絶対にそのまま文中に貼り付けないこと
-- URLの後ろにカッコ書きで入れることも厳禁（例：「https://... （100名のテストユーザー　広告リスト）」は禁止）
-- キーワードの意味・価値を自然な日本語に意訳して使うこと
-  例：「100名のテストユーザー」→「初期ユーザーとともに改善中」
-  例：「広告リスト」→「見込み顧客の発掘」
-  例：「自動サーチAI」→「AIによる顧客探索」
 
 【絶対禁止：URL記載ルール】
 - https://spark-ai.jp/api/track/ を含むURLを文中に一切書かない
-- https://... の形でURLをそのまま文中に貼り付けない
-- 「詳細は〜をご覧ください」の形でURLを書かない
-- URLを記載する場合は「spark-ai.jp」のドメイン表記のみ可（例：「spark-ai.jpをご確認ください」）
+- https://... の形でURLをそのまま文中に貼り付けない（effectiveProductUrlを除く）
 
 件名不要。メール本文のみを出力してください。JSONや説明文は不要です。`
       : `あなたは共感力の高いGrowthハッカーです。
 以下の情報を元に自然なコメントを生成してください。
 
 プロダクト：${productLine}
-プロダクトURL：${displayProductUrl || campaign?.product_url || ""}
-${keywords ? `訴求ポイント（参考のみ・そのまま使用禁止）：${keywords}` : ""}
+${effectiveProductUrl ? `プロダクトURL：${effectiveProductUrl}` : ""}
+${keywords ? `【必ず盛り込む訴求ポイント】${keywords}\n上記の訴求ポイントをコメントの核として自然に組み込むこと。` : ""}
 対象投稿URL：${target.post_url}
 投稿内容：${target.post_content?.slice(0, 300) || ""}
 プラットフォーム：${target.platform}
 
 【ルール】
 ・${languageInstruction}
-・送信者名「${senderName}」は必ずそのままの文字で使用すること。絶対に翻訳・英訳・変換しないこと（例：「木」を"wood"にしない）
+・送信者名「${senderName}」は必ずそのままの文字で使用すること。絶対に翻訳・英訳・変換しないこと
 ・「${senderName}と申します」と自然に名乗る
 ・売り込みから始めない
 ・対象投稿の内容に具体的に触れる
 ・自然な会話調で書く
 ・最後は問いかけで終わる
 ・150文字以内
-・プロダクトについて最後に1文だけ自然に触れる
-・訴求ポイントのキーワードはそのまま使わない。「100名」「広告リスト」「自動サーチ」などの語句は禁止
-・URLの後ろにカッコ書きでキーワードを列挙しないこと（例：「https://... （100名　広告リスト）」は絶対禁止）
-・キーワードは意味を汲み取って自然な表現に意訳すること
-  例：「100名のテストユーザー」→「初期ユーザーとともに改善中」
-  例：「広告リスト」→「見込み顧客の発掘」
+・プロダクトと訴求ポイントについて最後に1文だけ自然に触れる
+・数字＋名詞（100名・50件等）は「多くの」「初期ユーザー」等に意訳する
+${effectiveProductUrl ? `・「詳しくは ${effectiveProductUrl} をご覧ください」を自然な形でコメント末尾に含める` : ""}
 
 【絶対禁止：URL記載ルール】
 - https://spark-ai.jp/api/track/ を含むURLを文中に一切書かない
-- https://... の形でURLをそのまま文中に貼り付けない
-- 「詳細は～をご覧ください」の形でURLを書かない
 
 JSONではなく、コメント本文のみを直接出力してください。余計な記号・引用符・括弧は不要です。`;
 
