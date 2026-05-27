@@ -1007,11 +1007,91 @@ Return ONLY this JSON format (no markdown, no explanation):
     console.log('[wantedly] block executing, platforms includes wantedly:', platforms.includes('wantedly'));
     if (platforms.includes("wantedly") && !limitReached && process.env.TAVILY_API_KEY) {
       try {
-        const wantedlyKeyword = searchQueries[0] || productDescription.slice(0, 40);
-        const wantedlyQueries = [
-          `site:wantedly.com/companies ${wantedlyKeyword} 募集`,
-          `site:wantedly.com ${wantedlyKeyword} 採用中`,
-        ];
+        // ── Step 1: Claudeでターゲット職種・業種を推論 ──
+        let wantedlyQueries: string[] = [];
+        const productName = (campaign?.product_name as string) || productDescription.slice(0, 30);
+        if (process.env.ANTHROPIC_API_KEY) {
+          try {
+            const inferRes = await fetch("https://api.anthropic.com/v1/messages", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "x-api-key": process.env.ANTHROPIC_API_KEY,
+                "anthropic-version": "2023-06-01",
+              },
+              body: JSON.stringify({
+                model: "claude-haiku-4-5-20251001",
+                max_tokens: 400,
+                system: "You must respond with valid JSON only. No markdown, no explanation. Start with { and end with }.",
+                messages: [{
+                  role: "user",
+                  content: `あなたはBtoBセールスの専門家です。
+以下の商品・サービスを導入したい企業をWantedlyで探します。
+
+商品: ${productName}
+商品説明: ${productDescription}
+
+以下をJSON形式で出力してください：
+{
+  "target_profile": {
+    "industries": ["業種1", "業種2"],
+    "company_size": "スタートアップ〜中小",
+    "pain_points": ["課題1", "課題2"]
+  },
+  "wantedly_queries": [
+    "検索ワード1",
+    "検索ワード2",
+    "検索ワード3"
+  ],
+  "reason": "なぜこの条件の会社が困っているか（1文）"
+}
+
+ルール：
+- wantedly_queriesは採用職種名で（例：「カスタマーサポート」「営業企画」）
+- 商品が解決する課題を抱えてそうな部門を採用している会社を狙う
+- クエリは3〜5個`,
+                }],
+              }),
+              signal: AbortSignal.timeout(10000),
+            });
+            if (inferRes.ok) {
+              const inferData = await inferRes.json();
+              const inferText = inferData.content?.[0]?.text || "";
+              const jsonMatch = inferText.match(/\{[\s\S]*\}/);
+              if (jsonMatch) {
+                const parsed = JSON.parse(jsonMatch[0]);
+                const rawQueries: string[] = Array.isArray(parsed.wantedly_queries) ? parsed.wantedly_queries : [];
+                const targetProfile = parsed.target_profile || {};
+                const reason = (parsed.reason as string) || "";
+                console.log(`[wantedly] Claude queries: ${rawQueries.join(", ")}`);
+                console.log(`[wantedly] reason: ${reason}`);
+                console.log(`[wantedly] industries: ${JSON.stringify(targetProfile.industries)} size: ${targetProfile.company_size}`);
+                // wantedly_queriesをTavily検索クエリに変換（採用職種名 → サイト検索）
+                wantedlyQueries = rawQueries.slice(0, 5).map((q: string) => `site:wantedly.com ${q} 採用 募集`);
+                // target_profileとreasonをキャンペーンに保存（メッセージ生成にも活用）
+                try {
+                  await getSupabase().from("campaigns").update({
+                    wantedly_target_profile: targetProfile,
+                    wantedly_reason: reason,
+                  }).eq("id", campaignId);
+                } catch { /* カラムが存在しなくても続行 */ }
+              }
+            }
+          } catch (claudeErr) {
+            console.warn("[wantedly] Claude inference failed, using fallback:", claudeErr);
+          }
+        }
+        // フォールバック: プロダクト説明ベースのシンプルクエリ
+        if (wantedlyQueries.length === 0) {
+          const fallbackKw = searchQueries[0] || productDescription.slice(0, 30);
+          wantedlyQueries = [
+            `site:wantedly.com ${fallbackKw} 採用`,
+            `site:wantedly.com/companies ${fallbackKw} 募集中`,
+          ];
+        }
+        console.log(`[wantedly] queries (${wantedlyQueries.length}):`, wantedlyQueries);
+
+        // ── Step 2: Tavilyで検索 ──
         for (const query of wantedlyQueries) {
           if (limitReached) break;
           console.log(`[wantedly] Tavily search: "${query}"`);
