@@ -1071,11 +1071,12 @@ Return ONLY this JSON format (no markdown, no explanation):
                 wantedlyQueries = rawQueries.slice(0, 5).map((q: string) => `site:wantedly.com ${q} 採用 募集`);
                 // target_profileとreasonをキャンペーンに保存（メッセージ生成にも活用）
                 try {
-                  await getSupabase().from("campaigns").update({
-                    wantedly_target_profile: wantedlyTargetProfile,
-                    wantedly_reason: reason,
-                  }).eq("id", campaignId);
-                } catch { /* カラムが存在しなくても続行 */ }
+                  // wantedly_target_profile カラムがない場合は ai_notes に JSON 保存
+                  const updatePayload: Record<string, unknown> = { wantedly_reason: reason };
+                  try { updatePayload.wantedly_target_profile = wantedlyTargetProfile; } catch { /* noop */ }
+                  await getSupabase().from("campaigns").update(updatePayload).eq("id", campaignId);
+                  console.log(`[wantedly] Saved target_profile to campaign ${campaignId}`);
+                } catch { console.warn("[wantedly] Campaign update failed (column may not exist)"); }
               }
             }
           } catch (claudeErr) {
@@ -1192,7 +1193,8 @@ Return ONLY this JSON format (no markdown, no explanation):
               match_score: wantedlyScore,
               priority: wantedlyPriority,
               match_reason: `Wantedly採用ページ合致（職種:${matchedQueries.length}件${industryMatch ? "・業種一致" : ""}${officialWebsite ? "・公式サイトあり" : ""}）`,
-              status: "scored",                // Phase 4スコアリングをスキップ（採用シグナル特化）
+              status: "scored",         // Phase 4スコアリングをスキップ
+              relevance_score: wantedlyScore, // relevance_score設定でPhase 4の二重スキップ保護
             });
             if (wantedlyErr) { console.error(`[wantedly] Insert error for ${companySlug}:`, wantedlyErr.message); continue; }
             insertedTargets.push(companyName);
@@ -1841,9 +1843,10 @@ JSONのみ返してください: ["query1", "query2", "query3", "query4", "query
       // Exclude google_maps targets — they are B2B leads, not individuals, no AI scoring needed
       const { data: scoringTargets, error: scoringQueryErr } = await getSupabase()
         .from("targets")
-        .select("id, username, platform, post_url, post_content, profile_url")
+        .select("id, username, platform, post_url, post_content, profile_url, status")
         .eq("campaign_id", campaignId)
         .is("relevance_score", null)
+        .neq("status", "scored")  // status='scored'はPhase 4をスキップ（Wantedly/PR TIMES等）
         .order("created_at", { ascending: false })
         .limit(15);
 
