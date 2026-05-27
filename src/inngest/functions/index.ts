@@ -1009,6 +1009,7 @@ Return ONLY this JSON format (no markdown, no explanation):
       try {
         // ── Step 1: Claudeでターゲット職種・業種を推論 ──
         let wantedlyQueries: string[] = [];
+        let wantedlyTargetProfile: Record<string, unknown> | null = null;
         const productName = (campaign?.product_name as string) || productDescription.slice(0, 30);
         if (process.env.ANTHROPIC_API_KEY) {
           try {
@@ -1061,17 +1062,17 @@ Return ONLY this JSON format (no markdown, no explanation):
               if (jsonMatch) {
                 const parsed = JSON.parse(jsonMatch[0]);
                 const rawQueries: string[] = Array.isArray(parsed.wantedly_queries) ? parsed.wantedly_queries : [];
-                const targetProfile = parsed.target_profile || {};
+                wantedlyTargetProfile = parsed.target_profile || {};
                 const reason = (parsed.reason as string) || "";
                 console.log(`[wantedly] Claude queries: ${rawQueries.join(", ")}`);
                 console.log(`[wantedly] reason: ${reason}`);
-                console.log(`[wantedly] industries: ${JSON.stringify(targetProfile.industries)} size: ${targetProfile.company_size}`);
+                console.log(`[wantedly] industries: ${JSON.stringify(wantedlyTargetProfile?.industries)} size: ${(wantedlyTargetProfile as Record<string,unknown>)?.company_size}`);
                 // wantedly_queriesをTavily検索クエリに変換（採用職種名 → サイト検索）
                 wantedlyQueries = rawQueries.slice(0, 5).map((q: string) => `site:wantedly.com ${q} 採用 募集`);
                 // target_profileとreasonをキャンペーンに保存（メッセージ生成にも活用）
                 try {
                   await getSupabase().from("campaigns").update({
-                    wantedly_target_profile: targetProfile,
+                    wantedly_target_profile: wantedlyTargetProfile,
                     wantedly_reason: reason,
                   }).eq("id", campaignId);
                 } catch { /* カラムが存在しなくても続行 */ }
@@ -1109,33 +1110,95 @@ Return ONLY this JSON format (no markdown, no explanation):
             if (insertedTargets.length >= remaining) { limitReached = true; break; }
             const url = (result.url as string) || "";
             if (!url.includes("wantedly.com")) continue;
-            // Extract company name from URL: wantedly.com/companies/companyname
+            // Extract company slug from URL: wantedly.com/companies/companyname
             const companyMatch = url.match(/wantedly\.com\/companies\/([a-zA-Z0-9_-]+)/);
             if (!companyMatch) continue;
             const companySlug = companyMatch[1];
             const dedupKey = `wantedly::${companySlug.toLowerCase()}`;
             if (dedupSet.has(dedupKey)) continue;
             dedupSet.add(dedupKey);
-            // コンテンツからウェブサイトURLを抽出
+
+            // ── Jina Readerで企業ページから会社名・公式サイトURLを取得 ──
+            const wantedlyPageUrl = `https://www.wantedly.com/companies/${companySlug}`;
+            let companyName = companySlug; // フォールバック
+            let officialWebsite: string | null = null;
+            try {
+              const jinaRes = await fetch(`https://r.jina.ai/${wantedlyPageUrl}`, {
+                headers: { Accept: "text/plain" },
+                signal: AbortSignal.timeout(8000),
+              });
+              if (jinaRes.ok) {
+                const md = await jinaRes.text();
+                // OGタイトル / h1 から会社名を取得
+                // Jina Readerはページのtitleを先頭に出力する傾向がある
+                const titleMatch = md.match(/^(?:Title:|#\s*)(.+)/m)
+                  || md.match(/^(.{2,40}(?:株式会社|合同会社|Inc\.|Co\.,|Ltd\.|LLC)[^\n]*)/m)
+                  || md.match(/^(.{2,40})\n/m);
+                if (titleMatch) {
+                  const raw = titleMatch[1].replace(/[|\-–—].*$/, "").replace(/Wantedly.*$/i, "").trim();
+                  if (raw.length >= 2 && raw.length <= 50) companyName = raw;
+                }
+                // 公式サイトURLを抽出（wantedly/SNS/汎用ドメインを除外）
+                const EXCLUDED = ["wantedly.com", "twitter.com", "x.com", "facebook.com", "instagram.com", "linkedin.com", "youtube.com", "line.me", "t.co", "apple.com", "google.com"];
+                const urlPattern = /https?:\/\/([a-zA-Z0-9.-]+\.[a-z]{2,})[^\s"')>\]<]*/g;
+                let m: RegExpExecArray | null;
+                while ((m = urlPattern.exec(md)) !== null) {
+                  const domain = m[1].toLowerCase();
+                  if (!EXCLUDED.some(ex => domain.includes(ex))) {
+                    officialWebsite = m[0].replace(/[.、。）\]]+$/, "");
+                    break;
+                  }
+                }
+                console.log(`[wantedly] Jina: name="${companyName}" site="${officialWebsite || "none"}"`);
+              }
+            } catch { console.log(`[wantedly] Jina failed for ${companySlug}, using slug`); }
+
+            // フォールバック: Tavilyのcontentから公式サイトを補完
             const content = (result.content as string) || "";
-            const websiteMatch = content.match(/https?:\/\/(?!wantedly\.com)[a-zA-Z0-9.-]+\.[a-z]{2,}[^\s"')>]*/);
-            const companyWebsite = websiteMatch ? websiteMatch[0] : null;
+            const title = (result.title as string) || "";
+            if (!officialWebsite) {
+              const fallbackMatch = content.match(/https?:\/\/(?!wantedly\.com)[a-zA-Z0-9.-]+\.[a-z]{2,}[^\s"')>]*/);
+              officialWebsite = fallbackMatch ? fallbackMatch[0].replace(/[.、。）\]]+$/, "") : null;
+            }
+
+            // ── target_profileマッチでスコアリング ──
+            // Wantedlyは「採用中の職種がターゲットに合致するか」で判定
+            const searchText = `${title} ${content}`.toLowerCase();
+            // Claude推論で生成したクエリキーワードとの合致度をチェック
+            const matchedQueries = wantedlyQueries.filter(q => {
+              const kw = q.replace(/site:wantedly\.com\S*\s*/g, "").replace(/採用|募集/g, "").trim().toLowerCase();
+              return kw && searchText.includes(kw);
+            });
+            // 業種・規模マッチは target_profile から取得
+            const targetIndustries: string[] = Array.isArray(wantedlyTargetProfile?.industries)
+              ? wantedlyTargetProfile.industries as string[] : [];
+            const industryMatch = targetIndustries.some(ind => searchText.includes(ind.toLowerCase()));
+            // スコア計算: 職種マッチ(0-60) + 業種マッチ(20) + 公式サイトあり(20)
+            const roleScore = Math.min(60, matchedQueries.length * 20);
+            const industryScore = industryMatch ? 20 : 0;
+            const websiteScore = officialWebsite ? 20 : 0;
+            const wantedlyScore = roleScore + industryScore + websiteScore;
+            const wantedlyPriority = wantedlyScore >= 70 ? "A" : wantedlyScore >= 50 ? "B" : "C";
+
+            console.log(`[wantedly] ${companyName}: score=${wantedlyScore} (role=${roleScore} industry=${industryScore} web=${websiteScore}) priority=${wantedlyPriority}`);
             const { error: wantedlyErr } = await getSupabase().from("targets").insert({
               campaign_id: campaignId, platform: "wantedly",
-              username: companySlug,
-              profile_url: `https://www.wantedly.com/companies/${companySlug}`,
+              username: companyName,           // ← 正式会社名（Jina Readerから取得）
+              profile_url: wantedlyPageUrl,
               post_url: url,
-              website: companyWebsite,
-              contact_url: companyWebsite,  // Playwright フォーム送信用
-              post_content: content.slice(0, 500),
-              match_score: companyWebsite ? 65 : 50,
-              match_reason: `Wantedly企業${companyWebsite ? "（Webサイトあり）" : ""}`,
-              status: "pending",
+              website: officialWebsite,        // ← 公式サイトURL
+              contact_url: officialWebsite,    // ← フォーム送信先（公式サイトのお問い合わせ）
+              post_content: `${title}\n${content}`.slice(0, 500),
+              match_score: wantedlyScore,
+              priority: wantedlyPriority,
+              match_reason: `Wantedly採用ページ合致（職種:${matchedQueries.length}件${industryMatch ? "・業種一致" : ""}${officialWebsite ? "・公式サイトあり" : ""}）`,
+              status: "scored",                // Phase 4スコアリングをスキップ（採用シグナル特化）
             });
             if (wantedlyErr) { console.error(`[wantedly] Insert error for ${companySlug}:`, wantedlyErr.message); continue; }
-            insertedTargets.push(companySlug);
-            console.log(`[wantedly] Inserted: ${companySlug} website=${companyWebsite || "none"}`);
+            insertedTargets.push(companyName);
+            console.log(`[wantedly] Inserted: ${companyName} score=${wantedlyScore} site=${officialWebsite || "none"}`);
           }
+
         }
       } catch (err) { console.error("[wantedly] error:", err); }
     }
