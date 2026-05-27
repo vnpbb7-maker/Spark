@@ -1182,13 +1182,84 @@ Return ONLY this JSON format (no markdown, no explanation):
             const wantedlyPriority = wantedlyScore >= 70 ? "A" : wantedlyScore >= 50 ? "B" : "C";
 
             console.log(`[wantedly] ${companyName}: score=${wantedlyScore} (role=${roleScore} industry=${industryScore} web=${websiteScore}) priority=${wantedlyPriority}`);
+
+            // ── 公式サイトからコンタクトURLを深掘り ──
+            // 優先度: フォームページURL > mailto: > 公式サイトトップ
+            let contactUrl: string | null = officialWebsite;
+            if (officialWebsite) {
+              try {
+                const siteOrigin = new URL(officialWebsite).origin;
+                let foundContactUrl: string | null = null;
+                let foundMailto: string | null = null;
+
+                // Step A: Firecrawlでトップページのリンクを解析
+                if (process.env.FIRECRAWL_API_KEY && !foundContactUrl) {
+                  try {
+                    const fcRes = await fetch("https://api.firecrawl.dev/v1/scrape", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${process.env.FIRECRAWL_API_KEY}` },
+                      body: JSON.stringify({ url: officialWebsite, formats: ["links", "markdown"], onlyMainContent: false }),
+                      signal: AbortSignal.timeout(10000),
+                    });
+                    if (fcRes.ok) {
+                      const fcData = await fcRes.json();
+                      const links: string[] = fcData.data?.links || [];
+                      const md: string = fcData.data?.markdown || "";
+                      // リンクテキスト・URLからお問い合わせページを探す
+                      const CONTACT_PATTERNS = /お問い合わせ|contact|inquiry|相談|資料請求|問い合わせ|お問合せ/i;
+                      foundContactUrl = links.find(l => CONTACT_PATTERNS.test(l)) || null;
+                      // markdownからmailto:を抽出
+                      const mailtoMatch = md.match(/mailto:([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-z]{2,})/i);
+                      if (mailtoMatch) foundMailto = mailtoMatch[0];
+                      console.log(`[wantedly] Firecrawl links: ${links.length} found, contact: ${foundContactUrl || "none"} mailto: ${foundMailto || "none"}`);
+                    }
+                  } catch { console.log(`[wantedly] Firecrawl scan failed for ${officialWebsite}`); }
+                }
+
+                // Step B: Jina Readerでお問い合わせリンクを探索（Firecrawl未設定時）
+                if (!foundContactUrl && !process.env.FIRECRAWL_API_KEY) {
+                  try {
+                    const jinaTopRes = await fetch(`https://r.jina.ai/${officialWebsite}`, {
+                      headers: { Accept: "text/plain" }, signal: AbortSignal.timeout(7000),
+                    });
+                    if (jinaTopRes.ok) {
+                      const topMd = await jinaTopRes.text();
+                      const CONTACT_RE = /\[(?:お問い合わせ|Contact|Inquiry|相談|資料請求)[^\]]*\]\((https?:\/\/[^\)]+)\)/i;
+                      const contactMatch = topMd.match(CONTACT_RE);
+                      if (contactMatch) foundContactUrl = contactMatch[1];
+                      const mailtoMatch = topMd.match(/mailto:([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-z]{2,})/i);
+                      if (mailtoMatch) foundMailto = mailtoMatch[0];
+                    }
+                  } catch { /* noop */ }
+                }
+
+                // Step C: 典型パスをHEADリクエストで確認
+                if (!foundContactUrl) {
+                  const TYPICAL_PATHS = ["/contact", "/inquiry", "/request", "/contact-us", "/お問い合わせ", "/form"];
+                  for (const path of TYPICAL_PATHS) {
+                    try {
+                      const testUrl = `${siteOrigin}${path}`;
+                      const headRes = await fetch(testUrl, { method: "HEAD", signal: AbortSignal.timeout(4000), redirect: "follow" });
+                      if (headRes.ok) { foundContactUrl = testUrl; console.log(`[wantedly] Typical path found: ${testUrl}`); break; }
+                    } catch { /* skip */ }
+                  }
+                }
+
+                // 最終的なcontact_urlを決定
+                contactUrl = foundContactUrl || foundMailto || officialWebsite;
+                console.log(`[wantedly] contact_url resolved: ${contactUrl}`);
+              } catch (contactErr) {
+                console.log(`[wantedly] Contact discovery failed: ${contactErr}, using officialWebsite`);
+              }
+            }
+
             const { error: wantedlyErr } = await getSupabase().from("targets").insert({
               campaign_id: campaignId, platform: "wantedly",
               username: companyName,           // ← 正式会社名（Jina Readerから取得）
               profile_url: wantedlyPageUrl,
               post_url: url,
               website: officialWebsite,        // ← 公式サイトURL
-              contact_url: officialWebsite,    // ← フォーム送信先（公式サイトのお問い合わせ）
+              contact_url: contactUrl,          // ← フォーム/mailto/公式サイトトップ（優先度順）
               post_content: `${title}\n${content}`.slice(0, 500),
               match_score: wantedlyScore,
               priority: wantedlyPriority,
