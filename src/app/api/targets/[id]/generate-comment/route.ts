@@ -77,14 +77,28 @@ export async function POST(
     // 表示用URLは常にドメインのみ（spark-ai.jp）
     const displayProductUrl = "spark-ai.jp";
 
+    // Wantedly推論で保存したtarget_profile/reasonを取得
+    const wantedlyReason = (campaign?.wantedly_reason as string) || "";
+    const wantedlyTargetProfile = campaign?.wantedly_target_profile as Record<string, unknown> | null || null;
+    // 接触理由ブロック（reasonがある場合のみ注入）
+    const contactReasonBlock = wantedlyReason
+      ? `\n接触理由: ${wantedlyReason}\n
+以下の接触理由を参考に、なぜ貴社にご連絡したかを冒頭または本文中に自然に織り込んでください。
+【文体ルール】
+- 「〜されているとのことで」「〜に取り組まれていると拝察し」など推量・敬意を含む表現を使う
+- 決して断定しない（「困っているはずです」はNG）
+- 売り込み色を抑え、共感・提案のトーンで\n`
+      : "";
+
     // ドメイン表記でURLを含めるよう指示（https://形式・トラッキングURLは禁止）
     const urlInstruction = `\n※本文中に「spark-ai.jp」というドメイン名を自然な形で1回含めること。例：「spark-ai.jp でご確認いただけます」「spark-ai.jp をぜひご覧ください」\n※「https://」から始まる形式では書かないこと。`;
+    console.log(`[generate-comment] wantedlyReason=${wantedlyReason.slice(0, 60)} targetProfile=${JSON.stringify(wantedlyTargetProfile)?.slice(0, 80)}`);
 
     // ── プレーンテキスト直接出力（JSON prefill廃止）──
     const promptContent = isPRTimes
       ? `あなたはビジネスメールのプロです。
 以下の情報を元に、企業お問い合わせフォームへのメッセージを生成してください。
-
+${contactReasonBlock}
 送信者: ${senderName}
 自社サービス: ${productLine}
 ${keywords ? `【必ず含める訴求ポイント】${keywords}` : ""}
@@ -93,6 +107,7 @@ ${keywords ? `【必ず含める訴求ポイント】${keywords}` : ""}
 
 【厳守ルール】
 ・書き出しは「${senderName}と申します。」で始める
+・接触理由がある場合は「〜に取り組まれているとのことで、ご連絡いたしました。」のように冒頭で自然に触れる
 ・相手のプレスリリース内容（新サービス・新規事業）に1文触れる
 ・自社サービスの訴求ポイント（上記【必ず含める訴求ポイント】）を自然な形で必ず1文に盛り込む
 ・締めは「ご検討いただけますと幸いです。」または同等の丁寧な結び
@@ -107,7 +122,7 @@ ${effectiveProductUrl ? `・本文末尾付近に「詳しくは ${effectiveProd
       : isB2B || isFormBusiness
       ? `あなたは優秀な日本語ビジネスメールライターです。
 以下の情報をもとに、自然なビジネスメールを生成してください。
-
+${contactReasonBlock}
 【送信先企業】${companyName}
 【送信者名】${senderName}
 【自社サービス・プロダクト説明】${productLine}
@@ -141,7 +156,7 @@ ${effectiveProductUrl ? `詳しくは ${effectiveProductUrl} をご覧くださ�
 件名不要。メール本文のみを出力してください。JSONや説明文は不要です。`
       : `あなたは共感力の高いGrowthハッカーです。
 以下の情報を元に自然なコメントを生成してください。
-
+${contactReasonBlock}
 プロダクト：${productLine}
 ${effectiveProductUrl ? `プロダクトURL：${effectiveProductUrl}` : ""}
 ${keywords ? `【必ず盛り込む訴求ポイント】${keywords}\n上記の訴求ポイントをコメントの核として自然に組み込むこと。` : ""}
