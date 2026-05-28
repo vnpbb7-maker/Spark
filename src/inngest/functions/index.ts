@@ -1119,10 +1119,23 @@ Return ONLY this JSON format (no markdown, no explanation):
             if (dedupSet.has(dedupKey)) continue;
             dedupSet.add(dedupKey);
 
-            // ── Jina Readerで企業ページから会社名・公式サイトURLを取得 ──
+            // ── Step1: Jina ReaderでWantedly企業ページから会社名・公式サイトURLを取得 ──
             const wantedlyPageUrl = `https://www.wantedly.com/companies/${companySlug}`;
-            let companyName = companySlug; // フォールバック
+            let companyName = companySlug;
             let officialWebsite: string | null = null;
+
+            // 公式サイトURL判定: wantedly/SNS/汎用サービス以外のドメイン
+            const EXCLUDED_DOMAINS = ["wantedly.com", "twitter.com", "x.com", "facebook.com",
+              "instagram.com", "linkedin.com", "youtube.com", "line.me", "t.co",
+              "apple.com", "google.com", "notion.so", "github.com"];
+            const IMAGE_EXT_RE = /\.(png|jpg|jpeg|gif|svg|webp|ico|bmp|pdf)(\?.*)?$/i;
+            const isOfficialSite = (u: string) => {
+              try {
+                const domain = new URL(u).hostname.toLowerCase();
+                return !EXCLUDED_DOMAINS.some(ex => domain.includes(ex)) && !IMAGE_EXT_RE.test(u);
+              } catch { return false; }
+            };
+
             try {
               const jinaRes = await fetch(`https://r.jina.ai/${wantedlyPageUrl}`, {
                 headers: { Accept: "text/plain" },
@@ -1130,8 +1143,7 @@ Return ONLY this JSON format (no markdown, no explanation):
               });
               if (jinaRes.ok) {
                 const md = await jinaRes.text();
-                // OGタイトル / h1 から会社名を取得
-                // Jina Readerはページのtitleを先頭に出力する傾向がある
+                // 会社名: OGタイトル / 法人格パターン / 先頭行
                 const titleMatch = md.match(/^(?:Title:|#\s*)(.+)/m)
                   || md.match(/^(.{2,40}(?:株式会社|合同会社|Inc\.|Co\.,|Ltd\.|LLC)[^\n]*)/m)
                   || md.match(/^(.{2,40})\n/m);
@@ -1139,14 +1151,15 @@ Return ONLY this JSON format (no markdown, no explanation):
                   const raw = titleMatch[1].replace(/[|\-–—].*$/, "").replace(/Wantedly.*$/i, "").trim();
                   if (raw.length >= 2 && raw.length <= 50) companyName = raw;
                 }
-                // 公式サイトURLを抽出（wantedly/SNS/汎用ドメインを除外）
-                const EXCLUDED = ["wantedly.com", "twitter.com", "x.com", "facebook.com", "instagram.com", "linkedin.com", "youtube.com", "line.me", "t.co", "apple.com", "google.com"];
+                // 公式サイトURL: wantedly.com以外の最初のhttps URLを取得
+                // href="..." や [text](url) の形式から探す（wantedly内リンクは除外）
                 const urlPattern = /https?:\/\/([a-zA-Z0-9.-]+\.[a-z]{2,})[^\s"')>\]<]*/g;
                 let m: RegExpExecArray | null;
                 while ((m = urlPattern.exec(md)) !== null) {
-                  const domain = m[1].toLowerCase();
-                  if (!EXCLUDED.some(ex => domain.includes(ex))) {
-                    officialWebsite = m[0].replace(/[.、。）\]]+$/, "");
+                  const candidate = m[0].replace(/[.、。）\]]+$/, "");
+                  if (isOfficialSite(candidate)) {
+                    // wantedlyページ内のリンクではなく独立したドメインか確認
+                    officialWebsite = candidate;
                     break;
                   }
                 }
@@ -1158,54 +1171,47 @@ Return ONLY this JSON format (no markdown, no explanation):
             const content = (result.content as string) || "";
             const title = (result.title as string) || "";
             if (!officialWebsite) {
-              const fallbackMatch = content.match(/https?:\/\/(?!wantedly\.com)[a-zA-Z0-9.-]+\.[a-z]{2,}[^\s"')>]*/);
-              officialWebsite = fallbackMatch ? fallbackMatch[0].replace(/[.、。）\]]+$/, "") : null;
+              const fallbackMatch = content.match(/https?:\/\/([a-zA-Z0-9.-]+\.[a-z]{2,})[^\s"')>]*/);
+              if (fallbackMatch) {
+                const candidate = fallbackMatch[0].replace(/[.、。）\]]+$/, "");
+                if (isOfficialSite(candidate)) officialWebsite = candidate;
+              }
             }
 
             // ── target_profileマッチでスコアリング ──
-            // Wantedlyは「採用中の職種がターゲットに合致するか」で判定
             const searchText = `${title} ${content}`.toLowerCase();
-            // Claude推論で生成したクエリキーワードとの合致度をチェック
             const matchedQueries = wantedlyQueries.filter(q => {
               const kw = q.replace(/site:wantedly\.com\S*\s*/g, "").replace(/採用|募集/g, "").trim().toLowerCase();
               return kw && searchText.includes(kw);
             });
-            // 業種・規模マッチは target_profile から取得
             const targetIndustries: string[] = Array.isArray(wantedlyTargetProfile?.industries)
               ? wantedlyTargetProfile.industries as string[] : [];
             const industryMatch = targetIndustries.some(ind => searchText.includes(ind.toLowerCase()));
-            // スコア計算: 職種マッチ(0-60) + 業種マッチ(20) + 公式サイトあり(20)
             const roleScore = Math.min(60, matchedQueries.length * 20);
             const industryScore = industryMatch ? 20 : 0;
             const websiteScore = officialWebsite ? 20 : 0;
             const wantedlyScore = roleScore + industryScore + websiteScore;
             const wantedlyPriority = wantedlyScore >= 70 ? "A" : wantedlyScore >= 50 ? "B" : "C";
-
             console.log(`[wantedly] ${companyName}: score=${wantedlyScore} (role=${roleScore} industry=${industryScore} web=${websiteScore}) priority=${wantedlyPriority}`);
 
-            // ── 公式サイトからコンタクトURLを深掘り ──
-            // 優先度: フォームページURL > mailto: > 公式サイトトップ
-            // ── 公式サイトからコンタクトURL（お問い合わせページ）を探索 ──
-            // トップページ・画像・SNSは絶対に入れない。お問い合わせページのみ。
+            // ── Step2-5: 公式サイトからお問い合わせページURLを探索 ──
+            // 絶対にwantedly.comや画像URLを入れない
             let contactUrl: string | null = null;
             if (officialWebsite) {
               try {
                 const siteOrigin = new URL(officialWebsite).origin;
-
-                // お問い合わせURLの判定ヘルパー
                 const CONTACT_PATH_RE = /\/(?:contact|inquiry|inquire|form|お問い合わせ|問い合わせ|相談|資料請求|request)[^"'\s]*/i;
-                const IMAGE_EXT_RE = /\.(png|jpg|jpeg|gif|svg|webp|ico|bmp|pdf)(\?.*)?$/i;
-                const INVALID_DOMAINS = ["wantedly.com", "twitter.com", "x.com", "facebook.com", "instagram.com", "linkedin.com", "youtube.com", "line.me"];
                 const isContactUrl = (u: string) => {
                   if (!u || IMAGE_EXT_RE.test(u)) return false;
-                  if (INVALID_DOMAINS.some(d => u.includes(d))) return false;
+                  try {
+                    const d = new URL(u).hostname.toLowerCase();
+                    if (EXCLUDED_DOMAINS.some(ex => d.includes(ex))) return false;
+                  } catch { return false; }
                   return CONTACT_PATH_RE.test(u);
                 };
-
-                let foundContactUrl: string | null = null;
                 let foundMailto: string | null = null;
 
-                // Step A: Firecrawlでトップページのリンクを解析
+                // Step2: Firecrawlで公式サイトのリンクを解析
                 if (process.env.FIRECRAWL_API_KEY) {
                   try {
                     const fcRes = await fetch("https://api.firecrawl.dev/v1/scrape", {
@@ -1218,26 +1224,23 @@ Return ONLY this JSON format (no markdown, no explanation):
                       const fcData = await fcRes.json();
                       const links: string[] = fcData.data?.links || [];
                       const md: string = fcData.data?.markdown || "";
-                      // パスにお問い合わせ系キーワードを含むURLのみ抽出
-                      foundContactUrl = links.find(l => isContactUrl(l)) || null;
-                      // markdown内のmarkdownリンク [xxx](url) からも探す
-                      if (!foundContactUrl) {
+                      contactUrl = links.find(l => isContactUrl(l)) || null;
+                      if (!contactUrl) {
                         const mdLinkRe = /\]\((https?:\/\/[^\)]+)\)/g;
-                        let m: RegExpExecArray | null;
-                        while ((m = mdLinkRe.exec(md)) !== null) {
-                          if (isContactUrl(m[1])) { foundContactUrl = m[1]; break; }
+                        let lm: RegExpExecArray | null;
+                        while ((lm = mdLinkRe.exec(md)) !== null) {
+                          if (isContactUrl(lm[1])) { contactUrl = lm[1]; break; }
                         }
                       }
-                      // mailto:を抽出
                       const mailtoMatch = md.match(/mailto:([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-z]{2,})/i);
                       if (mailtoMatch) foundMailto = mailtoMatch[0];
-                      console.log(`[wantedly] Firecrawl: ${links.length} links, contact=${foundContactUrl || "none"} mailto=${foundMailto || "none"}`);
+                      console.log(`[wantedly] Firecrawl: ${links.length} links, contact=${contactUrl || "none"}`);
                     }
                   } catch { console.log(`[wantedly] Firecrawl failed for ${officialWebsite}`); }
                 }
 
-                // Step B: Jina Readerでお問い合わせリンクを探索（Firecrawl未設定時）
-                if (!foundContactUrl && !process.env.FIRECRAWL_API_KEY) {
+                // Step3: Jina Readerで公式サイトを解析（Firecrawl未設定 or 未発見時）
+                if (!contactUrl && !process.env.FIRECRAWL_API_KEY) {
                   try {
                     const jinaTopRes = await fetch(`https://r.jina.ai/${officialWebsite}`, {
                       headers: { Accept: "text/plain" }, signal: AbortSignal.timeout(7000),
@@ -1245,34 +1248,39 @@ Return ONLY this JSON format (no markdown, no explanation):
                     if (jinaTopRes.ok) {
                       const topMd = await jinaTopRes.text();
                       const mdLinkRe = /\]\((https?:\/\/[^\)]+)\)/g;
-                      let m: RegExpExecArray | null;
-                      while ((m = mdLinkRe.exec(topMd)) !== null) {
-                        if (isContactUrl(m[1])) { foundContactUrl = m[1]; break; }
+                      let lm: RegExpExecArray | null;
+                      while ((lm = mdLinkRe.exec(topMd)) !== null) {
+                        if (isContactUrl(lm[1])) { contactUrl = lm[1]; break; }
                       }
-                      const mailtoMatch = topMd.match(/mailto:([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-z]{2,})/i);
-                      if (mailtoMatch && !foundMailto) foundMailto = mailtoMatch[0];
+                      if (!foundMailto) {
+                        const mm = topMd.match(/mailto:([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-z]{2,})/i);
+                        if (mm) foundMailto = mm[0];
+                      }
                     }
                   } catch { /* noop */ }
                 }
 
-                // Step C: 典型パスをHEADリクエストで確認（200が返ればお問い合わせページと判断）
-                if (!foundContactUrl) {
+                // Step4: 典型パスをHEADリクエストで確認
+                if (!contactUrl) {
                   const TYPICAL_PATHS = ["/contact", "/contact-us", "/inquiry", "/inquire", "/form", "/お問い合わせ"];
                   for (const path of TYPICAL_PATHS) {
                     try {
                       const testUrl = `${siteOrigin}${path}`;
                       const headRes = await fetch(testUrl, { method: "HEAD", signal: AbortSignal.timeout(4000), redirect: "follow" });
-                      if (headRes.ok) { foundContactUrl = testUrl; console.log(`[wantedly] Typical path hit: ${testUrl}`); break; }
+                      if (headRes.ok) { contactUrl = testUrl; console.log(`[wantedly] Typical path hit: ${testUrl}`); break; }
                     } catch { /* skip */ }
                   }
                 }
 
-                // 最終決定: フォームURL > mailto > null（トップページは絶対に入れない）
-                contactUrl = foundContactUrl || foundMailto || null;
-                console.log(`[wantedly] contact_url: ${contactUrl || "null (no contact page found)"}`);
+                // Step5: フォールバックは公式サイトのトップページ（Playwrightがフォームを探す）
+                if (!contactUrl) {
+                  contactUrl = foundMailto || officialWebsite;
+                  console.log(`[wantedly] Using fallback contact_url: ${contactUrl}`);
+                }
+                console.log(`[wantedly] contact_url final: ${contactUrl}`);
               } catch (contactErr) {
                 console.log(`[wantedly] Contact discovery error: ${contactErr}`);
-                contactUrl = null;
+                contactUrl = officialWebsite; // エラー時は公式サイトトップ
               }
             }
 
