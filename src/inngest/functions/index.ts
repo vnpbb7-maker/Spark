@@ -1185,15 +1185,28 @@ Return ONLY this JSON format (no markdown, no explanation):
 
             // ── 公式サイトからコンタクトURLを深掘り ──
             // 優先度: フォームページURL > mailto: > 公式サイトトップ
-            let contactUrl: string | null = officialWebsite;
+            // ── 公式サイトからコンタクトURL（お問い合わせページ）を探索 ──
+            // トップページ・画像・SNSは絶対に入れない。お問い合わせページのみ。
+            let contactUrl: string | null = null;
             if (officialWebsite) {
               try {
                 const siteOrigin = new URL(officialWebsite).origin;
+
+                // お問い合わせURLの判定ヘルパー
+                const CONTACT_PATH_RE = /\/(?:contact|inquiry|inquire|form|お問い合わせ|問い合わせ|相談|資料請求|request)[^"'\s]*/i;
+                const IMAGE_EXT_RE = /\.(png|jpg|jpeg|gif|svg|webp|ico|bmp|pdf)(\?.*)?$/i;
+                const INVALID_DOMAINS = ["wantedly.com", "twitter.com", "x.com", "facebook.com", "instagram.com", "linkedin.com", "youtube.com", "line.me"];
+                const isContactUrl = (u: string) => {
+                  if (!u || IMAGE_EXT_RE.test(u)) return false;
+                  if (INVALID_DOMAINS.some(d => u.includes(d))) return false;
+                  return CONTACT_PATH_RE.test(u);
+                };
+
                 let foundContactUrl: string | null = null;
                 let foundMailto: string | null = null;
 
                 // Step A: Firecrawlでトップページのリンクを解析
-                if (process.env.FIRECRAWL_API_KEY && !foundContactUrl) {
+                if (process.env.FIRECRAWL_API_KEY) {
                   try {
                     const fcRes = await fetch("https://api.firecrawl.dev/v1/scrape", {
                       method: "POST",
@@ -1205,15 +1218,22 @@ Return ONLY this JSON format (no markdown, no explanation):
                       const fcData = await fcRes.json();
                       const links: string[] = fcData.data?.links || [];
                       const md: string = fcData.data?.markdown || "";
-                      // リンクテキスト・URLからお問い合わせページを探す
-                      const CONTACT_PATTERNS = /お問い合わせ|contact|inquiry|相談|資料請求|問い合わせ|お問合せ/i;
-                      foundContactUrl = links.find(l => CONTACT_PATTERNS.test(l)) || null;
-                      // markdownからmailto:を抽出
+                      // パスにお問い合わせ系キーワードを含むURLのみ抽出
+                      foundContactUrl = links.find(l => isContactUrl(l)) || null;
+                      // markdown内のmarkdownリンク [xxx](url) からも探す
+                      if (!foundContactUrl) {
+                        const mdLinkRe = /\]\((https?:\/\/[^\)]+)\)/g;
+                        let m: RegExpExecArray | null;
+                        while ((m = mdLinkRe.exec(md)) !== null) {
+                          if (isContactUrl(m[1])) { foundContactUrl = m[1]; break; }
+                        }
+                      }
+                      // mailto:を抽出
                       const mailtoMatch = md.match(/mailto:([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-z]{2,})/i);
                       if (mailtoMatch) foundMailto = mailtoMatch[0];
-                      console.log(`[wantedly] Firecrawl links: ${links.length} found, contact: ${foundContactUrl || "none"} mailto: ${foundMailto || "none"}`);
+                      console.log(`[wantedly] Firecrawl: ${links.length} links, contact=${foundContactUrl || "none"} mailto=${foundMailto || "none"}`);
                     }
-                  } catch { console.log(`[wantedly] Firecrawl scan failed for ${officialWebsite}`); }
+                  } catch { console.log(`[wantedly] Firecrawl failed for ${officialWebsite}`); }
                 }
 
                 // Step B: Jina Readerでお問い合わせリンクを探索（Firecrawl未設定時）
@@ -1224,36 +1244,35 @@ Return ONLY this JSON format (no markdown, no explanation):
                     });
                     if (jinaTopRes.ok) {
                       const topMd = await jinaTopRes.text();
-                      const CONTACT_RE = /\[(?:お問い合わせ|Contact|Inquiry|相談|資料請求)[^\]]*\]\((https?:\/\/[^\)]+)\)/i;
-                      const contactMatch = topMd.match(CONTACT_RE);
-                      if (contactMatch) foundContactUrl = contactMatch[1];
+                      const mdLinkRe = /\]\((https?:\/\/[^\)]+)\)/g;
+                      let m: RegExpExecArray | null;
+                      while ((m = mdLinkRe.exec(topMd)) !== null) {
+                        if (isContactUrl(m[1])) { foundContactUrl = m[1]; break; }
+                      }
                       const mailtoMatch = topMd.match(/mailto:([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-z]{2,})/i);
-                      if (mailtoMatch) foundMailto = mailtoMatch[0];
+                      if (mailtoMatch && !foundMailto) foundMailto = mailtoMatch[0];
                     }
                   } catch { /* noop */ }
                 }
 
-                // Step C: 典型パスをHEADリクエストで確認
+                // Step C: 典型パスをHEADリクエストで確認（200が返ればお問い合わせページと判断）
                 if (!foundContactUrl) {
-                  const TYPICAL_PATHS = ["/contact", "/inquiry", "/request", "/contact-us", "/お問い合わせ", "/form"];
+                  const TYPICAL_PATHS = ["/contact", "/contact-us", "/inquiry", "/inquire", "/form", "/お問い合わせ"];
                   for (const path of TYPICAL_PATHS) {
                     try {
                       const testUrl = `${siteOrigin}${path}`;
                       const headRes = await fetch(testUrl, { method: "HEAD", signal: AbortSignal.timeout(4000), redirect: "follow" });
-                      if (headRes.ok) { foundContactUrl = testUrl; console.log(`[wantedly] Typical path found: ${testUrl}`); break; }
+                      if (headRes.ok) { foundContactUrl = testUrl; console.log(`[wantedly] Typical path hit: ${testUrl}`); break; }
                     } catch { /* skip */ }
                   }
                 }
 
-                // 最終的なcontact_urlを決定（Wantedly/SNSドメインは除外）
-                const INVALID_DOMAINS = ["wantedly.com", "twitter.com", "x.com", "facebook.com", "instagram.com", "linkedin.com"];
-                const isValidContact = (u: string | null) => u && !INVALID_DOMAINS.some(d => u.includes(d));
-                contactUrl = (isValidContact(foundContactUrl) ? foundContactUrl : null)
-                  || foundMailto
-                  || (isValidContact(officialWebsite) ? officialWebsite : null);
-                console.log(`[wantedly] contact_url resolved: ${contactUrl || "none (no valid contact found)"}`);
+                // 最終決定: フォームURL > mailto > null（トップページは絶対に入れない）
+                contactUrl = foundContactUrl || foundMailto || null;
+                console.log(`[wantedly] contact_url: ${contactUrl || "null (no contact page found)"}`);
               } catch (contactErr) {
-                console.log(`[wantedly] Contact discovery failed: ${contactErr}, using officialWebsite`);
+                console.log(`[wantedly] Contact discovery error: ${contactErr}`);
+                contactUrl = null;
               }
             }
 
