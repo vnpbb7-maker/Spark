@@ -626,7 +626,11 @@ ${updated[i].platform}での投稿を拝見し、${productDesc.slice(0, 60)}${kw
                     <a
                       href={(t.contact_url || t.website || t.profile_url || (t as Record<string, unknown>).post_url as string) || "#"}
                       target="_blank" rel="noopener noreferrer"
-                      onClick={() => setStatus(t.id, "sent")}
+                      onClick={e => {
+                        const url = t.contact_url || t.website || t.profile_url || (t as Record<string, unknown>).post_url as string;
+                        if (!url) { e.preventDefault(); return; }
+                        // ステータス更新は行わない（開くだけ）
+                      }}
                       style={{
                         background: "rgba(255,214,10,0.08)", border: "1px solid rgba(255,214,10,0.2)",
                         borderRadius: "7px", padding: "5px 12px", fontSize: "10px", fontWeight: 600,

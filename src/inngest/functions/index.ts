@@ -1100,7 +1100,7 @@ Return ONLY this JSON format (no markdown, no explanation):
           const tavilyRes = await fetch("https://api.tavily.com/search", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ api_key: process.env.TAVILY_API_KEY, query, search_depth: "basic", max_results: 8, include_domains: ["wantedly.com"] }),
+            body: JSON.stringify({ api_key: process.env.TAVILY_API_KEY, query, search_depth: "basic", max_results: 20, include_domains: ["wantedly.com"] }),
             signal: AbortSignal.timeout(10000),
           });
           if (!tavilyRes.ok) continue;
@@ -1245,9 +1245,13 @@ Return ONLY this JSON format (no markdown, no explanation):
                   }
                 }
 
-                // 最終的なcontact_urlを決定
-                contactUrl = foundContactUrl || foundMailto || officialWebsite;
-                console.log(`[wantedly] contact_url resolved: ${contactUrl}`);
+                // 最終的なcontact_urlを決定（Wantedly/SNSドメインは除外）
+                const INVALID_DOMAINS = ["wantedly.com", "twitter.com", "x.com", "facebook.com", "instagram.com", "linkedin.com"];
+                const isValidContact = (u: string | null) => u && !INVALID_DOMAINS.some(d => u.includes(d));
+                contactUrl = (isValidContact(foundContactUrl) ? foundContactUrl : null)
+                  || foundMailto
+                  || (isValidContact(officialWebsite) ? officialWebsite : null);
+                console.log(`[wantedly] contact_url resolved: ${contactUrl || "none (no valid contact found)"}`);
               } catch (contactErr) {
                 console.log(`[wantedly] Contact discovery failed: ${contactErr}, using officialWebsite`);
               }
