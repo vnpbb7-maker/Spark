@@ -40,6 +40,13 @@ const DM_URLS: Record<string, (username: string) => string> = {
 
 type Tab = "all" | "email" | "dm" | "sent" | "skipped" | "no_contact";
 
+// Wantedlyのcontact_urlが無効（nullまたはwantedly.comを含む）か判定
+const isInvalidWantedlyContact = (contact_url: string | null): boolean => {
+  if (!contact_url) return true;
+  try { return new URL(contact_url).hostname.toLowerCase().includes("wantedly.com"); }
+  catch { return true; }
+};
+
 export default function OutreachPage() {
   const router = useRouter();
   const { id: campaignId } = useParams<{ id: string }>();
@@ -66,6 +73,8 @@ export default function OutreachPage() {
   const [idsLoaded, setIdsLoaded] = useState(false);
   const [fixingNames, setFixingNames] = useState(false);
   const [fixingContactId, setFixingContactId] = useState<string | null>(null);
+  const [fixingAllContacts, setFixingAllContacts] = useState(false);
+  const [batchFixResult, setBatchFixResult] = useState<{ fixed: number; total: number } | null>(null);
 
   // クライアントサイドのみ: sessionStorageから選択済みIDを読み取り、使用後にクリア
   useEffect(() => {
@@ -152,9 +161,9 @@ export default function OutreachPage() {
       };
     }));
 
-    // 【修正1】contact_urlなし + Wantedlyリードは自動スキップ（送信対象から除外）
+    // 【修正1】contact_urlなし or wantedly.comが入っている Wantedlyリードは自動スキップ
     setTargets(prev => prev.map(t =>
-      t.platform === "wantedly" && t.sendMethod === "form" && !t.contact_url && t.status === "pending"
+      t.platform === "wantedly" && t.sendMethod === "form" && isInvalidWantedlyContact(t.contact_url) && t.status === "pending"
         ? { ...t, status: "skipped" as const }
         : t
     ));
@@ -394,23 +403,53 @@ ${updated[i].platform}での投稿を拝見し、${productDesc.slice(0, 60)}${kw
     setFixingContactId(null);
   };
 
+  // Wantedly連絡先を一括修正（wantedly.com URLリセット → 全null対象に再取得）
+  const fixAllWantedlyContacts = async () => {
+    if (!confirm(`⚠️ フォームなしタブの${noContactCount}件のWantedlyリードを一括で連絡先再取得します。\n数分かかる場合があります。実行しますか？`)) return;
+    setFixingAllContacts(true);
+    setBatchFixResult(null);
+    try {
+      const res = await fetch(`/api/campaigns/${campaignId}/fix-wantedly-contacts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const data = await res.json();
+      if (data.success) {
+        setBatchFixResult({ fixed: data.fixed, total: data.total });
+        // UI更新: 取得できたものをpendingに戻す
+        if (Array.isArray(data.results)) {
+          setTargets(prev => prev.map(t => {
+            const r = (data.results as Array<{ id: string; contactUrl: string | null }>).find(x => x.id === t.id);
+            if (r?.contactUrl) return { ...t, contact_url: r.contactUrl, sendMethod: "form" as const, status: "pending" as const };
+            return t;
+          }));
+        }
+      } else {
+        alert(`エラー: ${data.error}`);
+      }
+    } catch {
+      alert("一括修正に失敗しました");
+    }
+    setFixingAllContacts(false);
+  };
+
   const filtered = targets.filter(t => {
-    if (activeTab === "all") return t.status === "pending" && !(t.platform === "wantedly" && t.sendMethod === "form" && !t.contact_url);
+    if (activeTab === "all") return t.status === "pending" && !(t.platform === "wantedly" && t.sendMethod === "form" && isInvalidWantedlyContact(t.contact_url));
     if (activeTab === "email") return t.sendMethod === "email" && t.status === "pending";
     if (activeTab === "dm") return t.sendMethod === "dm" && t.status === "pending";
     if (activeTab === "sent") return t.status === "sent" || t.status === "sent_unconfirmed";
-    if (activeTab === "skipped") return t.status === "skipped" && !(t.platform === "wantedly" && !t.contact_url);
-    if (activeTab === "no_contact") return t.platform === "wantedly" && !t.contact_url;
+    if (activeTab === "skipped") return t.status === "skipped" && !(t.platform === "wantedly" && isInvalidWantedlyContact(t.contact_url));
+    if (activeTab === "no_contact") return t.platform === "wantedly" && isInvalidWantedlyContact(t.contact_url);
     return true;
   });
 
   const emailCount = targets.filter(t => t.sendMethod === "email" && t.status === "pending").length;
   const dmCount = targets.filter(t => t.sendMethod === "dm" && t.status === "pending").length;
   const sentCount = targets.filter(t => t.status === "sent" || t.status === "sent_unconfirmed").length;
-  const noContactCount = targets.filter(t => t.platform === "wantedly" && !t.contact_url).length;
-  // 送信対象 = pending かつ contact_urlなしWantedlyを除いた件数
+  const noContactCount = targets.filter(t => t.platform === "wantedly" && isInvalidWantedlyContact(t.contact_url)).length;
+  // 送信対象 = pending かつ 無効contact_urlのWantedlyを除いた件数
   const sendableCount = targets.filter(t =>
-    t.status === "pending" && !(t.platform === "wantedly" && t.sendMethod === "form" && !t.contact_url)
+    t.status === "pending" && !(t.platform === "wantedly" && t.sendMethod === "form" && isInvalidWantedlyContact(t.contact_url))
   ).length;
 
   if (loading) return <div style={{ minHeight: "100vh", background: "#0d0d1a", display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(240,239,232,0.3)" }}>読み込み中...</div>;
@@ -445,6 +484,23 @@ ${updated[i].platform}での投稿を拝見し、${productDesc.slice(0, 60)}${kw
               }}>
                 {fixingNames ? "⏳ 取得中..." : "🏢 会社名を再取得"}
               </button>
+            )}
+            {noContactCount > 0 && (
+              <button onClick={fixAllWantedlyContacts} disabled={fixingAllContacts} title={`${noContactCount}件の連絡先不明Wantedlyリードを一括修正`} style={{
+                background: fixingAllContacts ? "rgba(255,80,80,0.05)" : "rgba(255,80,80,0.08)",
+                border: "1px solid rgba(255,80,80,0.25)",
+                color: fixingAllContacts ? "rgba(255,100,100,0.4)" : "#ff5050",
+                borderRadius: "10px", padding: "8px 14px",
+                fontSize: "11px", fontWeight: 600, cursor: fixingAllContacts ? "wait" : "pointer",
+                fontFamily: "'Space Grotesk'", opacity: fixingAllContacts ? 0.6 : 1,
+              }}>
+                {fixingAllContacts ? `⏳ 一括修正中...` : `🔄 連絡先を一括修正（${noContactCount}件）`}
+              </button>
+            )}
+            {batchFixResult && (
+              <span style={{ fontSize: "11px", color: "#2dd17a", fontWeight: 600 }}>
+                ✅ {batchFixResult.fixed}/{batchFixResult.total}件取得完了
+              </span>
             )}
             <button onClick={openSettings} disabled={generating || msgSelectedIds.size === 0} title={msgSelectedIds.size === 0 ? "リードを選択してください" : ""} style={{
               background: generating || msgSelectedIds.size === 0 ? "rgba(124,92,252,0.1)" : "linear-gradient(135deg, #7c5cfc, #5a3fd6)",
@@ -532,7 +588,7 @@ ${updated[i].platform}での投稿を拝見し、${productDesc.slice(0, 60)}${kw
             { key: "email" as Tab, label: "メール", count: emailCount },
             { key: "dm" as Tab, label: "DM", count: dmCount },
             { key: "sent" as Tab, label: "送信済み", count: sentCount },
-            { key: "skipped" as Tab, label: "スキップ", count: targets.filter(t => t.status === "skipped" && !(t.platform === "wantedly" && !t.contact_url)).length },
+            { key: "skipped" as Tab, label: "スキップ", count: targets.filter(t => t.status === "skipped" && !(t.platform === "wantedly" && isInvalidWantedlyContact(t.contact_url))).length },
             ...(noContactCount > 0 ? [{ key: "no_contact" as Tab, label: "⚠️ フォームなし", count: noContactCount }] : []),
           ]).map(tab => (
             <button key={tab.key} onClick={() => setActiveTab(tab.key)} style={{
@@ -766,7 +822,7 @@ ${updated[i].platform}での投稿を拝見し、${productDesc.slice(0, 60)}${kw
                   })()}
 
                   {/* contact_urlなしのWantedlyリード → 再取得ボタン */}
-                  {t.platform === "wantedly" && !t.contact_url && (
+                  {t.platform === "wantedly" && isInvalidWantedlyContact(t.contact_url) && (
                     <button
                       onClick={() => fixContactUrl(t)}
                       disabled={fixingContactId === t.id}
