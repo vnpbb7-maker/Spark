@@ -1198,11 +1198,31 @@ Return ONLY this JSON format (no markdown, no explanation):
                 if (contactSearchRes.ok) {
                   const contactData = await contactSearchRes.json();
                   const contactResults = (contactData.results || []) as Array<Record<string, unknown>>;
-                  const CONTACT_PATH_RE = /\/(contact|inquiry|inquire|form|お問い合わせ|問い合わせ|相談|資料請求)/i;
+
+                  // 優先度1: フォームページ（パスにキーワードを含む）
+                  const FORM_PATH_RE = /\/(contact|inquiry|inquire|form|support|お問い合わせ|問い合わせ|相談|資料請求|request|toiawase)/i;
+                  // 優先度3: LINEやチャット
+                  const CHAT_PATH_RE = /\/(line|chat|messenger|liff)/i;
+
+                  let lineUrl: string | null = null;
                   for (const r of contactResults) {
                     const u = (r.url as string) || "";
-                    if (isSafeUrl(u) && CONTACT_PATH_RE.test(u)) { contactUrl = u; break; }
+                    if (!isSafeUrl(u)) continue;
+                    if (FORM_PATH_RE.test(u)) { contactUrl = u; break; }          // 優先度1
+                    if (!lineUrl && CHAT_PATH_RE.test(u)) lineUrl = u;            // 優先度3候補
                   }
+                  // 優先度2: Tavilyのcontentからmailtoを探す
+                  if (!contactUrl) {
+                    const PRIORITY_EMAILS = /(?:info|sales|contact|support|hello|inquiry)@[a-zA-Z0-9.-]+\.[a-z]{2,}/i;
+                    for (const r of contactResults) {
+                      const snippet = ((r.content as string) || "") + ((r.title as string) || "");
+                      const emailMatch = snippet.match(PRIORITY_EMAILS);
+                      if (emailMatch) { contactUrl = `mailto:${emailMatch[0]}`; break; }
+                    }
+                  }
+                  // 優先度3: LINE/チャットURL
+                  if (!contactUrl && lineUrl) contactUrl = lineUrl;
+
                   console.log(`[wantedly] Tavily contact search → ${contactUrl || "none"}`);
                 }
               } catch { console.log(`[wantedly] Tavily contact search failed`); }
@@ -1210,7 +1230,10 @@ Return ONLY this JSON format (no markdown, no explanation):
 
             // ── Step4: 典型パスをHEADリクエストで確認 ──
             if (!contactUrl && officialDomain) {
-              const TYPICAL_PATHS = ["/contact", "/contact-us", "/inquiry", "/inquire", "/form", "/お問い合わせ"];
+              const TYPICAL_PATHS = [
+                "/contact", "/contact-us", "/inquiry", "/inquire",
+                "/form", "/support", "/お問い合わせ", "/request",
+              ];
               for (const path of TYPICAL_PATHS) {
                 try {
                   const testUrl = `${officialDomain}${path}`;
@@ -1336,10 +1359,22 @@ Return ONLY this JSON format (no markdown, no explanation):
             if (!url.includes("prtimes.jp/main/html/rd/p/")) continue;
             // Jina Readerでページ詳細取得
             const { companyName, websiteUrl, summary } = await extractFromPRTimes(url);
-            // フォールバック: Tavilyのtitleから企業名を推定
+            // フォールバック: Tavilyのtitleから企業名を正規表現で抽出
+            // タイトル例: "株式会社ABCが新サービスをリリース" "XYZ株式会社のプレスリリース"
             const title = (result.title as string) || "";
-            const fallbackCompany = title.match(/株式会社[^\s、。）]+|[^\s、。（(]+(?:株式会社|合同会社|有限会社)/)?.[0]
-              || title.replace(/【.+?】|「.+?」|\｜.+$/, "").trim().slice(0, 30);
+            const fallbackCompany = (() => {
+              // パターン1: 「株式会社〜」「合同会社〜」を先頭から
+              const m1 = title.match(/^((?:株式会社|合同会社|有限会社)[^\s、。|｜（(「」\[\]]{1,30})/);
+              if (m1) return m1[1].trim();
+              // パターン2: 「〜株式会社」「〜Inc.」「〜Ltd.」末尾に法人格
+              const m2 = title.match(/([^\s、。|｜（(「」\[\]]{1,30}(?:株式会社|合同会社|有限会社|Inc\.|Co\.,?\s*Ltd\.|LLC))/);
+              if (m2) return m2[1].trim();
+              // パターン3: 「【社名】タイトル」→ 【】内
+              const m3 = title.match(/[【（(]([^】）)]{2,20}(?:株式会社|合同会社|Inc\.|Ltd\.)[^】）)]*)[】）)]/);
+              if (m3) return m3[1].trim();
+              // フォールバック: タイトル先頭30文字（記号・助詞を除去）
+              return title.replace(/【.+?】|「.+?」|\｜.+$|のプレスリリース.*$|が.{3,}$/, "").trim().slice(0, 30);
+            })();
             const finalCompanyName = companyName || fallbackCompany;
             if (!finalCompanyName) continue;
             const dedupKey = `prtimes::${finalCompanyName.toLowerCase()}`;
