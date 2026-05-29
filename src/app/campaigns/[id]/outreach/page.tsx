@@ -622,24 +622,30 @@ ${updated[i].platform}での投稿を拝見し、${productDesc.slice(0, 60)}${kw
                       💬 DMを開く →
                     </a>
                   )}
-                  {t.status === "pending" && t.sendMethod === "form" && (t.contact_url || t.website || t.profile_url || (t as Record<string, unknown>).post_url as string) && (
-                    <a
-                      href={(t.contact_url || t.website || t.profile_url || (t as Record<string, unknown>).post_url as string) || "#"}
-                      target="_blank" rel="noopener noreferrer"
-                      onClick={e => {
-                        const url = t.contact_url || t.website || t.profile_url || (t as Record<string, unknown>).post_url as string;
-                        if (!url) { e.preventDefault(); return; }
-                        // ステータス更新は行わない（開くだけ）
-                      }}
-                      style={{
-                        background: "rgba(255,214,10,0.08)", border: "1px solid rgba(255,214,10,0.2)",
-                        borderRadius: "7px", padding: "5px 12px", fontSize: "10px", fontWeight: 600,
-                        color: "#ffd60a", cursor: "pointer", textDecoration: "none",
-                      }}
-                    >
-                      📨 フォームを開く →
-                    </a>
-                  )}
+                  {t.status === "pending" && t.sendMethod === "form" && (() => {
+                    const rawUrl = t.contact_url || t.website || t.profile_url || (t as Record<string, unknown>).post_url as string;
+                    if (!rawUrl) return null;
+                    // 画像URL・wantedly.com・SNSドメインは非表示（古いデータや誤取得への防御）
+                    const BAD_DOMAINS = ["wantedly.com", "twitter.com", "x.com", "facebook.com", "instagram.com", "linkedin.com", "youtube.com"];
+                    const IMAGE_EXT = /\.(png|jpg|jpeg|gif|svg|webp|ico|bmp)(\?.*)?$/i;
+                    if (IMAGE_EXT.test(rawUrl)) return null;
+                    try { if (BAD_DOMAINS.some(d => new URL(rawUrl).hostname.includes(d))) return null; } catch { return null; }
+                    return (
+                      <a
+                        href={rawUrl}
+                        target="_blank" rel="noopener noreferrer"
+                        onClick={e => { if (!rawUrl) e.preventDefault(); }}
+                        style={{
+                          background: "rgba(255,214,10,0.08)", border: "1px solid rgba(255,214,10,0.2)",
+                          borderRadius: "7px", padding: "5px 12px", fontSize: "10px", fontWeight: 600,
+                          color: "#ffd60a", cursor: "pointer", textDecoration: "none",
+                        }}
+                      >
+                        📨 フォームを開く →
+                      </a>
+                    );
+                  })()}
+
                   {t.status === "pending" && (
                     <button onClick={() => setStatus(t.id, "skipped")} style={{
                       background: "transparent", border: "1px solid rgba(255,255,255,0.06)",
