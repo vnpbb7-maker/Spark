@@ -472,12 +472,93 @@ app.post("/submit-contact-form", authMiddleware, async (req, res) => {
       }
     }
 
-    // Update Supabase target status
-    if (target_id) {
-      await supabase.from("targets").update({ contacted_at: new Date().toISOString(), status: "contacted" }).eq("id", target_id);
+    // ── 送信後の成否確認 ──
+    let confirmationStatus = "unconfirmed"; // confirmed / unconfirmed / failed
+    let confirmationReason = "";
+    let screenshotUrl = null;
+
+    if (submitted) {
+      // 少し待ってページが遷移・更新するのを待つ
+      await page.waitForTimeout(2500);
+
+      const afterUrl = page.url();
+      const afterTitle = await page.title().catch(() => "");
+
+      // 1. URL遷移チェック
+      const SUCCESS_URL_PATTERNS = /\/(thanks|thank[-_]?you|complete|done|confirmation|confirm|success|finished|sent|submitted|receipt)/i;
+      if (SUCCESS_URL_PATTERNS.test(afterUrl)) {
+        confirmationStatus = "confirmed";
+        confirmationReason = `URL遷移: ${afterUrl}`;
+        console.log(`[form] ✅ Confirmed by URL: ${afterUrl}`);
+      }
+
+      // 2. ページテキストチェック（URLで確認できなかった場合も実行）
+      if (confirmationStatus !== "confirmed") {
+        try {
+          const bodyText = await page.evaluate(() => document.body?.innerText || "");
+          const SUCCESS_TEXT_PATTERNS = /送信しました|ありがとうございます|送信が完了|お問い合わせを受け付|受付(?:いたし|まし)|完了しました|thank you|thanks for|message received|successfully sent|form submitted|we.*received|inquiry.*received/i;
+          if (SUCCESS_TEXT_PATTERNS.test(bodyText)) {
+            confirmationStatus = "confirmed";
+            const matchSnippet = bodyText.match(SUCCESS_TEXT_PATTERNS)?.[0] || "";
+            confirmationReason = `完了テキスト検出: "${matchSnippet}"`;
+            console.log(`[form] ✅ Confirmed by text: "${matchSnippet}"`);
+          }
+        } catch (textErr) {
+          console.log("[form] Text check error:", textErr.message);
+        }
+      }
+
+      if (confirmationStatus === "unconfirmed") {
+        confirmationReason = `送信ボタンはクリックしたが完了ページ・完了テキストを確認できず (URL: ${afterUrl})`;
+        console.log(`[form] ⚠️ Unconfirmed: ${confirmationReason}`);
+      }
+
+      // 3. スクリーンショット撮影 → Supabase Storage に保存
+      try {
+        const screenshotBuffer = await page.screenshot({ type: "webp", quality: 70, fullPage: false });
+        const fileName = `form-screenshots/${target_id}_${Date.now()}.webp`;
+        const { data: uploadData, error: uploadErr } = await supabase.storage
+          .from("outreach-screenshots")
+          .upload(fileName, screenshotBuffer, { contentType: "image/webp", upsert: true });
+        if (uploadErr) {
+          console.log("[form] Screenshot upload error:", uploadErr.message);
+        } else {
+          const { data: publicUrlData } = supabase.storage.from("outreach-screenshots").getPublicUrl(fileName);
+          screenshotUrl = publicUrlData?.publicUrl || null;
+          console.log(`[form] 📷 Screenshot saved: ${screenshotUrl}`);
+        }
+      } catch (ssErr) {
+        console.log("[form] Screenshot error:", ssErr.message);
+      }
+    } else {
+      confirmationStatus = "failed";
+      confirmationReason = "送信ボタンが見つからなかったか、クリックに失敗しました";
     }
 
-    res.json({ success: submitted, filled: { name: filledName, email: filledEmail, message: filledMessage }, submitted });
+    // Update Supabase target status
+    if (target_id) {
+      const newStatus = confirmationStatus === "confirmed" ? "contacted"
+        : confirmationStatus === "unconfirmed" ? "contacted_unconfirmed"
+        : "form_failed";
+      const updatePayload = {
+        contacted_at: new Date().toISOString(),
+        status: newStatus,
+        ai_reason: confirmationReason,
+        ...(screenshotUrl ? { screenshot_url: screenshotUrl } : {}),
+      };
+      await supabase.from("targets").update(updatePayload).eq("id", target_id);
+      console.log(`[form] DB updated: status=${newStatus} confirmation=${confirmationStatus}`);
+    }
+
+    res.json({
+      success: submitted,
+      confirmation: confirmationStatus,   // "confirmed" | "unconfirmed" | "failed"
+      confirmationReason,
+      screenshotUrl,
+      filled: { name: filledName, email: filledEmail, message: filledMessage },
+      submitted,
+    });
+
   } catch (err) {
     console.error("[form] Error:", err.message);
     res.json({ success: false, error: err.message });

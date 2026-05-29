@@ -24,8 +24,9 @@ type OutreachTarget = {
   priority: string; email: string | null; profile_url: string | null;
   contact_url: string | null; website: string | null;
   post_content: string | null; ai_reason: string | null;
-  message: string; status: "pending" | "sent" | "skipped";
+  message: string; status: "pending" | "sent" | "sent_unconfirmed" | "skipped";
   sendMethod: "email" | "dm" | "form" | "none";
+  screenshot_url: string | null;
 };
 
 const SNS_DM_PLATFORMS = ["reddit","twitter","x","instagram","tiktok","linkedin","youtube","note","discord"];
@@ -98,7 +99,7 @@ export default function OutreachPage() {
       // 選択IDがある場合: IN句で直接取得（limit/orderに依存しない確実な方法）
       const { data: d, error: e } = await supabase
         .from('targets')
-        .select('id, username, platform, match_score, priority, email, profile_url, post_url, contact_url, website, post_content, ai_reason, status, contacted_at')
+        .select('id, username, platform, match_score, priority, email, profile_url, post_url, contact_url, website, post_content, ai_reason, status, contacted_at, screenshot_url')
         .eq('campaign_id', campaignId)
         .in('id', filterIds);
       data = d as Record<string, unknown>[] | null;
@@ -139,10 +140,13 @@ export default function OutreachPage() {
         website: (t.website as string | null),
         post_content: t.post_content as string | null, ai_reason: t.ai_reason as string | null,
         message: "",
-        // DBのstatusをUIのstatusにマッピング（contacted → sent、それ以外はpending）
-        status: (t.status as string) === "contacted" ? "sent" as const : "pending" as const,
+        // DBのstatusをUIのstatusにマッピング
+        status: (t.status as string) === "contacted" ? "sent" as const
+          : (t.status as string) === "contacted_unconfirmed" ? "sent_unconfirmed" as const
+          : "pending" as const,
         sendMethod: hasEmail ? "email" : isDmPlatform ? "dm" : (t.contact_url || t.website || t.profile_url || t.post_url) ? "form" : "none",
         post_url: (t.post_url as string | null),
+        screenshot_url: (t.screenshot_url as string | null) || null,
       };
     }));
     setLoading(false);
@@ -551,6 +555,30 @@ ${updated[i].platform}での投稿を拝見し、${productDesc.slice(0, 60)}${kw
                 {t.ai_reason && (
                   <div style={{ fontSize: "11px", color: "rgba(240,239,232,0.4)", marginBottom: "10px", lineHeight: 1.4 }}>
                     💡 {t.ai_reason}
+                  </div>
+                )}
+
+                {/* 送信確認バッジ + スクリーンショット */}
+                {(t.status === "sent" || t.status === "sent_unconfirmed") && (
+                  <div style={{ marginBottom: "10px" }}>
+                    <span style={{
+                      display: "inline-block", padding: "2px 8px", borderRadius: "5px", fontSize: "10px", fontWeight: 600,
+                      background: t.status === "sent" ? "rgba(45,209,122,0.15)" : "rgba(255,214,10,0.12)",
+                      color: t.status === "sent" ? "#2dd17a" : "#ffd60a",
+                      border: `1px solid ${t.status === "sent" ? "rgba(45,209,122,0.3)" : "rgba(255,214,10,0.25)"}`,
+                    }}>
+                      {t.status === "sent" ? "✅ 送信確認済" : "⚠️ 送信・確認不明"}
+                    </span>
+                    {t.screenshot_url && (
+                      <a href={t.screenshot_url} target="_blank" rel="noopener noreferrer" style={{ display: "block", marginTop: "8px" }}>
+                        <img
+                          src={t.screenshot_url}
+                          alt="送信後スクリーンショット"
+                          style={{ width: "100%", maxWidth: "280px", borderRadius: "6px", border: "1px solid rgba(255,255,255,0.08)", cursor: "pointer" }}
+                        />
+                        <div style={{ fontSize: "9px", color: "rgba(240,239,232,0.3)", marginTop: "3px" }}>📷 クリックで拡大</div>
+                      </a>
+                    )}
                   </div>
                 )}
 
