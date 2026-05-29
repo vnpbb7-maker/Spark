@@ -38,7 +38,7 @@ const DM_URLS: Record<string, (username: string) => string> = {
   wantedly:(u) => `https://www.wantedly.com/users/${u}`,
 };
 
-type Tab = "all" | "email" | "dm" | "sent" | "skipped";
+type Tab = "all" | "email" | "dm" | "sent" | "skipped" | "no_contact";
 
 export default function OutreachPage() {
   const router = useRouter();
@@ -64,6 +64,7 @@ export default function OutreachPage() {
   const [msgSelectedIds, setMsgSelectedIds] = useState<Set<string>>(new Set());
   const storedIdsRef = React.useRef<string[]>([]);
   const [idsLoaded, setIdsLoaded] = useState(false);
+  const [fixingNames, setFixingNames] = useState(false);
 
   // クライアントサイドのみ: sessionStorageから選択済みIDを読み取り、使用後にクリア
   useEffect(() => {
@@ -149,6 +150,14 @@ export default function OutreachPage() {
         screenshot_url: (t.screenshot_url as string | null) || null,
       };
     }));
+
+    // 【修正1】contact_urlなし + Wantedlyリードは自動スキップ（送信対象から除外）
+    setTargets(prev => prev.map(t =>
+      t.platform === "wantedly" && t.sendMethod === "form" && !t.contact_url && t.status === "pending"
+        ? { ...t, status: "skipped" as const }
+        : t
+    ));
+
     setLoading(false);
   }, [campaignId]);
 
@@ -257,19 +266,22 @@ ${updated[i].platform}での投稿を拝見し、${productDesc.slice(0, 60)}${kw
     const senderName  = typeof window !== "undefined" ? localStorage.getItem("spark_sender_name")  || "" : "";
     const senderEmail = typeof window !== "undefined" ? localStorage.getItem("spark_sender_email") || "" : "";
 
-    // pending かつ何らかの送信手段があるもの全件
-    const allPending = targets.filter(t => t.status === "pending" && t.sendMethod !== "none");
-    if (!allPending.length) { alert("送信可能なターゲットがありません"); return; }
+    // 選択済みIDで絞り込み（msgSelectedIdsが空なら警告）
+    if (msgSelectedIds.size === 0) {
+      alert("送信するリードを選択してください（チェックボックスで選択）");
+      return;
+    }
 
-    // DM専用（フォームURL・メールなし）のみスキップ。SNSでもフォームURLがあれば送信
-    const dmOnly   = allPending.filter(t => t.sendMethod === "dm");
-    const sendable = allPending.filter(t => t.sendMethod !== "dm"); // email + form（SNSプラットフォーム含む）
+    // 選択済みリードのうち送信可能なもの
+    const selected = targets.filter(t =>
+      msgSelectedIds.has(t.id) && t.status === "pending" && t.sendMethod !== "none"
+    );
+    if (!selected.length) { alert("選択中のリードに送信可能なターゲットがありません"); return; }
 
-    console.log("[bulk-send] total targets:", targets.length);
-    console.log("[bulk-send] allPending:", allPending.length);
-    console.log("[bulk-send] sendable (email+form):", sendable.length);
-    console.log("[bulk-send] dmOnly (skipped):", dmOnly.length);
-    console.log("[bulk-send] sendable ids:", sendable.map(t => t.id));
+    const dmOnly   = selected.filter(t => t.sendMethod === "dm");
+    const sendable = selected.filter(t => t.sendMethod !== "dm");
+
+    console.log("[bulk-send] selected:", msgSelectedIds.size, "sendable:", sendable.length, "dmOnly:", dmOnly.length);
 
     const emailTargets = sendable.filter(t => t.sendMethod === "email");
     const formTargets  = sendable.filter(t => t.sendMethod === "form");
@@ -314,7 +326,7 @@ ${updated[i].platform}での投稿を拝見し、${productDesc.slice(0, 60)}${kw
       } else if (data.error) {
         alert(`エラー: ${data.error}`);
       }
-    } catch (e) {
+    } catch {
       alert("送信開始に失敗しました。ネットワークを確認してください。");
     }
 
@@ -323,18 +335,51 @@ ${updated[i].platform}での投稿を拝見し、${productDesc.slice(0, 60)}${kw
   };
 
 
+  // 【修正2】company_XXX パターンの会社名をTavilyで再取得
+  const fixCompanyNames = async () => {
+    const slugTargets = targets.filter(t =>
+      t.platform === "wantedly" && /^company[_-]?\w+$/i.test(t.username.toLowerCase())
+    );
+    if (slugTargets.length === 0) { alert("company_XXX パターンのリードはありません"); return; }
+    setFixingNames(true);
+    let fixed = 0;
+    for (const t of slugTargets) {
+      try {
+        const slug = t.username.replace(/^company[_-]?/i, "");
+        const res = await fetch("/api/targets/fix-company-name", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ target_id: t.id, slug }),
+        });
+        const data = await res.json();
+        if (data.companyName) {
+          setTargets(prev => prev.map(x => x.id === t.id ? { ...x, username: data.companyName } : x));
+          fixed++;
+        }
+      } catch { /* skip */ }
+    }
+    setFixingNames(false);
+    alert(`${fixed}/${slugTargets.length}件の会社名を更新しました`);
+  };
+
   const filtered = targets.filter(t => {
-    if (activeTab === "all") return t.status === "pending";
+    if (activeTab === "all") return t.status === "pending" && !(t.platform === "wantedly" && t.sendMethod === "form" && !t.contact_url);
     if (activeTab === "email") return t.sendMethod === "email" && t.status === "pending";
     if (activeTab === "dm") return t.sendMethod === "dm" && t.status === "pending";
-    if (activeTab === "sent") return t.status === "sent";
-    if (activeTab === "skipped") return t.status === "skipped";
+    if (activeTab === "sent") return t.status === "sent" || t.status === "sent_unconfirmed";
+    if (activeTab === "skipped") return t.status === "skipped" && !(t.platform === "wantedly" && !t.contact_url);
+    if (activeTab === "no_contact") return t.platform === "wantedly" && !t.contact_url;
     return true;
   });
 
   const emailCount = targets.filter(t => t.sendMethod === "email" && t.status === "pending").length;
   const dmCount = targets.filter(t => t.sendMethod === "dm" && t.status === "pending").length;
-  const sentCount = targets.filter(t => t.status === "sent").length;
+  const sentCount = targets.filter(t => t.status === "sent" || t.status === "sent_unconfirmed").length;
+  const noContactCount = targets.filter(t => t.platform === "wantedly" && !t.contact_url).length;
+  // 送信対象 = pending かつ contact_urlなしWantedlyを除いた件数
+  const sendableCount = targets.filter(t =>
+    t.status === "pending" && !(t.platform === "wantedly" && t.sendMethod === "form" && !t.contact_url)
+  ).length;
 
   if (loading) return <div style={{ minHeight: "100vh", background: "#0d0d1a", display: "flex", alignItems: "center", justifyContent: "center", color: "rgba(240,239,232,0.3)" }}>読み込み中...</div>;
 
@@ -359,6 +404,16 @@ ${updated[i].platform}での投稿を拝見し、${productDesc.slice(0, 60)}${kw
             }}>
               {findingUrls ? "⏳ 取得中..." : "🔍 フォームURL取得"}
             </button>
+            {targets.some(t => t.platform === "wantedly" && /^company[_-]?\w+$/i.test(t.username.toLowerCase())) && (
+              <button onClick={fixCompanyNames} disabled={fixingNames} style={{
+                background: "rgba(255,140,66,0.08)", border: "1px solid rgba(255,140,66,0.2)",
+                color: "#ff8c42", borderRadius: "10px", padding: "8px 14px",
+                fontSize: "11px", fontWeight: 600, cursor: fixingNames ? "wait" : "pointer",
+                fontFamily: "'Space Grotesk'", opacity: fixingNames ? 0.6 : 1,
+              }}>
+                {fixingNames ? "⏳ 取得中..." : "🏢 会社名を再取得"}
+              </button>
+            )}
             <button onClick={openSettings} disabled={generating || msgSelectedIds.size === 0} title={msgSelectedIds.size === 0 ? "リードを選択してください" : ""} style={{
               background: generating || msgSelectedIds.size === 0 ? "rgba(124,92,252,0.1)" : "linear-gradient(135deg, #7c5cfc, #5a3fd6)",
               color: "#fff", border: "none", borderRadius: "10px", padding: "8px 18px",
@@ -367,11 +422,11 @@ ${updated[i].platform}での投稿を拝見し、${productDesc.slice(0, 60)}${kw
             }}>
               {generating ? "⏳ メッセージ生成中..." : msgSelectedIds.size > 0 ? `✨ メッセージ生成（${msgSelectedIds.size}件）` : "✨ メッセージ生成"}
             </button>
-            <button onClick={handleBulkSend} disabled={bulkSending} style={{
-              background: bulkSending ? "rgba(45,209,122,0.1)" : "linear-gradient(135deg, #2dd17a, #1ba360)",
+            <button onClick={handleBulkSend} disabled={bulkSending || msgSelectedIds.size === 0} title={msgSelectedIds.size === 0 ? "リードを選択してください" : ""} style={{
+              background: bulkSending || msgSelectedIds.size === 0 ? "rgba(45,209,122,0.1)" : "linear-gradient(135deg, #2dd17a, #1ba360)",
               color: "#fff", border: "none", borderRadius: "10px", padding: "8px 18px",
-              fontSize: "12px", fontWeight: 700, cursor: bulkSending ? "wait" : "pointer",
-              fontFamily: "'Space Grotesk'", opacity: bulkSending ? 0.7 : 1,
+              fontSize: "12px", fontWeight: 700, cursor: bulkSending ? "wait" : msgSelectedIds.size === 0 ? "not-allowed" : "pointer",
+              fontFamily: "'Space Grotesk'", opacity: bulkSending || msgSelectedIds.size === 0 ? 0.5 : 1,
             }}>
               {bulkSending
                 ? chunkProgress && chunkProgress.done > 0
@@ -384,7 +439,9 @@ ${updated[i].platform}での投稿を拝見し、${productDesc.slice(0, 60)}${kw
                   : chunkProgress
                     ? `⏳ 0/${chunkProgress.total}件 処理中...`
                     : "⏳ 送信中..."
-                : "🚀 一括送信"}
+                : msgSelectedIds.size > 0
+                  ? `🚀 一括送信（${msgSelectedIds.size}件）`
+                  : "🚀 一括送信"}
             </button>
             {bulkResult && (
               <span style={{ fontSize: "11px", color: "rgba(240,239,232,0.5)", lineHeight: 1.5 }}>
@@ -422,11 +479,12 @@ ${updated[i].platform}での投稿を拝見し、${productDesc.slice(0, 60)}${kw
       <div style={{ maxWidth: "1000px", margin: "0 auto", padding: "20px 24px" }}>
         {/* Stats */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "12px", marginBottom: "20px" }}>
-          {[
-            { label: "送信対象", value: targets.filter(t => t.status === "pending").length, icon: "📋", color: "#ff6b35" },
+        {[
+            { label: "送信対象", value: sendableCount, icon: "📋", color: "#ff6b35" },
             { label: "メール", value: emailCount, icon: "📧", color: "#2dd17a" },
             { label: "DM", value: dmCount, icon: "💬", color: "#1d9bf0" },
             { label: "送信済み", value: sentCount, icon: "✅", color: "#7c5cfc" },
+            ...(noContactCount > 0 ? [{ label: "フォームなし", value: noContactCount, icon: "⚠️", color: "#ff8c42" }] : []),
           ].map(s => (
             <div key={s.label} style={{ background: "#13132a", border: "1px solid rgba(255,255,255,0.06)", borderRadius: "14px", padding: "14px 16px" }}>
               <div style={{ fontSize: "10px", color: "rgba(240,239,232,0.4)", marginBottom: "4px" }}>{s.icon} {s.label}</div>
@@ -438,11 +496,12 @@ ${updated[i].platform}での投稿を拝見し、${productDesc.slice(0, 60)}${kw
         {/* Tabs */}
         <div style={{ display: "flex", gap: "4px", marginBottom: "16px" }}>
           {([
-            { key: "all" as Tab, label: "全て", count: targets.filter(t => t.status === "pending").length },
+            { key: "all" as Tab, label: "全て", count: sendableCount },
             { key: "email" as Tab, label: "メール", count: emailCount },
             { key: "dm" as Tab, label: "DM", count: dmCount },
             { key: "sent" as Tab, label: "送信済み", count: sentCount },
-            { key: "skipped" as Tab, label: "スキップ", count: targets.filter(t => t.status === "skipped").length },
+            { key: "skipped" as Tab, label: "スキップ", count: targets.filter(t => t.status === "skipped" && !(t.platform === "wantedly" && !t.contact_url)).length },
+            ...(noContactCount > 0 ? [{ key: "no_contact" as Tab, label: "⚠️ フォームなし", count: noContactCount }] : []),
           ]).map(tab => (
             <button key={tab.key} onClick={() => setActiveTab(tab.key)} style={{
               background: activeTab === tab.key ? "rgba(255,255,255,0.06)" : "transparent",
