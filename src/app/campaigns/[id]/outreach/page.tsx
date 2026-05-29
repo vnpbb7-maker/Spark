@@ -65,6 +65,7 @@ export default function OutreachPage() {
   const storedIdsRef = React.useRef<string[]>([]);
   const [idsLoaded, setIdsLoaded] = useState(false);
   const [fixingNames, setFixingNames] = useState(false);
+  const [fixingContactId, setFixingContactId] = useState<string | null>(null);
 
   // クライアントサイドのみ: sessionStorageから選択済みIDを読み取り、使用後にクリア
   useEffect(() => {
@@ -360,6 +361,37 @@ ${updated[i].platform}での投稿を拝見し、${productDesc.slice(0, 60)}${kw
     }
     setFixingNames(false);
     alert(`${fixed}/${slugTargets.length}件の会社名を更新しました`);
+  };
+
+  // contact_urlなしのWantedlyリードに対して連絡先を再取得
+  const fixContactUrl = async (t: OutreachTarget) => {
+    setFixingContactId(t.id);
+    try {
+      const res = await fetch("/api/targets/fix-contact-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          target_id: t.id,
+          company_name: t.username,
+          official_website: t.website || null,
+        }),
+      });
+      const data = await res.json();
+      if (data.contactUrl) {
+        // UIを即座に更新 + skipped → pending に戻す
+        setTargets(prev => prev.map(x =>
+          x.id === t.id
+            ? { ...x, contact_url: data.contactUrl, sendMethod: "form" as const, status: "pending" as const }
+            : x
+        ));
+        console.log(`[fix-contact-url] UI updated: ${data.contactUrl}`);
+      } else {
+        alert(`${t.username}：連絡先URLが見つかりませんでした`);
+      }
+    } catch {
+      alert("連絡先の再取得に失敗しました");
+    }
+    setFixingContactId(null);
   };
 
   const filtered = targets.filter(t => {
@@ -732,6 +764,23 @@ ${updated[i].platform}での投稿を拝見し、${productDesc.slice(0, 60)}${kw
                       </a>
                     );
                   })()}
+
+                  {/* contact_urlなしのWantedlyリード → 再取得ボタン */}
+                  {t.platform === "wantedly" && !t.contact_url && (
+                    <button
+                      onClick={() => fixContactUrl(t)}
+                      disabled={fixingContactId === t.id}
+                      style={{
+                        background: fixingContactId === t.id ? "rgba(255,140,66,0.05)" : "rgba(255,140,66,0.08)",
+                        border: "1px solid rgba(255,140,66,0.25)",
+                        borderRadius: "7px", padding: "5px 12px", fontSize: "10px", fontWeight: 600,
+                        color: fixingContactId === t.id ? "rgba(255,140,66,0.4)" : "#ff8c42",
+                        cursor: fixingContactId === t.id ? "wait" : "pointer",
+                      }}
+                    >
+                      {fixingContactId === t.id ? "⏳ 取得中..." : "🔍 連絡先を再取得"}
+                    </button>
+                  )}
 
                   {t.status === "pending" && (
                     <button onClick={() => setStatus(t.id, "skipped")} style={{
