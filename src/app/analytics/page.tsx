@@ -176,6 +176,21 @@ export default function AnalyticsPage() {
           </button>
         </div>
 
+        {/* Tracking warning banner */}
+        <div style={{
+          display: "flex", alignItems: "flex-start", gap: "10px",
+          background: "rgba(255,214,10,0.06)", border: "1px solid rgba(255,214,10,0.18)",
+          borderRadius: "12px", padding: "11px 16px", marginBottom: "22px",
+        }}>
+          <span style={{ fontSize: "15px", flexShrink: 0, marginTop: "1px" }}>⚠️</span>
+          <p style={{ margin: 0, fontSize: "12px", lineHeight: 1.6, color: "rgba(255,214,10,0.85)" }}>
+            <strong>トラッキングURLを有効にして送信したリードのみ</strong>、クリック数・開封数が追跡されます。<br />
+            <span style={{ color: "rgba(255,214,10,0.55)", fontSize: "11px" }}>
+              アウトリーチページの「設定」でトラッキングを有効にしてから一括送信してください。
+            </span>
+          </p>
+        </div>
+
         {/* Summary Cards */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: "12px", marginBottom: "28px" }}>
           {[
