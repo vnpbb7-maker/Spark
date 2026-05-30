@@ -1437,25 +1437,46 @@ Return ONLY this JSON format (no markdown, no explanation):
             },
             body: JSON.stringify({
               model: "claude-haiku-4-5-20251001",
-              max_tokens: 600,
+              max_tokens: 800,
               messages: [{
                 role: "user",
-                content: `プロダクト: ${productDescription.slice(0, 150)}
+                content: `あなたはB2Bマーケティングのエキスパートです。
+プロダクト: ${productDescription.slice(0, 200)}
 ターゲットペルソナ: ${personaLabels || "スタートアップ創業者, マーケター"}
 
-このプロダクトを必要としている企業をGoogleマップで探すための検索クエリを5つ生成してください。
-業種と地域（東京・大阪・渋谷など）を組み合わせた短いクエリにしてください。
-例: "スタートアップ 東京", "マーケティング会社 渋谷", "IT企業 採用担当"
-JSONのみ返してください: ["query1", "query2", "query3", "query4", "query5"]`,
+このプロダクトを最も必要としている業種・地域の組み合わせでGoogleマップ検索クエリを生成してください。
+条件:
+- 具体的な業種名（「営業代行」「マーケティング支援」「ITコンサル」等）と地域の組み合わせ
+- Googleマップに登録されている種類の企業名で検索できる形式
+- 東京・大阪・渋谷・新宿・福岡・名古屋等の多様な地域
+- 8クエリ以上生成する
+
+JSONのみ返してください:
+{
+  "google_maps_queries": ["クエリ1", "クエリ2", ...],
+  "reason": "なぜこの業種が困っているかの理由"
+}`,
               }],
             }),
-            signal: AbortSignal.timeout(8000),
+            signal: AbortSignal.timeout(10000),
           });
           if (b2bQueryRes.ok) {
             const b2bData = await b2bQueryRes.json();
             const raw = (b2bData.content?.[0]?.text || "").trim();
+            const objMatch = raw.match(/\{[\s\S]*\}/);
             const arrMatch = raw.match(/\[[\s\S]*\]/);
-            if (arrMatch) b2bQueries = JSON.parse(arrMatch[0]);
+            if (objMatch) {
+              try {
+                const parsed = JSON.parse(objMatch[0]);
+                if (Array.isArray(parsed.google_maps_queries)) {
+                  b2bQueries = parsed.google_maps_queries;
+                  console.log(`[google_maps] Claude reason: ${parsed.reason || "(none)"}`);
+                }
+              } catch { /* fall through to arrMatch */ }
+            }
+            if (b2bQueries.length === 0 && arrMatch) {
+              b2bQueries = JSON.parse(arrMatch[0]);
+            }
           }
         } catch (qErr) { console.error("[google_maps] Query gen error:", qErr); }
         if (b2bQueries.length === 0) {
@@ -1549,22 +1570,73 @@ JSONのみ返してください: ["query1", "query2", "query3", "query4", "query
                 }
               } catch (hunterErr) { console.error(`[google_maps] Hunter error:`, hunterErr); }
             }
+            // 修正1: 初回クロール時からTavilyでフォームURLを取得
+            let contactUrl: string | null = null;
+            if (website && process.env.TAVILY_API_KEY) {
+              const FORM_PATH_RE_GM = /\/(contact|inquiry|inquire|form|support|toiawase)/i;
+              const EXCL = ["twitter.com","x.com","facebook.com","instagram.com","linkedin.com","youtube.com"];
+              const IMG_RE = /\.(png|jpg|jpeg|gif|svg|webp|ico|bmp)(\?.*)?$/i;
+              const isSafeGM = (u: string) => {
+                if (!u || IMG_RE.test(u)) return false;
+                try { return !EXCL.some(ex => new URL(u).hostname.toLowerCase().includes(ex)); } catch { return false; }
+              };
+              try {
+                const gmDomain = new URL(website).hostname;
+                const gmRes = await fetch("https://api.tavily.com/search", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    api_key: process.env.TAVILY_API_KEY,
+                    query: `site:${gmDomain} お問い合わせ OR contact`,
+                    search_depth: "basic", max_results: 5,
+                    include_domains: [gmDomain],
+                  }),
+                  signal: AbortSignal.timeout(7000),
+                });
+                if (gmRes.ok) {
+                  const gmData = await gmRes.json();
+                  const gmResults = (gmData.results || []) as Array<Record<string, unknown>>;
+                  for (const r of gmResults) {
+                    const u = (r.url as string) || "";
+                    if (isSafeGM(u) && FORM_PATH_RE_GM.test(u)) { contactUrl = u; break; }
+                  }
+                  // mailtoフォールバック
+                  if (!contactUrl) {
+                    const EMAIL_RE_GM = /(?:info|sales|contact|support|hello)@[a-zA-Z0-9.-]+\.[a-z]{2,}/i;
+                    for (const r of gmResults) {
+                      const m = (((r.content as string) || "") + ((r.title as string) || "")).match(EMAIL_RE_GM);
+                      if (m) { contactUrl = `mailto:${m[0]}`; break; }
+                    }
+                  }
+                  console.log(`[google_maps] Tavily contact for ${name}: ${contactUrl || "none"}`);
+                }
+              } catch { console.log(`[google_maps] Tavily contact failed for ${name}`); }
+              // 典型パスHEAD確認
+              if (!contactUrl) {
+                const origin = new URL(website).origin;
+                for (const path of ["/contact","/contact-us","/inquiry","/form","/support"]) {
+                  try {
+                    const hr = await fetch(`${origin}${path}`, { method: "HEAD", signal: AbortSignal.timeout(3000), redirect: "follow" });
+                    if (hr.ok) { contactUrl = `${origin}${path}`; console.log(`[google_maps] HEAD hit: ${contactUrl}`); break; }
+                  } catch { /* skip */ }
+                }
+              }
+              // フォールバック: トップページ（Playwrightに任せる）
+              if (!contactUrl) contactUrl = website;
+            }
             const { error: mapsInsertErr } = await getSupabase().from("targets").insert({
               campaign_id: campaignId, platform: "google_maps", username: name,
               profile_url: mapsUrl || website, post_url: mapsUrl || website,
               post_content: `${address} ${phone ? `📞 ${phone}` : ""}`.slice(0, 500),
-              // B2B リード: initial score, Phase 4 will run B2B scoring
               match_score: email ? 70 : website ? 65 : 50,
-              priority: "A", // default A; Phase 4 B2B scoring may upgrade/downgrade
-              relevance_score: null, // null = Phase 4 will score with B2B prompt
+              priority: "A",
+              relevance_score: null,
               status: "pending",
               match_reason: `Googleマップ B2B: ${query.slice(0, 40)}`,
               ...(email ? { email } : {}),
               ...(phone ? { phone } : {}),
-              // website のみ保存。contact_url は Firecrawl で後から取得するため null にする
-              // （GoogleマップURLや website トップページを contact_url に入れると
-              //   Playwright がフォームページではなく別ページに飛んでしまう）
               ...(website ? { website } : {}),
+              ...(contactUrl ? { contact_url: contactUrl } : {}),
             });
             if (mapsInsertErr) { console.error(`[google_maps] Insert error: ${mapsInsertErr.message}`); continue; }
             insertedTargets.push(name);
