@@ -8,7 +8,8 @@ const getSupabase = () =>
   );
 
 export async function POST(req: NextRequest) {
-  const { target_id, company_name, official_website } = await req.json().catch(() => ({}));
+  const { target_id, company_name, official_website, platform } =
+    await req.json().catch(() => ({}));
   if (!target_id || !company_name) {
     return NextResponse.json({ error: "target_id and company_name required" }, { status: 400 });
   }
@@ -30,12 +31,18 @@ export async function POST(req: NextRequest) {
   const CHAT_PATH_RE = /\/(line|chat|messenger|liff)/i;
 
   let contactUrl: string | null = null;
+  let foundFormPage = false; // フォームページが確実に見つかったか
+
+  const platformLabel = platform || "unknown";
 
   try {
-    // Step1: 会社名で「お問い合わせ」を直接検索
-    const query = official_website
-      ? `site:${new URL(official_website).hostname} お問い合わせ OR contact`
-      : `${company_name} お問い合わせ contact`;
+    // Step1: Tavilyで「site:domain お問い合わせ OR contact」検索
+    let tavilyDomain: string | null = null;
+    try { if (official_website) tavilyDomain = new URL(official_website).hostname; } catch {}
+
+    const query = tavilyDomain
+      ? `site:${tavilyDomain} お問い合わせ OR contact`
+      : `${company_name} お問い合わせ OR contact`;
 
     const searchRes = await fetch("https://api.tavily.com/search", {
       method: "POST",
@@ -45,7 +52,7 @@ export async function POST(req: NextRequest) {
         query,
         search_depth: "basic",
         max_results: 5,
-        ...(official_website ? { include_domains: [new URL(official_website).hostname] } : {}),
+        ...(tavilyDomain ? { include_domains: [tavilyDomain] } : {}),
       }),
       signal: AbortSignal.timeout(8000),
     });
@@ -58,8 +65,8 @@ export async function POST(req: NextRequest) {
       for (const r of results) {
         const u = (r.url as string) || "";
         if (!isSafeUrl(u)) continue;
-        if (FORM_PATH_RE.test(u)) { contactUrl = u; break; }           // 優先度1: フォーム
-        if (!lineUrl && CHAT_PATH_RE.test(u)) lineUrl = u;             // 優先度3候補
+        if (FORM_PATH_RE.test(u)) { contactUrl = u; foundFormPage = true; break; } // 優先度1: フォームページ
+        if (!lineUrl && CHAT_PATH_RE.test(u)) lineUrl = u;                          // 優先度3候補
       }
 
       // 優先度2: Tavilyのcontentからメールアドレスを探す
@@ -68,40 +75,48 @@ export async function POST(req: NextRequest) {
         for (const r of results) {
           const snippet = ((r.content as string) || "") + ((r.title as string) || "");
           const m = snippet.match(PRIORITY_EMAILS);
-          if (m) { contactUrl = `mailto:${m[0]}`; break; }
+          if (m) { contactUrl = `mailto:${m[0]}`; foundFormPage = true; break; }
         }
       }
 
       // 優先度3: LINE/チャット
-      if (!contactUrl && lineUrl) contactUrl = lineUrl;
+      if (!contactUrl && lineUrl) { contactUrl = lineUrl; foundFormPage = true; }
 
-      console.log(`[fix-contact-url] Tavily (primary): ${contactUrl || "none"}`);
+      console.log(`[fix-contact-url][${platformLabel}] Tavily: ${contactUrl || "none"}`);
     }
 
-    // Step2: 公式サイトドメインが分かる場合は典型パスをHEAD確認
+    // Step2: 典型パスをHEADリクエストで確認
     if (!contactUrl && official_website) {
       const origin = new URL(official_website).origin;
-      const TYPICAL_PATHS = ["/contact", "/contact-us", "/inquiry", "/inquire", "/form", "/support", "/お問い合わせ", "/request"];
+      const TYPICAL_PATHS = [
+        "/contact", "/contact-us", "/inquiry", "/inquire",
+        "/form", "/support", "/お問い合わせ", "/request",
+      ];
       for (const path of TYPICAL_PATHS) {
         try {
           const testUrl = `${origin}${path}`;
           const headRes = await fetch(testUrl, { method: "HEAD", signal: AbortSignal.timeout(4000), redirect: "follow" });
-          if (headRes.ok) { contactUrl = testUrl; console.log(`[fix-contact-url] HEAD hit: ${testUrl}`); break; }
+          if (headRes.ok) {
+            contactUrl = testUrl;
+            foundFormPage = true;
+            console.log(`[fix-contact-url][${platformLabel}] HEAD hit: ${testUrl}`);
+            break;
+          }
         } catch { /* skip */ }
       }
     }
 
-    // Step3: フォールバックは公式サイトトップ
+    // Step3: フォールバックは公式サイトトップ（Playwrightに任せる）
     if (!contactUrl && official_website && isSafeUrl(official_website)) {
       contactUrl = official_website;
-      console.log(`[fix-contact-url] Fallback to official site: ${contactUrl}`);
+      console.log(`[fix-contact-url][${platformLabel}] Fallback to official top: ${contactUrl}`);
     }
 
     if (!contactUrl) {
-      return NextResponse.json({ contactUrl: null, message: "Contact URL not found" });
+      return NextResponse.json({ contactUrl: null, foundFormPage: false, message: "Contact URL not found" });
     }
 
-    // Supabase更新
+    // DB更新
     const { error } = await getSupabase()
       .from("targets")
       .update({ contact_url: contactUrl })
@@ -111,8 +126,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    console.log(`[fix-contact-url] ${company_name} → "${contactUrl}"`);
-    return NextResponse.json({ contactUrl });
+    console.log(`[fix-contact-url][${platformLabel}] ${company_name} → "${contactUrl}" (formPage=${foundFormPage})`);
+    return NextResponse.json({ contactUrl, foundFormPage });
   } catch (err: unknown) {
     const e = err as Error;
     return NextResponse.json({ error: e.message }, { status: 500 });

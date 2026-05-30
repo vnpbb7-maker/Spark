@@ -256,6 +256,13 @@ ${updated[i].platform}での投稿を拝見し、${productDesc.slice(0, 60)}${kw
 
   const CHUNK_SIZE = 5;
 
+  // contact_urlがトップページ（パスが "/" or ""）か判定
+  const needsRefetch = (url: string | null): boolean => {
+    if (!url) return true;
+    try { const p = new URL(url).pathname; return p === "/" || p === ""; }
+    catch { return true; }
+  };
+
   const findContactUrls = async () => {
     if (findingUrls) return;
     setFindingUrls(true);
@@ -264,12 +271,46 @@ ${updated[i].platform}での投稿を拝見し、${productDesc.slice(0, 60)}${kw
       const data = await res.json();
       if (data.updated > 0) {
         alert(`フォームURL取得完了: ${data.updated}/${data.total}件更新`);
-        fetchTargets(); // reload to show updated badges
+        fetchTargets();
       } else {
         alert(`新たに取得できたフォームURLはありませんでした`);
       }
     } catch { alert("フォームURL取得中にエラーが発生しました"); }
     setFindingUrls(false);
+  };
+
+  // Google Mapsのcontact_urlがトップページのリードを一括で再取得
+  const fixGoogleMapsContacts = async () => {
+    const gmTargets = targets.filter(t =>
+      t.platform === "google_maps" && t.status === "pending" && needsRefetch(t.contact_url)
+    );
+    if (!gmTargets.length) { alert("再取得対象のGoogleマップリードはありません"); return; }
+    setFindingUrls(true);
+    let fixed = 0;
+    for (const t of gmTargets) {
+      try {
+        const res = await fetch("/api/targets/fix-contact-url", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            target_id: t.id,
+            company_name: t.username,
+            official_website: t.contact_url || t.website || null,
+            platform: "google_maps",
+          }),
+        });
+        const d = await res.json();
+        if (d.contactUrl && d.foundFormPage) {
+          setTargets(prev => prev.map(x =>
+            x.id === t.id ? { ...x, contact_url: d.contactUrl } : x
+          ));
+          fixed++;
+        }
+      } catch { /* skip */ }
+      await new Promise(r => setTimeout(r, 300));
+    }
+    setFindingUrls(false);
+    alert(`Googleマップ連絡先: ${fixed}/${gmTargets.length}件のフォームページを取得しました`);
   };
 
   const handleBulkSend = async () => {
@@ -372,7 +413,7 @@ ${updated[i].platform}での投稿を拝見し、${productDesc.slice(0, 60)}${kw
     alert(`${fixed}/${slugTargets.length}件の会社名を更新しました`);
   };
 
-  // contact_urlなしのWantedlyリードに対して連絡先を再取得
+  // contact_urlなし or wantedly.com / Googleマップトップページのリードに対して連絡先を再取得
   const fixContactUrl = async (t: OutreachTarget) => {
     setFixingContactId(t.id);
     try {
@@ -382,18 +423,18 @@ ${updated[i].platform}での投稿を拝見し、${productDesc.slice(0, 60)}${kw
         body: JSON.stringify({
           target_id: t.id,
           company_name: t.username,
-          official_website: t.website || null,
+          official_website: t.website || t.contact_url || null,
+          platform: t.platform,
         }),
       });
       const data = await res.json();
       if (data.contactUrl) {
-        // UIを即座に更新 + skipped → pending に戻す
         setTargets(prev => prev.map(x =>
           x.id === t.id
             ? { ...x, contact_url: data.contactUrl, sendMethod: "form" as const, status: "pending" as const }
             : x
         ));
-        console.log(`[fix-contact-url] UI updated: ${data.contactUrl}`);
+        console.log(`[fix-contact-url] UI updated: ${data.contactUrl} foundFormPage=${data.foundFormPage}`);
       } else {
         alert(`${t.username}：連絡先URLが見つかりませんでした`);
       }
@@ -483,6 +524,16 @@ ${updated[i].platform}での投稿を拝見し、${productDesc.slice(0, 60)}${kw
                 fontFamily: "'Space Grotesk'", opacity: fixingNames ? 0.6 : 1,
               }}>
                 {fixingNames ? "⏳ 取得中..." : "🏢 会社名を再取得"}
+              </button>
+            )}
+            {targets.some(t => t.platform === "google_maps" && t.status === "pending" && needsRefetch(t.contact_url)) && (
+              <button onClick={fixGoogleMapsContacts} disabled={findingUrls} title="トップページになっているGoogleマップリードのフォームページを再取得" style={{
+                background: "rgba(66,184,255,0.08)", border: "1px solid rgba(66,184,255,0.2)",
+                color: "#42b8ff", borderRadius: "10px", padding: "8px 14px",
+                fontSize: "11px", fontWeight: 600, cursor: findingUrls ? "wait" : "pointer",
+                fontFamily: "'Space Grotesk'", opacity: findingUrls ? 0.6 : 1,
+              }}>
+                {findingUrls ? "⏳ 取得中..." : "🗺️ Gマップ連絡先を再取得"}
               </button>
             )}
             {noContactCount > 0 && (
@@ -835,6 +886,23 @@ ${updated[i].platform}での投稿を拝見し、${productDesc.slice(0, 60)}${kw
                       }}
                     >
                       {fixingContactId === t.id ? "⏳ 取得中..." : "🔍 連絡先を再取得"}
+                    </button>
+                  )}
+
+                  {/* Google Mapsのcontact_urlがトップページ → フォームページを再取得 */}
+                  {t.platform === "google_maps" && t.status === "pending" && needsRefetch(t.contact_url) && (
+                    <button
+                      onClick={() => fixContactUrl(t)}
+                      disabled={fixingContactId === t.id}
+                      style={{
+                        background: fixingContactId === t.id ? "rgba(66,184,255,0.05)" : "rgba(66,184,255,0.08)",
+                        border: "1px solid rgba(66,184,255,0.25)",
+                        borderRadius: "7px", padding: "5px 12px", fontSize: "10px", fontWeight: 600,
+                        color: fixingContactId === t.id ? "rgba(66,184,255,0.4)" : "#42b8ff",
+                        cursor: fixingContactId === t.id ? "wait" : "pointer",
+                      }}
+                    >
+                      {fixingContactId === t.id ? "⏳ 取得中..." : "🗺️ フォームページを再取得"}
                     </button>
                   )}
 
