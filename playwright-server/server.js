@@ -148,22 +148,52 @@ function releaseSlot() {
 
 // お問い合わせフォーム自動送信エンドポイント
 app.post("/submit-contact-form", authMiddleware, async (req, res) => {
-  const { target_id, website_url, contact_url, message, sender_name, sender_email } = req.body;
+  const { target_id, website_url, contact_url, message, sender_name, sender_email, company_name } = req.body;
   console.log("[form] Submitting contact form for:", contact_url || website_url);
 
   // Acquire concurrency slot before launching browser (prevents OOM on Railway 512MB)
   await acquireSlot();
   console.log(`[form] Acquired slot. Active: ${activeCount}/${MAX_CONCURRENT}, queued: ${waitQueue.length}`);
 
-  const browser = await chromium.launch({
+// ── シングルトンブラウザ: 起動コストを1回に抑える ──
+// 1件ごとに chromium.launch() すると3-5秒かかるため
+// プロセス起動時に1度だけ起動し、リクエストごとにコンテキストを作成・破棄する
+const BROWSER_ARGS = [
+  "--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage",
+  "--disable-gpu", "--no-first-run", "--no-zygote", "--single-process",
+  "--disable-extensions",
+  "--lang=ja-JP",
+  "--accept-lang=ja-JP,ja,en",
+];
+const BROWSER_CONTEXT_OPTIONS = {
+  locale: "ja-JP",
+  timezoneId: "Asia/Tokyo",
+  userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+  extraHTTPHeaders: { "Accept-Language": "ja-JP,ja;q=0.9,en;q=0.8" },
+};
+
+let sharedBrowser = null;
+async function getSharedBrowser() {
+  if (sharedBrowser && sharedBrowser.isConnected()) return sharedBrowser;
+  console.log("[browser] Launching shared Chromium instance...");
+  sharedBrowser = await chromium.launch({
     headless: true,
     executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || undefined,
-    args: ["--no-sandbox","--disable-setuid-sandbox","--disable-dev-shm-usage","--disable-gpu","--no-first-run","--no-zygote","--single-process","--disable-extensions"],
+    args: BROWSER_ARGS,
   });
+  sharedBrowser.on("disconnected", () => { sharedBrowser = null; console.log("[browser] Shared browser disconnected, will re-launch on next request"); });
+  console.log("[browser] Shared Chromium ready");
+  return sharedBrowser;
+}
 
+  const browser = await getSharedBrowser();
+  let context;
   try {
-    const page = await browser.newPage();
-    page.setDefaultTimeout(8000); // reduced from 12s
+    // リクエストごとに新しいコンテキストを作成（ブラウザは使い回す）
+    // locale: 'ja-JP' → fill() が IME を経由せず日本語をそのまま入力
+    context = await browser.newContext(BROWSER_CONTEXT_OPTIONS);
+    const page = await context.newPage();
+    page.setDefaultTimeout(8000);
 
     // Fix 1: Googleマップや無効なURLはコンタクトフォームではないのでスキップ
     const isInvalidContactUrl = (url) => {
@@ -269,7 +299,7 @@ app.post("/submit-contact-form", authMiddleware, async (req, res) => {
       'input[id*="company" i]',
     ];
     for (const sel of companySelectors) {
-      try { await page.fill(sel, sender_name, { timeout: 1500 }); console.log('[form] Filled company:', sel); break; } catch {}
+      try { await page.fill(sel, company_name || sender_name, { timeout: 1500 }); console.log('[form] Filled company:', sel); break; } catch {}
     }
 
     const phoneSelectors = [
@@ -414,9 +444,8 @@ app.post("/submit-contact-form", authMiddleware, async (req, res) => {
         const isVisible = await btn.isVisible();
         if (!isVisible) { console.log('[form] Button not visible:', sel); continue; }
         await btn.scrollIntoViewIfNeeded();
-        await page.waitForTimeout(500);
         await btn.click({ timeout: 3000 });
-        await page.waitForTimeout(2000);
+        await page.waitForTimeout(500); // クリック後のDOM更新を待つ
         submitted = true;
         console.log('[form] Submitted via:', sel);
         break;
@@ -466,7 +495,7 @@ app.post("/submit-contact-form", authMiddleware, async (req, res) => {
           return false;
         });
         if (submitted) console.log('[form] Submitted via form.submit()');
-        if (submitted) await page.waitForTimeout(1500);
+        if (submitted) await page.waitForTimeout(300);
       } catch (e) {
         console.log('[form] form.submit() failed:', e.message);
       }
@@ -478,8 +507,8 @@ app.post("/submit-contact-form", authMiddleware, async (req, res) => {
     let screenshotUrl = null;
 
     if (submitted) {
-      // 少し待ってページが遷移・更新するのを待つ
-      await page.waitForTimeout(2500);
+      // 送信後800ms待機（ページ遷移・DOM更新を待つ）
+      await page.waitForTimeout(800);
 
       const afterUrl = page.url();
       const afterTitle = await page.title().catch(() => "");
@@ -563,7 +592,8 @@ app.post("/submit-contact-form", authMiddleware, async (req, res) => {
     console.error("[form] Error:", err.message);
     res.json({ success: false, error: err.message });
   } finally {
-    await browser.close();
+    // ブラウザは使い回すのでコンテキストのみ閉じる
+    if (context) await context.close().catch(() => {});
     releaseSlot();
     console.log(`[form] Released slot. Active: ${activeCount}/${MAX_CONCURRENT}, queued: ${waitQueue.length}`);
   }
