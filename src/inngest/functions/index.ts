@@ -1830,7 +1830,7 @@ JSONのみ返してください:
             const domainMatch = url.match(/https?:\/\/(?:www\.)?([^/?#]+)/);
             const username = title.slice(0, 40) || (domainMatch ? domainMatch[1] : `review_${keyword.slice(0,10)}`);
             const dedupKey = `google_maps_review::${url}`;
-            if (dedupSet.has(dedupKey) || isAlreadyContacted(platform, username)) continue;
+            if (dedupSet.has(dedupKey) || isAlreadyContacted("google_maps_review", username)) continue;
             dedupSet.add(dedupKey);
 
             // Try Hunter.io for email if domain found
