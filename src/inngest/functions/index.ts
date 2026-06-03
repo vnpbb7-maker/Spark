@@ -2373,7 +2373,7 @@ export const monitorReplies = inngest.createFunction(
 export const bulkSendOutreach = inngest.createFunction(
   { id: "bulk-send-outreach", retries: 0, triggers: [{ event: "outreach/bulk-send" }] },
   async ({ event, step }: any) => {
-    const { campaignId, targetIds, senderName, senderEmail, userEmail, userId: eventUserId, settings } = event.data as {
+    const { campaignId, targetIds, senderName, senderEmail, userEmail, userId: eventUserId, settings, messages: uiMessages, enableTracking: eventEnableTracking } = event.data as {
       campaignId: string;
       targetIds: string[];
       senderName: string;
@@ -2381,6 +2381,8 @@ export const bulkSendOutreach = inngest.createFunction(
       userEmail: string;
       userId: string | null;
       settings?: { userId?: string };
+      messages?: Record<string, string>; // UIで生成・編集済みメッセージ { [targetId]: message }
+      enableTracking?: boolean;
     };
 
     // デバッグ: 受け取った userId を確認
@@ -2458,14 +2460,22 @@ export const bulkSendOutreach = inngest.createFunction(
           return { success: false, error: "Playwrightサーバー未設定", name: (target.username as string) || currentTargetId };
         }
 
-        // メッセージをClaude で生成
-        let outreachMessage = "";
-        try {
-          const { data: campaignRow } = await supabase.from("campaigns").select("*").eq("id", campaignId).single();
-          const productDesc = (campaignRow?.product_description as string) || (campaignRow?.product_url as string) || "";
-          const isPRTimes = (target.platform as string) === "prtimes";
-          const promptContent = isPRTimes
-            ? `あなたはビジネスメールのプロです。
+        // メッセージ優先順位: UIメッセージ → DBのgenerated_comment → Claude再生成
+        const uiMsg = (uiMessages || {})[currentTargetId] || "";
+        const dbMsg  = (target.generated_comment as string) || "";
+        let outreachMessage = uiMsg || dbMsg;
+
+        if (outreachMessage) {
+          console.log(`[bulk-send] Using ${uiMsg ? "UI" : "DB"} message for ${target.username}: ${outreachMessage.slice(0, 50)}...`);
+        } else {
+          // UIメッセージもDBメッセージもない場合のみ Claude で生成
+          console.log(`[bulk-send] No pre-generated message for ${target.username}, calling Claude...`);
+          try {
+            const { data: campaignRow } = await supabase.from("campaigns").select("*").eq("id", campaignId).single();
+            const productDesc = (campaignRow?.product_description as string) || (campaignRow?.product_url as string) || "";
+            const isPRTimes = (target.platform as string) === "prtimes";
+            const promptContent = isPRTimes
+              ? `あなたはビジネスメールのプロです。
 以下の情報を元に、企業お問い合わせフォームへのメッセージを生成してください。
 
 送信者: ${senderName}
@@ -2484,7 +2494,7 @@ export const bulkSendOutreach = inngest.createFunction(
 ・敬語・ビジネスメール文体
 
 メッセージ本文のみ返してください。`
-            : `あなたはB2Bセールスの専門家です。
+              : `あなたはB2Bセールスの専門家です。
 以下の情報を元に、企業のお問い合わせフォームに送るメッセージを日本語で生成してください。
 
 送信者: ${senderName}
@@ -2500,34 +2510,36 @@ export const bulkSendOutreach = inngest.createFunction(
 ・問い合わせ・面談打診で締める
 
 メッセージ本文のみ返してください。`;
-          const claudeRes = await fetch("https://api.anthropic.com/v1/messages", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "x-api-key": process.env.ANTHROPIC_API_KEY!,
-              "anthropic-version": "2023-06-01",
-            },
-            body: JSON.stringify({
-              model: "claude-haiku-4-5-20251001",
-              max_tokens: 400,
-              messages: [{ role: "user", content: promptContent }],
-            }),
-            signal: AbortSignal.timeout(20000),
-          });
-          if (claudeRes.ok) {
-            const cd = await claudeRes.json();
-            outreachMessage = cd.content?.[0]?.text || "";
+            const claudeRes = await fetch("https://api.anthropic.com/v1/messages", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "x-api-key": process.env.ANTHROPIC_API_KEY!,
+                "anthropic-version": "2023-06-01",
+              },
+              body: JSON.stringify({
+                model: "claude-haiku-4-5-20251001",
+                max_tokens: 400,
+                messages: [{ role: "user", content: promptContent }],
+              }),
+              signal: AbortSignal.timeout(20000),
+            });
+            if (claudeRes.ok) {
+              const cd = await claudeRes.json();
+              outreachMessage = cd.content?.[0]?.text || "";
+            }
+          } catch (claudeErr) {
+            console.warn("[bulk-send] Claude message generation failed:", claudeErr);
           }
-        } catch (claudeErr) {
-          console.warn("[bulk-send] Claude message generation failed:", claudeErr);
+          if (!outreachMessage) {
+            outreachMessage = `${senderName}と申します。貴社のサービスに関心があり、ご連絡いたしました。一度お話しさせていただけますでしょうか。`;
+          }
+          console.log(`[bulk-send] Claude generated for ${target.username}: ${outreachMessage.slice(0, 50)}...`);
         }
-        if (!outreachMessage) {
-          outreachMessage = `${senderName}と申します。貴社のサービスに関心があり、ご連絡いたしました。一度お話しさせていただけますでしょうか。`;
-        }
-        console.log(`[bulk-send] Message for ${target.username}: ${outreachMessage.slice(0, 50)}...`);
 
-        // ── クリック追跡: enable_tracking=true の場合、spark-ai.jp をトラッキングURLに置換 ──
-        const enableTracking = (campaignRow as Record<string, unknown>)?.enable_tracking === true;
+        // クリック追跡: enable_tracking は event または DB の campaign 設定を使用
+        const { data: campaignRowForTracking } = await supabase.from("campaigns").select("enable_tracking").eq("id", campaignId).single();
+        const enableTracking = eventEnableTracking ?? ((campaignRowForTracking as Record<string, unknown>)?.enable_tracking === true);
         const trackingUrl = `https://spark-ai.jp/api/track/${campaignId}/${currentTargetId}`;
         const finalMessage = enableTracking && outreachMessage.includes("spark-ai.jp")
           ? outreachMessage.replace(/spark-ai\.jp/g, trackingUrl)

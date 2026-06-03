@@ -367,6 +367,10 @@ ${updated[i].platform}での投稿を拝見し、${productDesc.slice(0, 60)}${kw
           senderEmail,
           userEmail: senderEmail,
           enableTracking: localStorage.getItem("spark_enable_tracking") === "true",
+          // UIで生成・編集済みのメッセージをそのまま渡す
+          messages: Object.fromEntries(
+            sendable.filter(t => t.message).map(t => [t.id, t.message])
+          ),
         }),
       });
       const data = await res.json();

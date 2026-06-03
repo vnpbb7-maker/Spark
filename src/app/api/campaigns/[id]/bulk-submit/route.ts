@@ -214,6 +214,9 @@ export async function POST(
       senderEmail,
       userEmail: userEmail || senderEmail,
       userId: (campaign?.user_id as string) || null,
+      // UIで生成・編集済みメッセージを2つ目のメッセージ生成をスキップするため転送
+      messages: (body.messages || {}) as Record<string, string>,
+      enableTracking: body.enableTracking === true,
     },
   });
 
