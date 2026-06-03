@@ -741,7 +741,7 @@ Return ONLY this JSON format (no markdown, no explanation):
             if (insertedTargets.length >= remaining) { limitReached = true; break; }
             if (tweet.username && tweet.username !== "unknown") {
               const dedupKey = `twitter::${tweet.username.toLowerCase()}`;
-              if (dedupSet.has(dedupKey) || isAlreadyContacted(platform, username)) continue;
+              if (dedupSet.has(dedupKey) || isAlreadyContacted("twitter", tweet.username)) continue;
               dedupSet.add(dedupKey);
               await getSupabase().from("targets").insert({
                 campaign_id: campaignId, platform: "twitter", username: tweet.username,
@@ -817,7 +817,7 @@ Return ONLY this JSON format (no markdown, no explanation):
                 const username = extractUsername(url, actualPlatform);
                 if (username && username !== "unknown") {
                   const dedupKey = `${actualPlatform}::${username.toLowerCase()}`;
-                  if (dedupSet.has(dedupKey) || isAlreadyContacted(platform, username)) continue;
+                  if (dedupSet.has(dedupKey) || isAlreadyContacted(actualPlatform, username)) continue;
                   dedupSet.add(dedupKey);
                   const profileUrl = buildProfileUrl(url, actualPlatform, username);
                   const social = extractSocialFromContent(content);
@@ -877,7 +877,7 @@ Return ONLY this JSON format (no markdown, no explanation):
             const username = extractUsername(url, actualPlatform);
             if (username && username !== "unknown") {
               const dedupKey = `${actualPlatform}::${username.toLowerCase()}`;
-              if (dedupSet.has(dedupKey) || isAlreadyContacted(platform, username)) { console.log(`[search] Dedup skip: ${dedupKey}`); continue; }
+              if (dedupSet.has(dedupKey) || isAlreadyContacted(actualPlatform, username)) { console.log(`[search] Dedup skip: ${dedupKey}`); continue; }
               dedupSet.add(dedupKey);
               const profileUrl = buildProfileUrl(url, actualPlatform, username);
               const social = extractSocialFromContent(content);
@@ -922,7 +922,7 @@ Return ONLY this JSON format (no markdown, no explanation):
             const eventDesc = String(event.description || "").replace(/<[^>]+>/g, "").slice(0, 500);
             if (!ownerNickname || ownerNickname === "unknown") continue;
             const dedupKey = `connpass::${ownerNickname.toLowerCase()}`;
-            if (dedupSet.has(dedupKey) || isAlreadyContacted(platform, username)) continue;
+            if (dedupSet.has(dedupKey) || isAlreadyContacted("connpass", ownerNickname)) continue;
             dedupSet.add(dedupKey);
             const social = extractSocialFromContent(eventDesc);
             // GitHub経由でメール取得（owner_nicknameをGitHubユーザー名として試みる）
@@ -991,7 +991,7 @@ Return ONLY this JSON format (no markdown, no explanation):
             const zennUsername = zennMatch[1];
             if (["articles", "books", "topics", "tech"].includes(zennUsername)) continue;
             const dedupKey = `zenn::${zennUsername.toLowerCase()}`;
-            if (dedupSet.has(dedupKey) || isAlreadyContacted(platform, username)) continue;
+            if (dedupSet.has(dedupKey) || isAlreadyContacted("zenn", zennUsername)) continue;
             dedupSet.add(dedupKey);
             // GitHub経由でメール取得
             // ZennプロフィールページからGitHubユーザー名を確認（Zenn名≠GitHub名の場合に対応）
@@ -1143,7 +1143,7 @@ Return ONLY this JSON format (no markdown, no explanation):
             if (!companyMatch) continue;
             const companySlug = companyMatch[1];
             const dedupKey = `wantedly::${companySlug.toLowerCase()}`;
-            if (dedupSet.has(dedupKey) || isAlreadyContacted(platform, username)) continue;
+            if (dedupSet.has(dedupKey) || isAlreadyContacted("wantedly", companySlug)) continue;
             dedupSet.add(dedupKey);
 
             // ── Step1: Jina Readerで会社名のみ取得（URLは取らない）──
@@ -1405,7 +1405,7 @@ Return ONLY this JSON format (no markdown, no explanation):
             const finalCompanyName = companyName || fallbackCompany;
             if (!finalCompanyName) continue;
             const dedupKey = `prtimes::${finalCompanyName.toLowerCase()}`;
-            if (dedupSet.has(dedupKey) || isAlreadyContacted(platform, username)) continue;
+            if (dedupSet.has(dedupKey) || isAlreadyContacted("prtimes", finalCompanyName)) continue;
             dedupSet.add(dedupKey);
             // フォールバック: Tavilyのcontentから企業URLを補完
             const tavilyContent = (result.content as string) || "";
@@ -1763,7 +1763,7 @@ JSONのみ返してください:
               }
 
               const dedupKey = `producthunt_competitor::${username}::${competitor}`;
-              if (dedupSet.has(dedupKey) || isAlreadyContacted(platform, username)) continue;
+              if (dedupSet.has(dedupKey) || isAlreadyContacted("producthunt_competitor", username)) continue;
               dedupSet.add(dedupKey);
 
               const { error: phInsertErr } = await getSupabase().from("targets").insert({

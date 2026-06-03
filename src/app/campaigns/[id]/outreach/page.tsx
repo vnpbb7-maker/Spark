@@ -24,7 +24,7 @@ type OutreachTarget = {
   priority: string; email: string | null; profile_url: string | null;
   contact_url: string | null; website: string | null;
   post_content: string | null; ai_reason: string | null;
-  message: string; status: "pending" | "sent" | "sent_unconfirmed" | "skipped";
+  message: string; status: "pending" | "sent" | "sent_unconfirmed" | "skipped" | "no_form";
   sendMethod: "email" | "dm" | "form" | "none";
   screenshot_url: string | null;
 };
