@@ -532,6 +532,33 @@ export const discoverTargets = inngest.createFunction(
     });
     console.log(`[dedup] Loaded ${dedupSet.size} existing SNS/Web targets from last 7 days (google_maps excluded from cross-campaign dedup)`);
 
+    // 2c. 送信済み企業の除外セット（全期間・全キャンペーン横断）
+    // contacted / contacted_unconfirmed の企業は再送しない
+    const { data: contactedRows } = await getSupabase()
+      .from("targets")
+      .select("username, contact_url, platform")
+      .in("campaign_id", userCampaignIds)
+      .in("status", ["contacted", "contacted_unconfirmed"]);
+
+    const contactedUsernameSet = new Set<string>(); // "platform::username"
+    const contactedDomainSet = new Set<string>();   // contact_url のホスト名
+    (contactedRows || []).forEach((t: { username: string; contact_url: string | null; platform: string }) => {
+      contactedUsernameSet.add(`${t.platform}::${t.username.toLowerCase()}`);
+      if (t.contact_url && !t.contact_url.startsWith("mailto:")) {
+        try { contactedDomainSet.add(new URL(t.contact_url).hostname.toLowerCase()); } catch {}
+      }
+    });
+    console.log(`[dedup] Contacted: ${contactedUsernameSet.size} usernames, ${contactedDomainSet.size} domains (all-time)`);
+
+    // 送信済みチェックヘルパー（全プラットフォーム共通）
+    const isAlreadyContacted = (platform: string, username: string, contactUrl?: string | null): boolean => {
+      if (contactedUsernameSet.has(`${platform}::${username.toLowerCase()}`)) return true;
+      if (contactUrl && !contactUrl.startsWith("mailto:")) {
+        try { if (contactedDomainSet.has(new URL(contactUrl).hostname.toLowerCase())) return true; } catch {}
+      }
+      return false;
+    };
+
     // 3. Generate problem-focused search queries via Claude
     // platforms: DB に文字列 '["zenn","wantedly"]' として保存されている場合も対応
     let platforms: string[] = [];
@@ -714,7 +741,7 @@ Return ONLY this JSON format (no markdown, no explanation):
             if (insertedTargets.length >= remaining) { limitReached = true; break; }
             if (tweet.username && tweet.username !== "unknown") {
               const dedupKey = `twitter::${tweet.username.toLowerCase()}`;
-              if (dedupSet.has(dedupKey)) continue;
+              if (dedupSet.has(dedupKey) || isAlreadyContacted(platform, username)) continue;
               dedupSet.add(dedupKey);
               await getSupabase().from("targets").insert({
                 campaign_id: campaignId, platform: "twitter", username: tweet.username,
@@ -790,7 +817,7 @@ Return ONLY this JSON format (no markdown, no explanation):
                 const username = extractUsername(url, actualPlatform);
                 if (username && username !== "unknown") {
                   const dedupKey = `${actualPlatform}::${username.toLowerCase()}`;
-                  if (dedupSet.has(dedupKey)) continue;
+                  if (dedupSet.has(dedupKey) || isAlreadyContacted(platform, username)) continue;
                   dedupSet.add(dedupKey);
                   const profileUrl = buildProfileUrl(url, actualPlatform, username);
                   const social = extractSocialFromContent(content);
@@ -850,7 +877,7 @@ Return ONLY this JSON format (no markdown, no explanation):
             const username = extractUsername(url, actualPlatform);
             if (username && username !== "unknown") {
               const dedupKey = `${actualPlatform}::${username.toLowerCase()}`;
-              if (dedupSet.has(dedupKey)) { console.log(`[search] Dedup skip: ${dedupKey}`); continue; }
+              if (dedupSet.has(dedupKey) || isAlreadyContacted(platform, username)) { console.log(`[search] Dedup skip: ${dedupKey}`); continue; }
               dedupSet.add(dedupKey);
               const profileUrl = buildProfileUrl(url, actualPlatform, username);
               const social = extractSocialFromContent(content);
@@ -895,7 +922,7 @@ Return ONLY this JSON format (no markdown, no explanation):
             const eventDesc = String(event.description || "").replace(/<[^>]+>/g, "").slice(0, 500);
             if (!ownerNickname || ownerNickname === "unknown") continue;
             const dedupKey = `connpass::${ownerNickname.toLowerCase()}`;
-            if (dedupSet.has(dedupKey)) continue;
+            if (dedupSet.has(dedupKey) || isAlreadyContacted(platform, username)) continue;
             dedupSet.add(dedupKey);
             const social = extractSocialFromContent(eventDesc);
             // GitHub経由でメール取得（owner_nicknameをGitHubユーザー名として試みる）
@@ -964,7 +991,7 @@ Return ONLY this JSON format (no markdown, no explanation):
             const zennUsername = zennMatch[1];
             if (["articles", "books", "topics", "tech"].includes(zennUsername)) continue;
             const dedupKey = `zenn::${zennUsername.toLowerCase()}`;
-            if (dedupSet.has(dedupKey)) continue;
+            if (dedupSet.has(dedupKey) || isAlreadyContacted(platform, username)) continue;
             dedupSet.add(dedupKey);
             // GitHub経由でメール取得
             // ZennプロフィールページからGitHubユーザー名を確認（Zenn名≠GitHub名の場合に対応）
@@ -1116,7 +1143,7 @@ Return ONLY this JSON format (no markdown, no explanation):
             if (!companyMatch) continue;
             const companySlug = companyMatch[1];
             const dedupKey = `wantedly::${companySlug.toLowerCase()}`;
-            if (dedupSet.has(dedupKey)) continue;
+            if (dedupSet.has(dedupKey) || isAlreadyContacted(platform, username)) continue;
             dedupSet.add(dedupKey);
 
             // ── Step1: Jina Readerで会社名のみ取得（URLは取らない）──
@@ -1378,7 +1405,7 @@ Return ONLY this JSON format (no markdown, no explanation):
             const finalCompanyName = companyName || fallbackCompany;
             if (!finalCompanyName) continue;
             const dedupKey = `prtimes::${finalCompanyName.toLowerCase()}`;
-            if (dedupSet.has(dedupKey)) continue;
+            if (dedupSet.has(dedupKey) || isAlreadyContacted(platform, username)) continue;
             dedupSet.add(dedupKey);
             // フォールバック: Tavilyのcontentから企業URLを補完
             const tavilyContent = (result.content as string) || "";
@@ -1523,7 +1550,7 @@ JSONのみ返してください:
             // Debug: log Places API fields to diagnose missing website
             console.log(`[google_maps] place: ${name} websiteUri=${(place.websiteUri as string) ?? "MISSING"} phone=${(place.nationalPhoneNumber as string) ?? "MISSING"}`);
             const dedupKey = `google_maps::${name.toLowerCase()}`;
-            if (dedupSet.has(dedupKey)) continue;
+            if (dedupSet.has(dedupKey) || isAlreadyContacted("google_maps", name)) continue;
             dedupSet.add(dedupKey);
             const placeId = (place.id as string) || "";
             const mapsUrl = placeId ? `https://www.google.com/maps/place/?q=place_id:${placeId}` : "";
@@ -1736,7 +1763,7 @@ JSONのみ返してください:
               }
 
               const dedupKey = `producthunt_competitor::${username}::${competitor}`;
-              if (dedupSet.has(dedupKey)) continue;
+              if (dedupSet.has(dedupKey) || isAlreadyContacted(platform, username)) continue;
               dedupSet.add(dedupKey);
 
               const { error: phInsertErr } = await getSupabase().from("targets").insert({
@@ -1803,7 +1830,7 @@ JSONのみ返してください:
             const domainMatch = url.match(/https?:\/\/(?:www\.)?([^/?#]+)/);
             const username = title.slice(0, 40) || (domainMatch ? domainMatch[1] : `review_${keyword.slice(0,10)}`);
             const dedupKey = `google_maps_review::${url}`;
-            if (dedupSet.has(dedupKey)) continue;
+            if (dedupSet.has(dedupKey) || isAlreadyContacted(platform, username)) continue;
             dedupSet.add(dedupKey);
 
             // Try Hunter.io for email if domain found

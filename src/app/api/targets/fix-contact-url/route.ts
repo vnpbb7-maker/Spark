@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
   const CHAT_PATH_RE = /\/(line|chat|messenger|liff)/i;
 
   let contactUrl: string | null = null;
-  let foundFormPage = false; // フォームページが確実に見つかったか
+  let foundFormPage = false;
 
   const platformLabel = platform || "unknown";
 
@@ -65,8 +65,8 @@ export async function POST(req: NextRequest) {
       for (const r of results) {
         const u = (r.url as string) || "";
         if (!isSafeUrl(u)) continue;
-        if (FORM_PATH_RE.test(u)) { contactUrl = u; foundFormPage = true; break; } // 優先度1: フォームページ
-        if (!lineUrl && CHAT_PATH_RE.test(u)) lineUrl = u;                          // 優先度3候補
+        if (FORM_PATH_RE.test(u)) { contactUrl = u; foundFormPage = true; break; }
+        if (!lineUrl && CHAT_PATH_RE.test(u)) lineUrl = u;
       }
 
       // 優先度2: Tavilyのcontentからメールアドレスを探す
@@ -106,14 +106,47 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Step3: フォールバックは公式サイトトップ（Playwrightに任せる）
+    // Step3: PlaywrightサーバーにURLクロールを依頼（フォームリンクを探す）
+    if (!contactUrl && official_website && process.env.PLAYWRIGHT_SERVER_URL && process.env.PLAYWRIGHT_API_KEY) {
+      console.log(`[fix-contact-url][${platformLabel}] Trying Playwright crawl for ${official_website}`);
+      try {
+        const crawlRes = await fetch(`${process.env.PLAYWRIGHT_SERVER_URL}/find-contact-link`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": process.env.PLAYWRIGHT_API_KEY,
+          },
+          body: JSON.stringify({ website_url: official_website }),
+          signal: AbortSignal.timeout(25000),
+        });
+        if (crawlRes.ok) {
+          const crawlData = await crawlRes.json() as Record<string, unknown>;
+          const found = crawlData.contactUrl as string | null;
+          if (found && isSafeUrl(found)) {
+            contactUrl = found;
+            foundFormPage = true;
+            console.log(`[fix-contact-url][${platformLabel}] Playwright found: ${found}`);
+          }
+        }
+      } catch (crawlErr) {
+        console.warn(`[fix-contact-url][${platformLabel}] Playwright crawl failed:`, (crawlErr as Error).message);
+      }
+    }
+
+    // Step4: フォールバックは公式サイトトップ（Playwrightに任せる）
     if (!contactUrl && official_website && isSafeUrl(official_website)) {
       contactUrl = official_website;
       console.log(`[fix-contact-url][${platformLabel}] Fallback to official top: ${contactUrl}`);
     }
 
+    // Step5: それでもなければ「フォームなし」として no_form ステータスに更新
     if (!contactUrl) {
-      return NextResponse.json({ contactUrl: null, foundFormPage: false, message: "Contact URL not found" });
+      console.log(`[fix-contact-url][${platformLabel}] No contact found for ${company_name} → marking as no_form`);
+      await getSupabase()
+        .from("targets")
+        .update({ contact_url: null, status: "no_form" })
+        .eq("id", target_id);
+      return NextResponse.json({ contactUrl: null, foundFormPage: false, noForm: true, message: "フォームが見つかりませんでした。スキップタブに移動します。" });
     }
 
     // DB更新

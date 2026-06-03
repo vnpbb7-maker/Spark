@@ -439,6 +439,14 @@ ${updated[i].platform}での投稿を拝見し、${productDesc.slice(0, 60)}${kw
             : x
         ));
         console.log(`[fix-contact-url] UI updated: ${data.contactUrl} foundFormPage=${data.foundFormPage}`);
+      } else if (data.noForm) {
+        // Tavily・HEAD・Playwright全て失敗 → フォームなしとしてスキップタブへ
+        setTargets(prev => prev.map(x =>
+          x.id === t.id
+            ? { ...x, contact_url: null, status: "no_form" as const }
+            : x
+        ));
+        console.log(`[fix-contact-url] ${t.username}: no form found → moved to skip tab`);
       } else {
         alert(`${t.username}：連絡先URLが見つかりませんでした`);
       }

@@ -599,6 +599,63 @@ async function getSharedBrowser() {
   }
 });
 
+// 公式サイトからお問い合わせリンクを探すエンドポイント（fix-contact-url のフォールバック）
+app.post("/find-contact-link", authMiddleware, async (req, res) => {
+  const { website_url } = req.body;
+  if (!website_url) return res.status(400).json({ error: "website_url required" });
+
+  console.log("[find-contact] Crawling:", website_url);
+  const browser = await getSharedBrowser();
+  let context;
+  try {
+    context = await browser.newContext(BROWSER_CONTEXT_OPTIONS);
+    const page = await context.newPage();
+    page.setDefaultTimeout(8000);
+
+    await page.goto(website_url, { waitUntil: "domcontentloaded", timeout: 12000 });
+
+    // お問い合わせリンクを探す（テキスト・href両方でチェック）
+    const contactLink = await page.evaluate(() => {
+      const KEYWORDS_TEXT = ["お問い合わせ", "問い合わせ", "contact", "Contact", "inquiry", "Inquiry", "相談", "資料請求"];
+      const KEYWORDS_HREF = ["/contact", "/inquiry", "/inquire", "/form", "/support", "/お問い合わせ", "/toiawase", "/request"];
+      const EXCLUDED = ["twitter.com", "x.com", "facebook.com", "instagram.com", "linkedin.com", "youtube.com"];
+      const IMAGE_RE = /\.(png|jpg|jpeg|gif|svg|webp|ico|bmp)(\?.*)?$/i;
+
+      const links = Array.from(document.querySelectorAll("a[href]"));
+      const safe = (u) => {
+        if (!u || IMAGE_RE.test(u)) return false;
+        try { return !EXCLUDED.some(ex => new URL(u, location.href).hostname.includes(ex)); } catch { return false; }
+      };
+      const abs = (u) => { try { return new URL(u, location.href).href; } catch { return null; } };
+
+      // テキストマッチ優先
+      for (const a of links) {
+        const text = (a.textContent || "").trim();
+        const href = a.getAttribute("href") || "";
+        const full = abs(href);
+        if (!full || !safe(full)) continue;
+        if (KEYWORDS_TEXT.some(k => text.includes(k))) return full;
+      }
+      // hrefパスマッチ
+      for (const a of links) {
+        const href = a.getAttribute("href") || "";
+        const full = abs(href);
+        if (!full || !safe(full)) continue;
+        if (KEYWORDS_HREF.some(k => full.includes(k))) return full;
+      }
+      return null;
+    });
+
+    console.log("[find-contact] Found:", contactLink || "none");
+    res.json({ contactUrl: contactLink || null });
+  } catch (err) {
+    console.error("[find-contact] Error:", err.message);
+    res.json({ contactUrl: null, error: err.message });
+  } finally {
+    if (context) await context.close().catch(() => {});
+  }
+});
+
 // 接続テストエンドポイント
 app.post("/test-connection", authMiddleware, async (req, res) => {
   const { platform, credentials } = req.body;
